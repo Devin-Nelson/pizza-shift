@@ -45,7 +45,7 @@ Roblox job/roleplay game: "Work at a Pizza Place but better". Every station is a
 - Realism modeled on how a Domino's store actually operates is the goal, with player autonomy and time management over forced flows.
 - They make the design calls: confirm before inventing game rules they didn't ask for, and say plainly when something is Claude's own call (see "Throughput" above).
 - Before declaring work done: compile every file, run the luau-analyze lint (catches call-before-definition bugs the compiler misses), and `rojo build`. Say clearly that Studio playtesting hasn't happened.
-- Loose ends: git is NOT set up yet (offered twice; recommend it before the visual overhaul). Rojo serve must be restarted in each new session.
+- Git: local repo on `main` (no remote yet). Commit only when the user asks; suggest committing before big changes like the visual overhaul. Rojo serve must be restarted in each new session.
 
 ## Status (2026-10-16)
 A full proofread/cleanup pass is done. The make process is now split into Stretch / Sauce / Cheese / Toppings stations with physical waiting spots, a station bar, order queue panel and "what next?" bar. Everything since the 3D minigames is written, compiles, lints clean and builds, but hasn't been playtested. A full visual overhaul is planned; the user will send instructions. Other next steps: real portion numbers, manager duties, location dynamics, a 2x Pay game pass.
