@@ -128,8 +128,11 @@ function Pizza3D.addSauce(self: Pizza, x: number, z: number, r: number)
 	self:_attach(splat, CFrame.new(x, self:top() + 0.01 + layer, z) * FLAT)
 end
 
+-- A whole sauce layer for a pizza sauced with `coverage` (0..1) quality,
+-- out to the sauce line (Config.Sauce.BorderInches in from the edge).
 function Pizza3D.setSauceFull(self: Pizza, coverage: number)
-	local d = self.diameter * Config.Sauce.Coverage * math.clamp(0.5 + coverage * 0.5, 0.5, 1)
+	local full = self.diameter - 2 * Config.Sauce.BorderInches * Config.StudsPerInch
+	local d = full * math.clamp(0.5 + coverage * 0.5, 0.5, 1)
 	local disc = newPart("Sauce", Vector3.new(0.02, d, d), Config.IngredientColors.Sauce, Enum.Material.SmoothPlastic, Enum.PartType.Cylinder)
 	self:_attach(disc, CFrame.new(0, self:top() + 0.01, 0) * FLAT)
 end
@@ -189,6 +192,19 @@ function Pizza3D.setBaked(self: Pizza, baked: boolean)
 	self.crust.Color = if baked then CRUST_BAKED else CRUST_RAW
 	if self.cheese then
 		self.cheese.Color = if baked then CHEESE_BAKED else CHEESE_RAW
+	end
+end
+
+-- Browns a pizza model (from any builder) `amount` (0-1) of the way from raw
+-- to baked, for pizzas riding through the oven.
+function Pizza3D.bakeTint(model: Model, amount: number)
+	local crust = model.PrimaryPart
+	if crust then
+		crust.Color = CRUST_RAW:Lerp(CRUST_BAKED, amount)
+	end
+	local cheese = model:FindFirstChild("Cheese")
+	if cheese and cheese:IsA("BasePart") then
+		cheese.Color = CHEESE_RAW:Lerp(CHEESE_BAKED, amount)
 	end
 end
 

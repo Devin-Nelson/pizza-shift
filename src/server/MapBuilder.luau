@@ -268,11 +268,11 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 
 	-- === Kitchen ===
 	-- Kitchen display (KDS) over the make-line, facing the makers (ShopService writes to it)
-	local kds = part({ Name = "TicketBoard", Size = Vector3.new(16, 3, 0.3), CFrame = at(-8, 9.6, 6.2), Color = Color3.fromRGB(10, 10, 12), Parent = decor })
+	local kds = part({ Name = "TicketBoard", Size = Vector3.new(20, 3, 0.3), CFrame = at(-3.5, 9.6, 6.2), Color = Color3.fromRGB(10, 10, 12), Parent = decor })
 	local kdsGui = Instance.new("SurfaceGui")
 	kdsGui.Name = "Tickets"
 	kdsGui.Face = Enum.NormalId.Front -- Front is -Z: toward the makers
-	kdsGui.CanvasSize = Vector2.new(800, 150)
+	kdsGui.CanvasSize = Vector2.new(1000, 150)
 	kdsGui.LightInfluence = 0
 	local kdsText = Instance.new("TextLabel")
 	kdsText.Name = "Text"
@@ -287,12 +287,13 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	kdsText.Text = "NO ORDERS"
 	kdsText.Parent = kdsGui
 	kdsGui.Parent = kds
-	for _, x in { -15, -1 } do
+	for _, x in { -12.5, 5.5 } do
 		part({ Name = "KdsMount", Size = Vector3.new(0.2, 4, 0.2), CFrame = at(x, 13, 6.2), Color = Color3.fromRGB(60, 60, 60), Material = Enum.Material.Metal, Parent = decor })
 	end
 
-	-- Conveyor oven (not a station: pizzas ride through it automatically)
-	StationArt.Build("Oven", decor, at(7, 1, 4))
+	-- Three stacked conveyor ovens, running from the make-line end back to the cut table
+	-- (not a station: pizzas ride through on their own).
+	StationArt.Build("Oven", decor, at(15.5, 1, -3))
 
 	-- 3-compartment sink on the back wall
 	local sinkBase = at(-22, 1, -23.2) * CFrame.Angles(0, math.pi, 0)
@@ -359,7 +360,8 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 		})
 		p:SetAttribute("Station", kind)
 		if pizzaAt then
-			-- Where the 3D pizza sits during this station's minigame (art-local, on the work surface).
+			-- The station's work spot (art-local, on the work surface): where the 3D
+			-- pizza sits during its minigame, and what the station camera aims at.
 			p:SetAttribute("PizzaAt", pizzaAt)
 		end
 		prompt(p, action, title)
@@ -377,17 +379,16 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 
 	local FACE_FRONT = CFrame.Angles(0, math.pi, 0) -- worker toward the shop front (+Z)
 	local FACE_RIGHT = CFrame.Angles(0, -math.pi / 2, 0) -- worker toward +X
-	local FACE_LEFT = CFrame.Angles(0, math.pi / 2, 0) -- worker toward -X
 
 	-- Front counter: register and the carryout warmer (faces the lobby).
-	station("Register", at(-6, 5.4, 12), Vector3.new(3, 2, 2), "Take Order", "Register")
+	station("Register", at(-6, 5.4, 12), Vector3.new(3, 2, 2), "Take Order", "Register", nil, Vector3.new(0, 0, 0))
 	station("Pickup", at(10, 5.4, 12) * FACE_FRONT, Vector3.new(6, 1, 3), "Carryout", "Carryout")
 	-- Dough table (stretch + sauce, with the screen racks on it) and the make-line
 	-- (cheese + toppings), one long row facing the lobby. Makers stand on the
 	-- kitchen side (-Z). Each piece is built once as decor; its stations are
 	-- hitboxes placed over the work spots from StationArt.Layout.
 	local DT, ML = StationArt.Layout.DoughTable, StationArt.Layout.MakeLine
-	local doughX, makeX = -20.5, -7.5
+	local doughX, makeX, readyX = -20.5, -3.5, 7.6
 	StationArt.Build("DoughTable", decor, at(doughX, 1, 4))
 	StationArt.Build("MakeLine", decor, at(makeX, 1, 4))
 	local doughWork = Vector3.new(0, DT.height, DT.workZ)
@@ -396,8 +397,12 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	station("Sauce", at(doughX + DT.sauceX, 1, 4), Vector3.new(3, 4, 3.6), "Sauce", "Dough Table", nil, doughWork)
 	station("Cheese", at(makeX + ML.cheeseX, 1, 4), Vector3.new(3, 4, 3.6), "Cheese", "Make-Line", nil, makeWork)
 	station("Toppings", at(makeX + ML.toppingsX, 1, 4), Vector3.new(3, 4, 3.6), "Toppings", "Make-Line", nil, makeWork)
-	station("CutTable", at(18.7, 1, 4), Vector3.new(10, 4, 5.6), "Cut & Box", "Cut Table", nil, Vector3.new(-0.6, 3.2, -1.5))
-	station("DeliveryRack", at(28.3, 1, -4) * FACE_LEFT, Vector3.new(6, 7, 2.2), "Grab Delivery", "Heat Rack")
+	-- The ready rack (finished pizzas waiting to be loaded) on its own table at the oven end of the make-line.
+	local RR = StationArt.Layout.ReadyRack
+	StationArt.Build("ReadyRack", decor, at(readyX, 1, 4))
+	station("Load", at(readyX, 1, 4), Vector3.new(RR.width, 8, RR.depth), "Load Oven", "Ready Rack", nil, Vector3.new(0, RR.height + 2.3, 0.1 - RR.rackDepth / 2))
+	station("CutTable", at(6, 1, -10.4), Vector3.new(11, 4, 5.6), "Cut & Box", "Cut Table", nil, Vector3.new(1.5, 3.2, -1.5))
+	station("DeliveryRack", at(-3.5, 1, -10.4), Vector3.new(6, 7, 2.2), "Heat Rack", "Heat Rack", nil, Vector3.new(0, 3.6, -1.1))
 	station("Fridge", at(-27.4, 1, -12) * FACE_RIGHT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler")
 	station("SupplyTruck", at(-10, 0, -30) * FACE_FRONT, Vector3.new(8, 4, 3), "Unload Truck", "Supply Truck", CFrame.new(0, 2, -1.5))
 

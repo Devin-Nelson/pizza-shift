@@ -1,7 +1,8 @@
 --!strict
 -- Station minigame UIs. Each reports raw inputs; the server scores them.
--- Register and Supply are 2D panels here; the pizza stations (Dough, Make-Line,
--- Cut & Box) are in-world 3D minigames in Minigames3D.
+-- Register and Supply are 2D panels here (the register's shows over the
+-- first-person view of the counter while you're stationed there); the pizza
+-- stations (Dough, Make-Line, Cut & Box) are in-world 3D minigames in Minigames3D.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 

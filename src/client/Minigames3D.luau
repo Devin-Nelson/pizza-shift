@@ -1,9 +1,12 @@
 --!strict
--- In-world pizza minigames, one per make step: the camera switches to first
--- person at the station, you work a real 3D pizza with the station's tool
--- (your own hands are hidden), and a slim control strip at the bottom carries
--- the meters and buttons. Each step starts from the pizza exactly as the last
--- step left it. Results are raw inputs; the server scores.
+-- In-world pizza minigames, one per make step. You're already standing at the
+-- station in first person (StationMode); each job adds a real 3D pizza at the
+-- work spot, the station's tool (your own hands are hidden), and a slim
+-- control strip at the bottom with the buttons. Each step starts from the
+-- pizza exactly as the last step left it. Space, a mouse click and a tap on
+-- the screen all work as the action button. The make-line is free-form:
+-- nothing tells you the portions (the job aids do), and pizzas only meet an
+-- order when they're loaded. Results are raw inputs; the server scores.
 
 local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,6 +16,9 @@ local UserInputService = game:GetService("UserInputService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Pizza3D = require(ReplicatedStorage.Shared.Pizza3D)
+local Loading = require(script.Parent.Loading)
+local StationMode = require(script.Parent.StationMode)
+local StationPicks = require(script.Parent.StationPicks)
 local Ui = require(script.Parent.Ui)
 local Workstation = require(script.Parent.Workstation)
 local T = Ui.Theme
@@ -22,11 +28,29 @@ local Minigames3D = {}
 type Finish = (payload: any) -> ()
 type Cancel = () -> ()
 
+-- One open minigame: its workstation, local parts, control strip and input.
+type Ctx = {
+	ws: Workstation.Workstation,
+	folder: Folder,
+	body: Frame,
+	cleanup: { () -> () },
+	holding: () -> boolean,
+	track: (RBXScriptConnection) -> (),
+}
+
 local ACTION = "PizzaMinigameInput"
 local STEEL = Color3.fromRGB(200, 204, 210)
+-- What to call the action button on this device.
+local PRESS = if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then "Tap" else "Space / Click"
+local HOLD = if PRESS == "Tap" then "Hold your finger" else "Hold the mouse"
+-- A closed box's printed lid is built standing on edge and laid flat with this,
+-- so the print is the part's Front face, whose "up" points away from the
+-- worker (a Top-face print reads upside down from the front).
+local BOX_FLAT = CFrame.Angles(math.rad(90), 0, 0)
 
-local active: { ws: Workstation.Workstation, dock: Frame, cleanup: { () -> () } }? = nil
+local active: { dock: Frame, folder: Folder, cleanup: { () -> () }, conns: { RBXScriptConnection } }? = nil
 
+-- Closes the open minigame (you stay at the station).
 function Minigames3D.Close()
 	local a = active
 	if not a then
@@ -34,55 +58,75 @@ function Minigames3D.Close()
 	end
 	active = nil
 	ContextActionService:UnbindAction(ACTION)
+	for _, c in a.conns do
+		c:Disconnect()
+	end
 	for _, fn in a.cleanup do
 		pcall(fn)
 	end
 	a.dock:Destroy()
-	a.ws:leave()
+	a.folder:Destroy()
 end
 
 function Minigames3D.IsOpen(): boolean
 	return active ~= nil
 end
 
--- Common setup. Returns workstation, dock body, cleanup list, and a "hold" reader
--- (true while the mouse / a finger is held down on the 3D view).
-local function open(title: string, height: number, station: any, cancel: Cancel, view: string?): (Workstation.Workstation?, Frame, { () -> () }, () -> boolean)
+local function isPointer(input: InputObject): boolean
+	return input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch
+end
+
+-- A click/tap meant for the minigame (not a button, a job aid card, or a pizza you can pick).
+local function isPlayClick(input: InputObject, processed: boolean): boolean
+	return not processed and isPointer(input) and not StationPicks.IsPointerOverPick()
+end
+
+-- Common setup at the station the job was started at.
+local function open(title: string, height: number, data: any, cancel: Cancel): Ctx?
 	Minigames3D.Close()
-	local cleanup = {}
-	local ws = if typeof(station) == "Instance" and station:IsA("BasePart") then Workstation.enter(station, view) else nil
+	local ws = StationMode.Ensure(data.station)
 	if not ws then
 		cancel()
-		return nil, Instance.new("Frame"), cleanup, function()
-			return false
-		end
+		return nil
 	end
+	local folder = Instance.new("Folder")
+	folder.Name = "Minigame"
+	folder.Parent = ws.folder
 	local dock, body, close = Ui.dock(title, height)
-	active = { ws = ws, dock = dock, cleanup = cleanup }
+	local a = { dock = dock, folder = folder, cleanup = {}, conns = {} }
+	active = a
 	close.Activated:Connect(function()
 		Minigames3D.Close()
 		cancel()
 	end)
+	local function track(conn: RBXScriptConnection)
+		table.insert(a.conns, conn)
+	end
+	-- True while the mouse / a finger is held down on the 3D view (not on a button).
 	local holding = false
-	ws:track(UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then
-			return
-		end
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+	track(UserInputService.InputBegan:Connect(function(input, processed)
+		if isPlayClick(input, processed) then
 			holding = true
 		end
 	end))
-	ws:track(UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+	track(UserInputService.InputEnded:Connect(function(input)
+		if isPointer(input) then
 			holding = false
 		end
 	end))
-	return ws, body, cleanup, function()
-		return holding
-	end
+	return {
+		ws = ws,
+		folder = folder,
+		body = body,
+		cleanup = a.cleanup,
+		holding = function()
+			return holding
+		end,
+		track = track,
+	}
 end
 
--- Space / gamepad A without jumping. `onEnd` (optional) fires on release.
+-- Space / gamepad A, without jumping. `onEnd` (optional) fires on release.
 local function bindSpace(onBegin: () -> (), onEnd: (() -> ())?)
 	ContextActionService:BindActionAtPriority(ACTION, function(_, state)
 		if state == Enum.UserInputState.Begin then
@@ -94,7 +138,19 @@ local function bindSpace(onBegin: () -> (), onEnd: (() -> ())?)
 	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.Space, Enum.KeyCode.ButtonA)
 end
 
-local function localPart(ws: Workstation.Workstation, name: string, size: Vector3, color: Color3, material: Enum.Material?, shape: Enum.PartType?): Part
+-- The action button: Space / gamepad A, or a click / tap anywhere on the 3D view.
+local function bindPress(ctx: Ctx, onPress: () -> ())
+	bindSpace(onPress)
+	-- Ignore the click that opened this phase, if it's still being delivered.
+	local armedAt = os.clock() + 0.15
+	ctx.track(UserInputService.InputBegan:Connect(function(input, processed)
+		if isPlayClick(input, processed) and os.clock() >= armedAt then
+			onPress()
+		end
+	end))
+end
+
+local function localPart(folder: Instance, name: string, size: Vector3, color: Color3, material: Enum.Material?, shape: Enum.PartType?): Part
 	local p = Instance.new("Part")
 	p.Name = name
 	if shape then
@@ -108,7 +164,7 @@ local function localPart(ws: Workstation.Workstation, name: string, size: Vector
 	p.CanTouch = false
 	p.CanQuery = false
 	p.CastShadow = false
-	p.Parent = ws.folder
+	p.Parent = folder
 	return p
 end
 
@@ -136,56 +192,182 @@ local function header(body: Frame, text: string)
 	Ui.label(text, { Size = UDim2.new(1, 0, 0, 20), TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, MaxText = 15, Parent = body })
 end
 
-local function meter(parent: Instance, y: number, labelText: string): (Frame, TextLabel)
-	local bar = Ui.new("Frame", { Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, -170, 0, 18), BackgroundColor3 = T.Card, Parent = parent }, { Ui.corner(6) })
-	local fill = Ui.new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Accent2, Parent = bar }, { Ui.corner(6) })
-	local l = Ui.label(labelText, { Size = UDim2.fromScale(1, 1), MaxText = 14, ZIndex = 3, Parent = bar })
-	return fill, l
+local function clearBody(body: Frame)
+	for _, c in body:GetChildren() do
+		c:Destroy()
+	end
 end
 
-local function ticketTitle(data: any): string
-	return string.format("#%s %s %s", tostring(data.ticket), string.upper(tostring(data.size)), string.upper(tostring(data.pizza)))
+-- A size picker: one button per size with how many skins are on the racks.
+-- `needSkin`: sizes with none on the racks can't be picked.
+local function sizeButtons(body: Frame, y: number, counts: { [string]: any }, needSkin: boolean, onPick: (string) -> ())
+	local row = Ui.new("Frame", { Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, 60), BackgroundTransparency = 1, Parent = body }, {
+		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 3, -8, 1, 0), CellPadding = UDim2.fromOffset(8, 0) }),
+	})
+	for _, size in Config.Sizes do
+		local have = tonumber(counts[size]) or 0
+		local usable = not needSkin or have > 0
+		local text = string.format("%s %d\"  (%d on rack)", size, Config.PizzaInches[size] or 0, have)
+		local b = Ui.button(text, if usable then Color3.fromRGB(200, 160, 100) else T.Card, { Parent = row, MaxText = 18, AutoButtonColor = usable })
+		if usable then
+			b.Activated:Connect(function()
+				onPick(size)
+			end)
+		end
+	end
+end
+
+-- The dough on the table while it's stretched, after the user's photos: a
+-- cornmeal-dusted ball sitting in a pile of cornmeal, pressed out into a
+-- lopsided disc that grows a raised edge and pushes the cornmeal into a ring
+-- around it, ending as a round skin. Returns set(diameter, progress 0-1,
+-- oval) to reshape it (oval: how lopsided, 0 = round).
+local CORNMEAL = Color3.fromRGB(236, 196, 92)
+local function doughVisual(folder: Instance, at: CFrame): (number, number, number) -> ()
+	local rng = Random.new()
+	local dough = Config.IngredientColors.Dough
+	-- The body: an ellipsoid sunk halfway into the table, so you see its top half.
+	local body = localPart(folder, "Dough", Vector3.new(1, 1, 1), dough, Enum.Material.SmoothPlastic)
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Parent = body
+	-- The raised edge, as short segments around the rim.
+	local rim = {}
+	for _ = 1, 22 do
+		table.insert(rim, localPart(folder, "Rim", Vector3.new(0.3, 0.08, 0.08), dough:Lerp(Color3.fromRGB(205, 185, 140), 0.35), Enum.Material.SmoothPlastic, Enum.PartType.Cylinder))
+	end
+	-- Cornmeal stuck to the top (positions on a unit disc).
+	local specks = {}
+	for _ = 1, 16 do
+		local a, r = rng:NextNumber(0, math.pi * 2), math.sqrt(rng:NextNumber()) * 0.85
+		table.insert(specks, { part = localPart(folder, "Speck", Vector3.new(0.01, 0.06, 0.06), CORNMEAL, Enum.Material.Sand, Enum.PartType.Cylinder), u = math.cos(a) * r, v = math.sin(a) * r })
+	end
+	-- The pile it started on, and the cornmeal it pushes out into a ring.
+	local pile = localPart(folder, "CornmealPile", Vector3.new(0.012, 1.8, 1.6), CORNMEAL, Enum.Material.Sand, Enum.PartType.Cylinder)
+	pile.CFrame = at * CFrame.new(0, 0.006, 0) * CFrame.Angles(0, rng:NextNumber(0, math.pi), 0) * Pizza3D.FLAT
+	local ring = {}
+	for i = 1, 20 do
+		local w = rng:NextNumber(0.4, 0.8)
+		table.insert(ring, {
+			part = localPart(folder, "Cornmeal", Vector3.new(0.01, w, w * rng:NextNumber(0.35, 0.6)), CORNMEAL:Lerp(Color3.fromRGB(245, 215, 130), rng:NextNumber(0, 0.5)), Enum.Material.Sand, Enum.PartType.Cylinder),
+			a = (i / 20) * math.pi * 2 + rng:NextNumber(-0.12, 0.12),
+			out = rng:NextNumber(0, 0.25),
+			y = 0.008 + i * 0.0007, -- each a hair higher, so none z-fight
+		})
+	end
+	local yaw = rng:NextNumber(0, math.pi * 2)
+	local lastT = 0
+	return function(d: number, t: number, oval: number)
+		-- It gets turned a little with every press.
+		yaw += (t - lastT) * 4
+		lastT = t
+		local spin = CFrame.Angles(0, yaw, 0)
+		local sx, sz = d * (1 + oval), d * (1 - oval)
+		-- A tall dome at first, nearly flat at the end.
+		local height = 0.16 + 0.74 * (1 - t) ^ 2.5
+		body.Size = Vector3.new(sx, height, sz)
+		body.CFrame = at * spin
+		-- The edge rises once it's pressed out.
+		local lip = math.clamp((t - 0.25) / 0.35, 0, 1)
+		for i, seg in rim do
+			local a = (i / #rim) * math.pi * 2
+			local p = Vector3.new(math.cos(a) * sx / 2 * 0.95, 0, math.sin(a) * sz / 2 * 0.95)
+			local tangent = Vector3.new(-math.sin(a) * sx, 0, math.cos(a) * sz).Unit
+			local thick = 0.04 + 0.05 * lip
+			seg.Size = Vector3.new(math.pi * d / #rim * 1.25, thick, thick)
+			seg.Transparency = if lip > 0 then 0 else 1
+			seg.CFrame = at * spin * CFrame.fromMatrix(p + Vector3.new(0, thick * 0.45, 0), tangent, Vector3.yAxis)
+		end
+		for _, s in specks do
+			local top = height / 2 * math.sqrt(math.max(0, 1 - s.u * s.u - s.v * s.v))
+			s.part.CFrame = at * spin * CFrame.new(s.u * sx / 2, top + 0.004, s.v * sz / 2) * Pizza3D.FLAT
+		end
+		for _, r in ring do
+			local x, z = math.cos(r.a) * (sx / 2 + 0.15 + r.out), math.sin(r.a) * (sz / 2 + 0.15 + r.out)
+			r.part.CFrame = at * spin * CFrame.new(x, r.y, z) * CFrame.Angles(0, math.pi / 2 - r.a, 0) * Pizza3D.FLAT -- long side along the ring
+		end
+	end
 end
 
 ---------------------------------------------------------------------------
--- Stretch (dough table): pick a size, then press in rhythm to slap a dough
--- ball out into a skin for the racks.
+-- Stretch (dough table): pick a size, then hit the green zone as a marker
+-- sweeps the timing bar. The zone jumps somewhere new (and changes width)
+-- after every hit; yellow and misses cost score and stretch less.
 ---------------------------------------------------------------------------
 local function dough(data: any, finish: Finish, cancel: Cancel)
-	local ws, body, cleanup = open("Stretch Dough", 150, data.station, cancel)
-	if not ws then
+	local ctx = open("Stretch Dough", 120, data, cancel)
+	if not ctx then
 		return
 	end
-	local presses = tonumber(data.presses) or Config.Dough.Presses
+	local ws, body = ctx.ws, ctx.body
+	local D = Config.Dough
 	local skins = if type(data.skins) == "table" then data.skins else {}
 	local rackUsed = tonumber(data.rackUsed) or 0
 	local rackCapacity = tonumber(data.rackCapacity) or Config.RackCapacity()
-	local diameter, thickness = 0.8, 0.45
-	local pizza = Pizza3D.new(ws.frame * CFrame.new(0, thickness / 2, 0), diameter, ws.folder, thickness)
-	table.insert(cleanup, function()
-		pizza:Destroy()
-	end)
+	-- The dough ball (about 6" across) eases toward its new shape after every press.
+	local BALL = 1.0
+	local setShape = doughVisual(ctx.folder, ws.frame)
+	local diameter, progress, sloppy = BALL, 0, 0
+	local shownD, shownT = BALL, 0
+	setShape(BALL, 0, 0.06)
+	ctx.track(RunService.RenderStepped:Connect(function(dt)
+		local k = math.min(1, dt * 10)
+		shownD += (diameter - shownD) * k
+		shownT += (progress - shownT) * k
+		-- Lopsided while it's being worked; the sloppier the presses, the more it stays that way.
+		setShape(shownD, shownT, 0.06 * (1 - shownT) + 0.05 * sloppy)
+	end))
 
 	local function stretch(size: string)
-		for _, c in body:GetChildren() do
-			c:Destroy()
-		end
+		clearBody(body)
+		local presses = D.Presses[size] or 8
 		local targetD = Config.PizzaDiameter[size] or 2.4
-		header(body, string.format("%s skin (%d\") - press in the green zone to stretch it out", string.upper(size), Config.PizzaInches[size] or 0))
-		local bar = Ui.new("Frame", { Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, -170, 0, 30), BackgroundColor3 = Color3.fromRGB(120, 60, 50), Parent = body }, { Ui.corner(8) })
-		Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0.4, 1), BackgroundColor3 = Color3.fromRGB(220, 180, 60), Parent = bar }, { Ui.corner(8) })
-		Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0.12, 1), BackgroundColor3 = T.Good, Parent = bar }, { Ui.corner(8) })
-		local markerBar = Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0, 6, 1, 10), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3, Parent = bar })
-		local feedback = Ui.label("", { Position = UDim2.fromOffset(0, 62), Size = UDim2.new(1, -170, 0, 26), Font = T.Title, Parent = body })
-		local button = Ui.button("STRETCH!  [Space]", T.Accent, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 22), Size = UDim2.fromOffset(160, 64), Parent = body })
+		header(body, string.format("%s skin (%d\"): %s when the marker is in the green. Yellow and misses cost you.", string.upper(size), Config.PizzaInches[size] or 0, string.lower(PRESS)))
+		local status = Ui.label(string.format("%d to go", presses), { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, -170, 0, 36), Font = T.Title, TextXAlignment = Enum.TextXAlignment.Left, Parent = body })
+		local button = Ui.button("STRETCH!  [" .. PRESS .. "]", T.Accent, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 22), Size = UDim2.fromOffset(160, 48), MaxText = 18, Parent = body })
+
+		-- The timing bar sits on its own near the middle of the screen.
+		local qte = Ui.new("Frame", { Name = "StretchBar", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.68), Size = UDim2.fromOffset(560, 70), BackgroundTransparency = 1, Parent = Ui.Screen })
+		Ui.new("UISizeConstraint", { MaxSize = Vector2.new(560, 70), Parent = qte })
+		table.insert(ctx.cleanup, function()
+			qte:Destroy()
+		end)
+		local feedback = Ui.label("", { Size = UDim2.new(1, 0, 0, 30), Font = T.Title, MaxText = 26, Parent = qte })
+		local bar = Ui.new("Frame", { Position = UDim2.fromOffset(0, 36), Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(110, 40, 38), Parent = qte }, { Ui.corner(8) })
+		local barStroke = Ui.stroke(Color3.new(0, 0, 0), 3)
+		barStroke.Transparency = 0
+		barStroke.Parent = bar
+		local yellow = Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = Color3.fromRGB(230, 185, 60), Parent = bar }, { Ui.corner(6) })
+		local green = Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = T.Good, ZIndex = 2, Parent = bar }, { Ui.corner(6) })
+		local marker = Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0, 6, 1, 14), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3, Parent = bar })
+
+		local rng = Random.new()
+		local center, width = 0.5, 0.1
+		local function placeZone()
+			width = rng:NextNumber(D.GreenWidth[1], D.GreenWidth[2])
+			local half = width / 2 + D.Yellow
+			local new = center
+			for _ = 1, 12 do -- somewhere new, well clear of where it was
+				new = rng:NextNumber(half, 1 - half)
+				if math.abs(new - center) > 0.2 then
+					break
+				end
+			end
+			center = new
+			green.Position = UDim2.fromScale(center, 0)
+			green.Size = UDim2.fromScale(width, 1)
+			yellow.Position = UDim2.fromScale(center, 0)
+			yellow.Size = UDim2.fromScale(width + D.Yellow * 2, 1)
+		end
+		placeZone()
 
 		local hits = {}
 		local t, speed, pos = 0, 2.4, 0.5
 		local done = false
-		ws:track(RunService.RenderStepped:Connect(function(dt)
+		ctx.track(RunService.RenderStepped:Connect(function(dt)
 			t += dt * speed
 			pos = 0.5 + 0.5 * math.sin(t)
-			markerBar.Position = UDim2.fromScale(pos, 0.5)
+			marker.Position = UDim2.fromScale(pos, 0.5)
 		end))
 
 		local cooldown = false
@@ -194,20 +376,32 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 				return
 			end
 			cooldown = true
-			task.delay(0.4, function()
+			task.delay(0.35, function()
 				cooldown = false
 			end)
-			local d = math.abs(pos - 0.5)
-			local q = if d <= 0.06 then 1 else math.clamp(1 - (d - 0.06) / 0.3, 0, 1)
+			local off = math.abs(pos - center)
+			local q, color
+			if off <= width / 2 then
+				q, color = 1, T.Good
+				feedback.Text = "PERFECT!"
+			elseif off <= width / 2 + D.Yellow then
+				q, color = D.YellowScore, T.Accent2
+				feedback.Text = string.format("Yellow  -%d%%", math.floor((1 - D.YellowScore) * 100 + 0.5))
+			else
+				q, color = D.MissScore, T.Accent
+				feedback.Text = "MISS!  -100%"
+			end
+			feedback.TextColor3 = color
+			barStroke.Color = color
+			TweenService:Create(barStroke, TweenInfo.new(0.4), { Color = Color3.new(0, 0, 0) }):Play()
 			table.insert(hits, q)
-			feedback.Text = if q >= 0.95 then "PERFECT!" elseif q >= 0.6 then "Good" elseif q > 0 then "Meh" else "Miss!"
-			feedback.TextColor3 = if q >= 0.95 then T.Good elseif q >= 0.6 then T.Accent2 else T.Accent
-			-- Grow toward the chosen size; sloppy presses leave it undersized and thick.
-			diameter = math.min(targetD, diameter + (targetD - 0.8) / presses * (0.55 + 0.45 * q))
-			thickness = math.max(0.12, thickness - (0.45 - 0.12) / presses)
-			pizza:setDough(diameter, thickness)
-			pizza.crust.CFrame = (ws.frame * CFrame.new(0, thickness / 2, 0)) * Pizza3D.FLAT
-			speed += 0.35
+			-- Press it out toward the chosen size; sloppy presses leave it undersized and lopsided.
+			local growth = math.max(q, D.MissGrowth)
+			diameter = math.min(targetD, diameter + (targetD - BALL) / presses * growth)
+			progress = #hits / presses
+			sloppy += (1 - q) / presses
+			speed += 0.25
+			status.Text = if #hits >= presses then "Done!" else string.format("%d to go", presses - #hits)
 			if #hits >= presses then
 				done = true
 				task.delay(0.6, function()
@@ -216,116 +410,126 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 						finish({ hits = hits, size = size })
 					end
 				end)
+			else
+				placeZone()
 			end
 		end
 		button.Activated:Connect(press)
-		bindSpace(press)
+		bindPress(ctx, press)
 	end
 
 	-- Step 1: choose what size to prep (shows what's already on the racks).
 	header(body, string.format("Prep dough for the rush: pick a size to stretch. Racks: %d/%d slots used.", rackUsed, rackCapacity))
-	local row = Ui.new("Frame", { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 0, 64), BackgroundTransparency = 1, Parent = body }, {
-		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 3, -8, 1, 0), CellPadding = UDim2.fromOffset(8, 0) }),
-	})
-	for _, size in (data.sizes or Config.Sizes) do
-		local have = tonumber(skins[size]) or 0
-		local b = Ui.button(string.format("%s %d\"  (%d on rack)", size, Config.PizzaInches[size] or 0, have), Color3.fromRGB(200, 160, 100), { Parent = row, MaxText = 18 })
-		b.Activated:Connect(function()
-			stretch(size)
-		end)
-	end
+	sizeButtons(body, 28, skins, false, stretch)
 end
 
 ---------------------------------------------------------------------------
--- Sauce (dough table): hold and drag the ladle in a spiral; one ladle per pizza.
+-- Sauce (dough table): pick a skin off the racks, then spread sauce with the
+-- spoodle (it never runs dry). Scored on coverage out to the sauce line and on
+-- keeping the rim clean.
 ---------------------------------------------------------------------------
 local function sauce(data: any, finish: Finish, cancel: Cancel)
-	local ws, body, cleanup, holding = open("Sauce", 150, data.station, cancel)
-	if not ws then
+	local ctx = open("Sauce", 150, data, cancel)
+	if not ctx then
 		return
 	end
-	local d = tonumber(data.diameter) or 2.4
-	local R = d / 2
+	local ws, body, holding = ctx.ws, ctx.body, ctx.holding
 	local S = Config.Sauce
-	local pizza = Pizza3D.new(ws.frame * CFrame.new(0, 0.06, 0), d, ws.folder)
-	table.insert(cleanup, function()
-		pizza:Destroy()
-	end)
 
-	header(body, ticketTitle(data) .. "  |  Hold and drag the ladle in a spiral - even and edge to edge, not over the crust")
-	local fill, l = meter(body, 30, "Ladle full")
-	local doneBtn = Ui.button("Sauce Done", T.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), Parent = body })
-	-- The ladle: bowl + handle angled up toward you
-	local bowl = localPart(ws, "Ladle", Vector3.new(0.12, 0.5, 0.5), STEEL, Enum.Material.Metal, Enum.PartType.Cylinder)
-	local handle = localPart(ws, "LadleHandle", Vector3.new(0.06, 0.06, 1.3), STEEL, Enum.Material.Metal)
-	local grip = localPart(ws, "LadleGrip", Vector3.new(0.09, 0.09, 0.45), Color3.fromRGB(200, 30, 30), Enum.Material.Plastic)
+	local function spread(size: string)
+		clearBody(body)
+		local d = Config.PizzaDiameter[size] or 2.4
+		local R = d / 2
+		local sauceR = Config.SauceRadius(size)
+		local pizza = Pizza3D.new(ws.frame * CFrame.new(0, 0.06, 0), d, ctx.folder)
+		header(body, string.format("%s skin  |  %s down and spread with the spoodle: cover out to the sauce line, keep the rim clean.", string.upper(size), HOLD))
+		local doneBtn = Ui.button("Sauce Done", T.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), Parent = body })
+		-- The spoodle: a flat-bottomed ladle, its handle angled up toward you
+		local bowl = localPart(ctx.folder, "Spoodle", Vector3.new(0.08, S.SpoodleRadius * 2, S.SpoodleRadius * 2), STEEL, Enum.Material.Metal, Enum.PartType.Cylinder)
+		local handle = localPart(ctx.folder, "SpoodleHandle", Vector3.new(0.06, 0.06, 1.3), STEEL, Enum.Material.Metal)
+		local grip = localPart(ctx.folder, "SpoodleGrip", Vector3.new(0.09, 0.09, 0.45), Color3.fromRGB(200, 30, 30), Enum.Material.Plastic)
 
-	local cells = table.create(S.Rings * S.Sectors, 0)
-	local overflow = 0
-	local remaining = S.Ladle
-	local lastSplat = Vector3.new(1e9, 0, 0)
-	local sauceR = R * S.Coverage
-	ws:track(RunService.RenderStepped:Connect(function(dt)
-		local hit, x, z = ws:pointer(0.15)
-		if not hit then
-			return
-		end
-		local r = math.sqrt(x * x + z * z)
-		if r > R + 0.6 then
-			local k = (R + 0.6) / r
-			x, z = x * k, z * k
-		end
-		local p = ws:at(x, 0.2, z)
-		bowl.CFrame = CFrame.new(p) * Pizza3D.FLAT
-		local handleEnd = p + ws.toWorker * 0.9 + Vector3.new(0, 0.7, 0)
-		handle.CFrame = CFrame.lookAt((p + handleEnd) / 2, handleEnd)
-		grip.CFrame = CFrame.lookAt(handleEnd, handleEnd + (handleEnd - p).Unit)
-		if holding() and remaining > 0 then
-			local amount = math.min(remaining, S.PourRate * dt)
-			remaining -= amount
-			if r > sauceR then
-				overflow += amount
-			else
-				local ring = math.min(S.Rings, math.floor(r / sauceR * S.Rings) + 1)
-				local angle = (math.atan2(z, x) + math.pi * 2) % (math.pi * 2)
-				local sector = math.min(S.Sectors, math.floor(angle / (math.pi * 2) * S.Sectors) + 1)
-				cells[(ring - 1) * S.Sectors + sector] += amount
+		local cells = table.create(S.Rings * S.Sectors, 0)
+		local cellPos = {}
+		for ring = 1, S.Rings do
+			for sector = 1, S.Sectors do
+				local rr = (ring - 0.5) / S.Rings * sauceR
+				local a = (sector - 0.5) / S.Sectors * math.pi * 2
+				table.insert(cellPos, Vector2.new(math.cos(a) * rr, math.sin(a) * rr))
 			end
-			local here = Vector3.new(x, 0, z)
-			if (here - lastSplat).Magnitude > 0.09 and r < R + 0.1 then
+		end
+		local rim = 0
+		local splats = 0
+		local lastSplat = Vector2.new(1e9, 0)
+		local sr = S.SpoodleRadius
+		ctx.track(RunService.RenderStepped:Connect(function(dt)
+			local hit, x, z = ws:pointer(0.15)
+			if not hit then
+				return
+			end
+			local r = math.sqrt(x * x + z * z)
+			if r > R + 0.6 then
+				local k = (R + 0.6) / r
+				x, z, r = x * k, z * k, R + 0.6
+			end
+			local p = ws:at(x, 0.16, z)
+			bowl.CFrame = CFrame.new(p) * Pizza3D.FLAT
+			local handleEnd = p + ws.toWorker * 0.9 + Vector3.new(0, 0.7, 0)
+			handle.CFrame = CFrame.lookAt((p + handleEnd) / 2, handleEnd)
+			grip.CFrame = CFrame.lookAt(handleEnd, handleEnd + (handleEnd - p).Unit)
+			if not holding() then
+				return
+			end
+			local amount = S.PourRate * dt
+			-- Whatever part of the spoodle hangs past the sauce line puts sauce on the rim.
+			local over = if r > R + sr then 1 else math.clamp((r + sr - sauceR) / (2 * sr), 0, 1)
+			rim += amount * over
+			if over < 1 then
+				local here = Vector2.new(x, z)
+				for i, c in cellPos do
+					if (c - here).Magnitude <= sr then
+						cells[i] += amount * (1 - over)
+					end
+				end
+			end
+			local here = Vector2.new(x, z)
+			if (here - lastSplat).Magnitude > 0.08 and r < R + 0.1 and splats < 400 then
 				lastSplat = here
-				pizza:addSauce(x, z, 0.2)
+				splats += 1
+				pizza:addSauce(x, z, sr)
 			end
-			fill.Size = UDim2.fromScale(remaining / S.Ladle, 1)
-			l.Text = if remaining <= 0 then "Ladle empty" else string.format("Ladle %d%%", math.floor(remaining / S.Ladle * 100 + 0.5))
-		end
-	end))
-	doneBtn.Activated:Connect(function()
-		Minigames3D.Close()
-		finish({ sauce = { cells = cells, overflow = overflow } })
-	end)
+		end))
+		doneBtn.Activated:Connect(function()
+			Minigames3D.Close()
+			finish({ size = size, sauce = { cells = cells, rim = rim } })
+		end)
+	end
+
+	-- Step 1: which skin to sauce.
+	header(body, "Pick a skin off the racks to sauce. Go by the orders on the screen.")
+	sizeButtons(body, 28, if type(data.skins) == "table" then data.skins else {}, true, spread)
 end
 
 ---------------------------------------------------------------------------
 -- Cheese (make-line): hold to pour; the pour speeds up the longer you hold.
+-- The portion's on the job aid card, not the screen.
 ---------------------------------------------------------------------------
 local function cheese(data: any, finish: Finish, cancel: Cancel)
-	local ws, body, cleanup, holding = open("Cheese", 150, data.station, cancel)
-	if not ws then
+	local ctx = open("Cheese", 150, data, cancel)
+	if not ctx then
 		return
 	end
-	hideShared(data.visual, cleanup)
+	local ws, body, holding = ctx.ws, ctx.body, ctx.holding
+	hideShared(data.visual, ctx.cleanup)
 	local spec = if type(data.spec) == "table" then data.spec else { size = data.size }
-	local pizza = Pizza3D.fromSpec(ws.frame * CFrame.new(0, 0.06, 0), spec, ws.folder)
-	table.insert(cleanup, function()
-		pizza:Destroy()
-	end)
+	local pizza = Pizza3D.fromSpec(ws.frame * CFrame.new(0, 0.06, 0), spec, ctx.folder)
 	local R = (Config.PizzaDiameter[spec.size] or 2.4) / 2
-	local target = tonumber(data.cheese) or 6
+	local target = Config.CheesePortion[spec.size] or 6
 	local rng = Random.new()
 
-	header(body, string.format("%s  |  Portion is %.1f oz (stay within 10%%). Hold [Space] or hold on the pizza - it pours faster the longer you hold.", ticketTitle(data), target))
-	local scale = Ui.label("0.0 oz", { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, -170, 0, 44), Font = Enum.Font.Code, TextColor3 = Color3.fromRGB(120, 255, 140), MaxText = 34, Parent = body })
+	local how = if PRESS == "Tap" then "Hold your finger on the pizza" else "Hold Space, or hold the mouse on the pizza"
+	header(body, string.format("%s PIZZA  |  %s to pour - faster the longer you hold. Portion it by the cheese card.", string.upper(tostring(spec.size)), how))
+	local scale = Ui.label("0.0 oz", { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, -170, 0, 44), Font = Enum.Font.Code, TextColor3 = Color3.fromRGB(230, 240, 235), MaxText = 34, Parent = body })
 	local doneBtn = Ui.button("Cheese Done", T.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), Parent = body })
 	local spaceHeld = false
 	bindSpace(function()
@@ -334,7 +538,7 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 		spaceHeld = false
 	end)
 	local oz, held, lastShred, swirl, shreds = 0, 0, 0, 0, 0
-	ws:track(RunService.RenderStepped:Connect(function(dt)
+	ctx.track(RunService.RenderStepped:Connect(function(dt)
 		local pouring = spaceHeld or holding()
 		swirl += dt * (if pouring then 5 else 1.5)
 		if not pouring then
@@ -346,8 +550,6 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 		oz += rate * dt
 		pizza:setCheese(oz / target)
 		scale.Text = string.format("%.1f oz", oz)
-		local off = math.abs(oz - target) / target
-		scale.TextColor3 = if off <= Config.PortionTolerance then Color3.fromRGB(120, 255, 140) elseif oz < target then Color3.fromRGB(255, 220, 120) else Color3.fromRGB(255, 110, 90)
 		-- Shreds fall from a spot circling over the pizza.
 		lastShred += dt
 		if lastShred > 0.025 and shreds < 220 then
@@ -355,7 +557,7 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 			shreds += 1
 			local cx, cz = math.cos(swirl) * R * 0.45, math.sin(swirl) * R * 0.45
 			local x, z = pizza:randomPoint(rng)
-			local shred = localPart(ws, "Shred", Vector3.new(0.14, 0.03, 0.04), Config.IngredientColors.Cheese, Enum.Material.Sand)
+			local shred = localPart(ctx.folder, "Shred", Vector3.new(0.14, 0.03, 0.04), Config.IngredientColors.Cheese, Enum.Material.Sand)
 			shred.CFrame = CFrame.new(ws:at(cx, 0.8, cz)) * CFrame.Angles(0, rng:NextNumber(0, 6.28), 0)
 			TweenService:Create(shred, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 				CFrame = CFrame.new(ws:at(x, 0.15 + rng:NextNumber(0, 0.02), z)) * CFrame.Angles(0, rng:NextNumber(0, 6.28), 0),
@@ -369,27 +571,32 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 end
 
 ---------------------------------------------------------------------------
--- Toppings (make-line): pick a topping, hold on the pizza to drop it.
+-- Toppings (make-line): any toppings, no targets on screen (go by the order
+-- screen and the portions card). Then put it on the ready rack, or load it straight away.
 ---------------------------------------------------------------------------
 local function toppings(data: any, finish: Finish, cancel: Cancel)
-	local ws, body, cleanup, holding = open("Toppings", 150, data.station, cancel)
-	if not ws then
+	local ctx = open("Toppings", 150, data, cancel)
+	if not ctx then
 		return
 	end
-	hideShared(data.visual, cleanup)
+	local ws, body, holding = ctx.ws, ctx.body, ctx.holding
+	hideShared(data.visual, ctx.cleanup)
 	local spec = if type(data.spec) == "table" then data.spec else { size = data.size }
-	local pizza = Pizza3D.fromSpec(ws.frame * CFrame.new(0, 0.06, 0), spec, ws.folder)
-	table.insert(cleanup, function()
-		pizza:Destroy()
-	end)
+	local pizza = Pizza3D.fromSpec(ws.frame * CFrame.new(0, 0.06, 0), spec, ctx.folder)
 	local R = (Config.PizzaDiameter[spec.size] or 2.4) / 2
-	local list: { string } = if type(data.toppings) == "table" then data.toppings else {}
-	local portions = if type(data.portions) == "table" then data.portions else {}
+	local list: { string } = if type(data.toppings) == "table" then data.toppings else Config.Toppings
+	local out = if type(data.out) == "table" then data.out else {}
 	local rng = Random.new()
 	local counts: { [string]: number } = {}
 
-	header(body, ticketTitle(data) .. "  |  Pick a topping, then hold on the pizza to drop it. Hit each portion within 10%.")
-	local selected = list[1]
+	header(body, string.format("%s PIZZA  |  Pick a topping and %s on the pizza to drop it. Portions are on the card.", string.upper(tostring(spec.size)), string.lower(HOLD)))
+	local selected: string? = nil
+	for _, name in list do
+		if not out[name] then
+			selected = name
+			break
+		end
+	end
 	local buttons: { [string]: TextButton } = {}
 	local row = Ui.new("Frame", { Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, -170, 0, 40), BackgroundTransparency = 1, Parent = body }, {
 		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / math.max(#list, 1), -6, 1, 0), CellPadding = UDim2.fromOffset(6, 0) }),
@@ -398,45 +605,58 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 		for name, b in buttons do
 			local n = pizza:count(name)
 			counts[name] = n
-			local target = tonumber(portions[name]) or 0
-			b.Text = string.format("%s %d/%d", name, n, target)
-			local off = if target > 0 then math.abs(n - target) / target else 0
-			b.BackgroundColor3 = if name == selected then T.Accent2 elseif target > 0 and off <= Config.PortionTolerance then T.Good else T.Card
+			b.Text = if out[name] then name .. " OUT" else string.format("%s %d", name, n)
+			b.BackgroundColor3 = if out[name] then Color3.fromRGB(50, 45, 52) elseif name == selected then T.Accent2 else T.Card
 			b.TextColor3 = if name == selected then Color3.fromRGB(30, 30, 30) else T.Text
 		end
 	end
 	for _, name in list do
-		local b = Ui.button(name, T.Card, { Parent = row, MaxText = 16 })
+		local b = Ui.button(name, T.Card, { Parent = row, MaxText = 15, AutoButtonColor = not out[name] })
 		buttons[name] = b
 		b.Activated:Connect(function()
-			selected = name
-			refresh()
+			if not out[name] then
+				selected = name
+				refresh()
+			end
 		end)
 	end
-	local pick = Ui.button("Pick off 5", Color3.fromRGB(90, 70, 70), { Position = UDim2.fromOffset(0, 72), Size = UDim2.fromOffset(130, 36), Parent = body })
+	local pick = Ui.button("Pick off 5", Color3.fromRGB(90, 70, 70), { Position = UDim2.fromOffset(0, 72), Size = UDim2.fromOffset(130, 34), Parent = body })
 	pick.Activated:Connect(function()
 		if selected then
 			pizza:removeTopping(selected, 5)
 			refresh()
 		end
 	end)
-	local sendBtn = Ui.button("Send to Oven", T.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), Parent = body })
-	sendBtn.Activated:Connect(function()
+	local loadBtn = Ui.button(if Loading.mode == "Pick" then "Load It (pick order)" else "Load It", T.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 40), MaxText = 18, Parent = body })
+	local rackBtn = Ui.button("To Rack", T.Card, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 70), Size = UDim2.fromOffset(160, 34), MaxText = 16, Parent = body })
+	loadBtn.Activated:Connect(function()
 		Minigames3D.Close()
-		finish({ counts = counts })
+		if Loading.mode == "Pick" then
+			-- It lands on the ready rack first; then we ask which order it's for.
+			Loading.AskAfterTopping()
+			finish({ counts = counts, load = false })
+		else
+			finish({ counts = counts, load = true })
+		end
+	end)
+	rackBtn.Activated:Connect(function()
+		Minigames3D.Close()
+		finish({ counts = counts, load = false })
 	end)
 	refresh()
 
 	-- A hand-sized scoop of the selected topping follows the pointer.
-	local scoop = localPart(ws, "Scoop", Vector3.new(0.35, 0.12, 0.35), Color3.new(1, 1, 1), Enum.Material.SmoothPlastic)
+	local scoop = localPart(ctx.folder, "Scoop", Vector3.new(0.35, 0.12, 0.35), Color3.new(1, 1, 1), Enum.Material.SmoothPlastic)
 	local acc = 0
-	ws:track(RunService.RenderStepped:Connect(function(dt)
+	ctx.track(RunService.RenderStepped:Connect(function(dt)
 		local hit, x, z = ws:pointer(0.2)
+		local onPizza = hit ~= nil and math.sqrt(x * x + z * z) < R + 0.4
+		scoop.Transparency = if onPizza then 0 else 1
 		if hit then
 			scoop.CFrame = CFrame.new(ws:at(x, 0.55, z))
 			scoop.Color = if selected then Config.IngredientColors[selected] or scoop.Color else scoop.Color
 		end
-		if hit and holding() and selected then
+		if onPizza and holding() and selected then
 			acc += dt
 			while acc >= 0.1 do
 				acc -= 0.1
@@ -446,10 +666,8 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 				if r > maxR then
 					jx, jz = jx * maxR / r, jz * maxR / r
 				end
-				if r < R + 0.4 then
-					pizza:addTopping(selected, jx, jz, rng)
-					refresh()
-				end
+				pizza:addTopping(selected, jx, jz, rng)
+				refresh()
 			end
 		else
 			acc = 0
@@ -458,66 +676,106 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 end
 
 ---------------------------------------------------------------------------
--- Cut & Box: open boxes are laid out on the table. Pull the pizza off the end
--- of the oven belt onto the right box, pop any bubbles, rock the blade through
--- even cuts, close the lid.
+-- Cut & Box: the oven tender clicked a pizza at the oven exit. Click the box
+-- to put it in (click another box to move it), pop any bubbles, rock the
+-- blade through even cuts, season the crust by tracing it, close the lid.
 ---------------------------------------------------------------------------
 local function cut(data: any, finish: Finish, cancel: Cancel)
-	local ws, body, cleanup = open("Cut Table", 150, data.station, cancel, "wide")
-	if not ws then
+	local ctx = open("Cut Table", 150, data, cancel)
+	if not ctx then
 		return
 	end
+	local ws, body, cleanup, holding = ctx.ws, ctx.body, ctx.cleanup, ctx.holding
 	hideShared(data.visual, cleanup)
+	-- The wide view takes in the oven exits and every box; putting it in a box closes in on it.
+	ws:resetView()
+	table.insert(cleanup, function()
+		ws:resetView()
+	end)
 	local cuts = tonumber(data.cuts) or 4
 	local spec = if type(data.spec) == "table" then data.spec else { size = data.size, baked = true }
 	local d = Config.PizzaDiameter[spec.size] or 2.4
+	local R = d / 2
 	local top = 0.12
 	local station = data.station :: BasePart
+	local title = if data.ticket then string.format("#%s %s %s", tostring(data.ticket), string.upper(tostring(data.size)), string.upper(tostring(data.pizza))) else string.upper(tostring(data.size)) .. " (EXTRA - no order)"
 
 	-- The open boxes on the table (from the station art).
 	local boxes: { [string]: BasePart } = {}
+	local boxParts: { Instance } = {}
 	for _, p in station:GetDescendants() do
 		if p:IsA("BasePart") and type(p:GetAttribute("BoxSize")) == "string" then
 			boxes[p:GetAttribute("BoxSize") :: string] = p
+			table.insert(boxParts, p)
 		end
 	end
+	local outline = Instance.new("Highlight")
+	outline.FillTransparency = 1
+	outline.OutlineColor = Color3.new(1, 1, 1)
+	outline.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	outline.Enabled = false
+	outline.Parent = ctx.folder
 
-	-- Our copy of the pizza starts where the shared one sits at the end of the belt.
-	local exitPos = if typeof(data.exitPos) == "Vector3" then data.exitPos else ws:at(-4.5, 0.4, 0)
+	-- Our copy of the pizza, lifted off the end of the belt it came from.
+	local exitPos = if typeof(data.exitPos) == "Vector3" then data.exitPos else ws:at(-7, 0.4, 0)
 	local rot = ws.frame.Rotation
-	local pizza = Pizza3D.fromSpec(CFrame.new(exitPos) * rot, spec, ws.folder)
-	table.insert(cleanup, function()
-		pizza:Destroy()
-	end)
+	local pizza = Pizza3D.fromSpec(CFrame.new(exitPos + Vector3.new(0, 0.3, 0)) * rot, spec, ctx.folder)
 
 	local popped = 0
 	local angles: { number } = {}
 	local chosenBox = ""
 	local center = exitPos -- world center of the pizza once it's in its box
+	local stage = "box" -- "box" | "cut" | "season" | "close"
 	local stepConn: RBXScriptConnection? = nil
-	local function clearBody()
-		for _, c in body:GetChildren() do
-			c:Destroy()
-		end
+	local function newPhase()
+		clearBody(body)
 		if stepConn then
 			stepConn:Disconnect()
 			stepConn = nil
 		end
 		ContextActionService:UnbindAction(ACTION)
 	end
-	local function clickRay(include: { Instance }): RaycastResult?
+	local function rayAt(include: { Instance }): RaycastResult?
 		local params = RaycastParams.new()
 		params.FilterType = Enum.RaycastFilterType.Include
 		params.FilterDescendantsInstances = include
-		local camera = workspace.CurrentCamera
-		local m = UserInputService:GetMouseLocation()
-		local ray = camera:ViewportPointToRay(m.X, m.Y)
-		return workspace:Raycast(ray.Origin, ray.Direction * 60, params)
+		local ray = Workstation.pointerRay()
+		return workspace:Raycast(ray.Origin, ray.Direction * 80, params)
+	end
+	-- Where the pointer is over the pizza: local (x, z) from its center, and the world point.
+	local function overPizza(): (Vector3?, number, number)
+		local hit = ws:pointer(center.Y - ws.frame.Position.Y + top)
+		if not hit then
+			return nil, 0, 0
+		end
+		local offset = hit - center
+		return hit, offset:Dot(ws.right), offset:Dot(ws.toWorker)
+	end
+
+	-- Bubbles sit on the pizza; they move with it if it's moved to another box.
+	local bubbleData = if type(data.bubbles) == "table" then data.bubbles else {}
+	local bubbleParts: { BasePart } = {}
+	local function placeBubbles()
+		for _, b in bubbleParts do
+			b:Destroy()
+		end
+		table.clear(bubbleParts)
+		for i, b in bubbleData do
+			if i > #bubbleData - popped then
+				break
+			end
+			local x, z = ((tonumber(b.x) or 0.5) - 0.5) * d * 0.8, ((tonumber(b.y) or 0.5) - 0.5) * d * 0.8
+			local bubble = localPart(ctx.folder, "Bubble", Vector3.new(0.26, 0.26, 0.26), Color3.fromRGB(255, 235, 170), Enum.Material.SmoothPlastic, Enum.PartType.Ball)
+			bubble.CanQuery = true
+			bubble.CFrame = CFrame.new(center + ws.right * x + ws.toWorker * z + Vector3.new(0, top + 0.08, 0))
+			table.insert(bubbleParts, bubble)
+		end
 	end
 
 	-- 4) CLOSE THE LID ------------------------------------------------------
-	local function closeLid()
-		clearBody()
+	local function closeLid(season: any)
+		newPhase()
+		stage = "close"
 		header(body, "Closing it up...")
 		local box = boxes[chosenBox]
 		local bs = Config.BoxSize[chosenBox] or (d + 0.15)
@@ -529,9 +787,10 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 				artLid.LocalTransparencyModifier = 0
 			end)
 		end
-		local lid = localPart(ws, "BoxLid", Vector3.new(bs, 0.04, bs), Color3.fromRGB(225, 200, 160), Enum.Material.Cardboard)
+		-- Standing on edge (see BOX_FLAT) so the Front-face print reads right way up once shut.
+		local lid = localPart(ctx.folder, "BoxLid", Vector3.new(bs, bs, 0.04), Color3.fromRGB(225, 200, 160), Enum.Material.Cardboard)
 		local printed = Instance.new("SurfaceGui")
-		printed.Face = Enum.NormalId.Top -- the printed outside, face-up once closed
+		printed.Face = Enum.NormalId.Front -- the printed outside: face-up once closed
 		printed.CanvasSize = Vector2.new(200, 200)
 		local brand = Instance.new("TextLabel")
 		brand.Size = UDim2.fromScale(1, 1)
@@ -548,9 +807,16 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		local hinge = baseCF * CFrame.new(0, wall - 0.025, bs / 2) -- back edge of the tray
 		local angle = Instance.new("NumberValue")
 		angle.Value = if artLid then (tonumber(artLid:GetAttribute("OpenAngle")) or 180) else 180
-		angle.Parent = ws.folder -- cleaned up with the minigame
+		angle.Parent = ctx.folder -- cleaned up with the minigame
+		local pizzaShown = true
 		local function placeLid()
-			lid.CFrame = hinge * CFrame.Angles(math.rad(angle.Value), 0, 0) * CFrame.new(0, 0, -bs / 2)
+			lid.CFrame = hinge * CFrame.Angles(math.rad(angle.Value), 0, 0) * CFrame.new(0, 0, -bs / 2) * BOX_FLAT
+			-- The pizza (cut lines and toppings stand taller than the box walls) is
+			-- shut inside from here on; hide it so nothing pokes through the lid.
+			if pizzaShown and angle.Value < 12 then
+				pizzaShown = false
+				pizza:Destroy()
+			end
 		end
 		placeLid()
 		angle.Changed:Connect(placeLid)
@@ -558,33 +824,98 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		task.delay(0.9, function()
 			if active then
 				Minigames3D.Close()
-				finish({ angles = angles, popped = popped, box = chosenBox })
+				finish({ angles = angles, popped = popped, box = chosenBox, season = season })
 			end
 		end)
 	end
 
-	-- 3) CUT ----------------------------------------------------------------
+	-- 3) SEASON: trace the crust with the shaker -------------------------------
+	local function seasonPhase()
+		newPhase()
+		stage = "season"
+		header(body, string.format("Season the crust: %s down and trace around the edge with the shaker.", string.lower(HOLD)))
+		local status = Ui.label("Crust seasoned: 0%", { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, -170, 0, 30), Font = T.Title, TextXAlignment = Enum.TextXAlignment.Left, Parent = body })
+		local closeBtn = Ui.button("Close Box", T.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), Parent = body })
+		local shaker = localPart(ctx.folder, "Shaker", Vector3.new(0.6, 0.3, 0.3), Color3.fromRGB(235, 225, 190), Enum.Material.Plastic, Enum.PartType.Cylinder)
+		local capPart = localPart(ctx.folder, "ShakerCap", Vector3.new(0.12, 0.32, 0.32), Color3.fromRGB(200, 40, 40), Enum.Material.Plastic, Enum.PartType.Cylinder)
+		local n = Config.Cut.SeasonSectors
+		local sectors = table.create(n, false)
+		local onTime, offTime, specks, sinceSpeck = 0, 0, 0, 0
+		local rng = Random.new()
+		stepConn = RunService.RenderStepped:Connect(function(dt)
+			local hit, x, z = overPizza()
+			if not hit then
+				return
+			end
+			-- Shaker held upside down over the pointer, tipped a little toward you.
+			local up = CFrame.new(hit + Vector3.new(0, 0.55, 0)) * rot * CFrame.Angles(math.rad(-15), 0, 0) * CFrame.Angles(0, 0, math.rad(90))
+			shaker.CFrame = up
+			capPart.CFrame = up * CFrame.new(-0.33, 0, 0)
+			if not holding() then
+				return
+			end
+			local r = math.sqrt(x * x + z * z)
+			local onCrust = r >= R * 0.8 and r <= R * 1.06
+			if onCrust then
+				onTime += dt
+				local a = (math.atan2(z, x) + math.pi * 2) % (math.pi * 2)
+				sectors[math.min(n, math.floor(a / (math.pi * 2) * n) + 1)] = true
+			else
+				offTime += dt
+			end
+			sinceSpeck += dt
+			if sinceSpeck > 0.03 and specks < 300 then
+				sinceSpeck = 0
+				specks += 1
+				local speck = localPart(ctx.folder, "Seasoning", Vector3.new(0.04, 0.02, 0.04), if rng:NextNumber() < 0.5 then Color3.fromRGB(120, 40, 25) else Color3.fromRGB(70, 110, 50))
+				speck.CFrame = CFrame.new(hit + ws.right * rng:NextNumber(-0.06, 0.06) + ws.toWorker * rng:NextNumber(-0.06, 0.06) + Vector3.new(0, 0.02, 0))
+			end
+			local covered = 0
+			for _, s in sectors do
+				if s then
+					covered += 1
+				end
+			end
+			status.Text = string.format("Crust seasoned: %d%%", math.floor(covered / n * 100 + 0.5))
+		end)
+		closeBtn.Activated:Connect(function()
+			if stage ~= "season" then
+				return
+			end
+			shaker:Destroy()
+			capPart:Destroy()
+			closeLid({ sectors = sectors, off = if onTime + offTime > 0 then offTime / (onTime + offTime) else 0 })
+		end)
+	end
+
+	-- 2) CUT ----------------------------------------------------------------
 	local function cutPhase()
-		clearBody()
-		header(body, string.format("Rock the blade through %d even cuts (%d slices) - press [Space] as it lines up", cuts, cuts * 2))
+		newPhase()
+		stage = "cut"
+		outline.Enabled = false
+		for _, b in bubbleParts do
+			b:Destroy()
+		end
+		table.clear(bubbleParts)
+		header(body, string.format("Rock the blade through %d even cuts (%d slices) - %s as it lines up", cuts, cuts * 2, string.lower(PRESS)))
 		local status = Ui.label(string.format("Cuts left: %d", cuts), { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, -170, 0, 30), Font = T.Title, Parent = body })
-		local button = Ui.button("CUT!  [Space]", T.Accent, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), Parent = body })
+		local button = Ui.button("CUT!  [" .. PRESS .. "]", T.Accent, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), MaxText = 18, Parent = body })
 		local bladeLen = d * 1.12
-		local blade = localPart(ws, "Rocker", Vector3.new(bladeLen, 0.24, 0.035), STEEL, Enum.Material.Metal)
+		local blade = localPart(ctx.folder, "Rocker", Vector3.new(bladeLen, 0.24, 0.035), STEEL, Enum.Material.Metal)
 		blade.Reflectance = 0.25
 		local handles = {}
 		for _, sx in { -1, 1 } do
-			table.insert(handles, { part = localPart(ws, "Handle", Vector3.new(0.45, 0.13, 0.13), Color3.fromRGB(30, 30, 30), Enum.Material.Plastic, Enum.PartType.Cylinder), side = sx })
+			table.insert(handles, { part = localPart(ctx.folder, "Handle", Vector3.new(0.45, 0.13, 0.13), Color3.fromRGB(30, 30, 30), Enum.Material.Plastic, Enum.PartType.Cylinder), side = sx })
 		end
 		local yaw = 0
 		local phase, phaseT, cutYaw = "hover", 0, 0
 		stepConn = RunService.RenderStepped:Connect(function(dt)
 			local height, roll = 0.55, 0
 			if phase == "hover" then
-				yaw = (yaw + dt * 75) % 360
+				yaw = (yaw + dt * Config.Cut.SpinSpeed) % 360
 			else
 				phaseT += dt
-				local p = phaseT / 0.45
+				local p = phaseT / Config.Cut.CutTime
 				-- Down, rock side to side, back up.
 				height = 0.55 - 0.42 * math.sin(math.clamp(p, 0, 1) * math.pi)
 				roll = math.sin(p * math.pi * 3) * 10
@@ -606,125 +937,84 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 			cutYaw = yaw
 			table.insert(angles, yaw)
 			phase, phaseT = "cut", 0
-			task.delay(0.22, function()
+			task.delay(Config.Cut.CutTime / 2, function()
 				if active then
 					pizza:addCut(cutYaw)
 				end
 			end)
 			status.Text = string.format("Cuts left: %d", cuts - #angles)
 			if #angles >= cuts then
-				task.delay(0.7, function()
+				task.delay(Config.Cut.CutTime + 0.25, function()
 					if active then
 						blade:Destroy()
 						for _, h in handles do
 							h.part:Destroy()
 						end
-						closeLid()
+						seasonPhase()
 					end
 				end)
 			end
 		end
 		button.Activated:Connect(press)
-		bindSpace(press)
+		bindPress(ctx, press)
 	end
 
-	-- 2) QUALITY CHECK: pop cheese bubbles -----------------------------------
-	local function bubblePhase()
-		local bubbles = if type(data.bubbles) == "table" then data.bubbles else {}
-		if #bubbles == 0 then
-			cutPhase()
-			return
-		end
-		clearBody()
-		header(body, "Quality check: click the cheese bubbles to pop them")
-		local bubbleParts: { BasePart } = {}
-		for _, b in bubbles do
-			local x, z = ((tonumber(b.x) or 0.5) - 0.5) * d * 0.8, ((tonumber(b.y) or 0.5) - 0.5) * d * 0.8
-			local bubble = localPart(ws, "Bubble", Vector3.new(0.26, 0.26, 0.26), Color3.fromRGB(255, 235, 170), Enum.Material.SmoothPlastic, Enum.PartType.Ball)
-			bubble.CanQuery = true
-			bubble.CFrame = CFrame.new(center + ws.right * x + ws.toWorker * z + Vector3.new(0, top + 0.08, 0))
-			table.insert(bubbleParts, bubble)
-		end
-		local moved = false
-		ws:track(UserInputService.InputBegan:Connect(function(input, processed)
-			if moved or processed or (input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch) then
-				return
-			end
-			local result = clickRay(bubbleParts)
-			if result and result.Instance.Name == "Bubble" then
-				local hitPart = result.Instance :: BasePart
-				hitPart.Name = "Popped"
-				popped += 1
-				TweenService:Create(hitPart, TweenInfo.new(0.15), { Size = Vector3.new(0.05, 0.05, 0.05) }):Play()
-				task.delay(0.16, function()
-					hitPart:Destroy()
-				end)
-				if popped >= #bubbles then
-					moved = true
-					cutPhase()
-				end
-			end
-		end))
-		local skip = Ui.button("Looks good - start cutting", T.Card, { Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 0, 48), Parent = body })
-		skip.Activated:Connect(function()
-			moved = true
-			for _, p in bubbleParts do
-				if p.Parent then
-					p:Destroy()
-				end
-			end
-			cutPhase()
-		end)
-	end
-
-	-- 1) BOX IT: pick the right box for the pizza coming off the belt ---------
-	clearBody()
-	header(body, ticketTitle(data) .. " just came out of the oven - click the right box to pull it onto")
-	local row = Ui.new("Frame", { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 0, 56), BackgroundTransparency = 1, Parent = body }, {
-		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 3, -8, 1, 0), CellPadding = UDim2.fromOffset(8, 0) }),
-	})
-	-- Look between the oven exit and the boxes so both are in view.
-	ws.focus = (exitPos + ws:at(0, 0, 0)) / 2
-	local picking = true
-	local function pick(size: string)
-		if not picking then
-			return
-		end
-		picking = false
-		chosenBox = size
+	-- 1) BOX IT: click the right box (and another one to move it) --------------
+	local function putIn(size: string)
 		local box = boxes[size]
-		local landing = if box then box.Position + Vector3.new(0, 0.025 + 0.06, 0) else ws:at(0, 0.11, 0)
-		center = landing - Vector3.new(0, 0.06, 0)
-		ws.focus = center -- turn to look at the box we chose
-		-- Slide the pizza off the belt onto the box.
-		local slide = TweenService:Create(pizza.crust, TweenInfo.new(0.6, Enum.EasingStyle.Quad), { CFrame = CFrame.new(landing) * rot * Pizza3D.FLAT })
-		slide:Play()
-		slide.Completed:Wait()
-		if active then
-			bubblePhase()
-		end
-	end
-	for _, size in (data.sizes or Config.Sizes) do
-		local b = Ui.button(size .. " Box", Color3.fromRGB(176, 130, 80), { Parent = row, MaxText = 18 })
-		b.Activated:Connect(function()
-			pick(size)
-		end)
-	end
-	-- Clicking a box on the table works too.
-	local boxParts = {}
-	for _, p in boxes do
-		table.insert(boxParts, p)
-	end
-	ws:track(UserInputService.InputBegan:Connect(function(input, processed)
-		if not picking or processed or (input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch) then
+		if not box or stage ~= "box" then
 			return
 		end
-		local result = clickRay(boxParts)
+		local first = chosenBox == ""
+		chosenBox = size
+		local landing = box.Position + Vector3.new(0, 0.025 + 0.06, 0)
+		center = landing - Vector3.new(0, 0.06, 0)
+		ws:closeUp(center)
+		TweenService:Create(pizza.crust, TweenInfo.new(0.45, Enum.EasingStyle.Quad), { CFrame = CFrame.new(landing) * rot * Pizza3D.FLAT }):Play()
+		placeBubbles()
+		if first then
+			newPhase()
+			local bubbleNote = if #bubbleData > 0 then " Pop the cheese bubbles (click them)." else ""
+			header(body, title .. " is in the " .. size .. " box. Wrong box? Click another one to move it." .. bubbleNote)
+			local start = Ui.button("Start Cutting  [Space]", T.Accent, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(200, 64), MaxText = 18, Parent = body })
+			start.Activated:Connect(cutPhase)
+			bindSpace(cutPhase)
+		end
+	end
+	ctx.track(RunService.RenderStepped:Connect(function()
+		if stage ~= "box" then
+			return
+		end
+		local result = rayAt(boxParts)
+		outline.Adornee = if result then result.Instance else nil
+		outline.Enabled = result ~= nil
+	end))
+	ctx.track(UserInputService.InputBegan:Connect(function(input, processed)
+		if stage ~= "box" or not isPlayClick(input, processed) then
+			return
+		end
+		local bubbleHit = if #bubbleParts > 0 then rayAt(bubbleParts) else nil
+		if bubbleHit and bubbleHit.Instance.Name == "Bubble" then
+			local hitPart = bubbleHit.Instance :: BasePart
+			hitPart.Name = "Popped"
+			popped += 1
+			local i = table.find(bubbleParts, hitPart)
+			if i then
+				table.remove(bubbleParts, i)
+			end
+			TweenService:Create(hitPart, TweenInfo.new(0.15), { Size = Vector3.new(0.05, 0.05, 0.05) }):Play()
+			task.delay(0.16, function()
+				hitPart:Destroy()
+			end)
+			return
+		end
+		local result = rayAt(boxParts)
 		local size = result and result.Instance:GetAttribute("BoxSize")
 		if type(size) == "string" then
-			pick(size)
+			putIn(size)
 		end
 	end))
+	header(body, title .. " is off the belt - click the right box to put it in.")
 end
 
 local HANDLERS: { [string]: (any, Finish, Cancel) -> () } = {

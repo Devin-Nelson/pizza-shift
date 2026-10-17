@@ -10,20 +10,23 @@ Orders come in three ways: walk-in carryout and phone calls (taken at the regist
 | Station | Who | What you do |
 |---|---|---|
 | Register | CSR, Driver, Managers | Listen to the customer or caller and ring in every pizza (+ house # for delivery). The kitchen makes exactly what you ring in. |
-| Stretch (dough table) | CSR, Driver, Managers | Prep ahead: pick a size, stretch the dough in rhythm. Skins go on the two 15-slot screen racks on the table (30 total, any mix of sizes). |
-| Sauce (dough table) | CSR, Driver, Managers | Takes the oldest skin of the pizza's size off the rack. Spread one ladle of sauce evenly, edge to edge. |
-| Cheese (make-line) | CSR, Driver, Managers | Portion the cheese (within ±10%). The pour speeds up the longer you hold. |
-| Toppings (make-line) | CSR, Driver, Managers | Drop each topping to its portion count (within ±10%), then send it to the oven. |
-| Conveyor oven | — | Automatic. Baked pizzas wait at the end of the belt and **fall off if nobody pulls them in time**. |
-| Cut & Box | CSR, Driver, Managers | Pull the pizza onto the right open box, pop cheese bubbles, rock the blade through even cuts, close the lid. |
-| Heat Rack | Driver, Managers | Grab the bag, drive your topper car to the house, walk it to the door. Faster = bigger tip. |
+| Stretch (dough table) | CSR, Driver, Managers | Prep ahead: pick a size, then hit the green zone on the timing bar (6 / 8 / 10 hits for S / M / L) to press a dough ball out into a skin on the cornmeal. The zone jumps and changes width after every hit; yellow and misses cost score and leave the skin small and lopsided. Skins go on the two 15-slot screen racks (30 total, any mix of sizes). |
+| Sauce (dough table) | CSR, Driver, Managers | Pick a skin off the racks and spread sauce with the spoodle (it never runs dry). Scored on coverage out to the sauce line (3/4" in on every size) and on keeping the rim clean. |
+| Cheese (make-line) | CSR, Driver, Managers | Portion the cheese by the cheese card (within ±10%). The pour speeds up the longer you hold. |
+| Toppings (make-line) | CSR, Driver, Managers | Any toppings, no targets on screen: go by the order screen and the portions card. Then put it on the ready rack, or load it straight into the oven. |
+| Load Oven (ready rack) | CSR, Driver, Managers | Finished pizzas wait on the 15-slot ready rack at the end of the make-line. Click one to load it into the next free oven slot. |
+| Ovens | — | Three stacked stainless conveyor ovens, two lanes each (slots 1-6). Pizzas bake in real time (2 minutes end to end); watch them go by through the door windows. One can be pulled the moment it comes out into the open, and it **falls off the end of the belt if nobody pulls it in time**. |
+| Cut & Box (oven tender) | CSR, Driver, Managers | Click any pizza at an oven exit, click the right box on the table (click another to move it), pop bubbles, rock the blade through even cuts, season the crust by tracing it, close the lid. |
+| Heat Rack | Driver, Managers | Pick an order from the heat rack queue, grab the bag, drive your topper car to the house, walk it to the door. Faster = bigger tip. |
 | Supply Truck | Managers | Put away cases on the matching shelves. Makers get blocked when an ingredient runs out. |
 
-Every pizza physically exists through the whole process: skins on the racks, sauced pizzas waiting at the start of the make-line, cheesed pizzas waiting further down, then the oven belt. Work however you like: the **station bar** (bottom of the screen, on shift) jumps you to any station and shows how many pizzas wait there; the **order queue** (right side) shows every order and where each pizza is, and you can click a waiting pizza to work it; and after every step a **"what next?"** bar lets you follow that pizza to its next station or take the next one at the same station (e.g. sauce five pizzas in a row, then cheese them all). Minigames are first person with your hands hidden; you just see the pizza and the tool.
+**The make-line is free-form.** Pizzas aren't tied to an order while they're being made: sauce any skin, cheese it, top it, and it goes on the 15-slot ready rack at the end of the make-line (toppings won't start a new pizza while the rack is full). At the **Load Oven** station, click a pizza on the rack to load it into the next free oven slot; that's when it's matched to an order and its toppings are scored against it. How it's matched is a per-player setting on the station rail (tentative): **auto-match** (the oldest order waiting on that size whose recipe best fits), or **pick the order** yourself. A pizza no order needs bakes as an extra. Once all of an order's pizzas are loaded, it drops off the make-line queue (loaded ones show a green ✓ until then). **Load time** is order placed → last pizza in the oven; **total time** is order placed → last pizza boxed.
 
-- **Pay and XP:** every task pays coins × quality. CSRs earn the most XP; drivers earn less XP but get delivery tips (bigger orders, bigger tips). Carryout tips are smaller and split among whoever made the order.
+Stations are always open: walk up (or use the **station bar** at the bottom of the screen) and you **stay at that station** in a fixed first-person view until you leave. The next job loads by itself as soon as one is waiting, except at the cut table and heat rack, where you pick each one. While you're at a station, the **station rail** (left) jumps you straight to any other station, offers to **follow** the pizza you just finished, and has **Exit Station**. The **queue panel** (right) shows the make-line queue at make stations, every pizza in the ovens (with countdowns) at the cut table, and the deliveries at the heat rack. Each station has **job aid cards** (on the make-line they stand on top, out of the way); click one or press **Job Aid** on the station rail to read it up close. Space, a left click, or a tap on the screen all work as the action button.
+
+- **Pay and XP:** every task pays coins × quality (toppings are paid when the pizza is loaded and matched). CSRs earn the most XP; drivers earn less XP but get delivery tips (bigger orders, bigger tips). Carryout tips are smaller and split among whoever made the order.
 - **Management:** 4 Shift Manager slots and 1 General Manager slot per store, filled by highest XP.
-- **Sales:** each store gets a weekly forecast ($25k–$30k) split across days and dayparts. The sales board in the back office shows today and this week vs. forecast, average ticket, and average load time. Orders beyond what the staff on shift can handle go to an off-screen crew.
+- **Sales:** each store gets a weekly forecast ($25k–$30k) split across days and dayparts. The sales board in the back office shows today and this week vs. forecast, average ticket, and average load and total times. Orders beyond what the staff on shift can handle go to an off-screen crew.
 - **Franchise:** at level 8 with 15,000 coins, buy a lot north of HQ and name your store. It opens whenever you're in a server; you get 50% of every sale there plus a 20% royalty on your workers' pay.
 
 All balance numbers live in `src/shared/Config.luau`. Portions other than Large Pepperoni, and the cheese ounces, are placeholders.
@@ -41,22 +44,24 @@ If Studio shows something the code no longer does, the Rojo plugin has disconnec
 2. Game Settings → Security → **Enable Studio Access to API Services** (needed for saving).
 3. Game Settings → Permissions → Public. Add an icon, thumbnails, and a description.
 4. Optional: create a "2x Pay" game pass and put its ID in `Config.GamePasses.DoublePay`.
-5. Test with 2–3 players (Test → Clients and Servers): register → dough → make-line → cut → carryout and delivery.
+5. Test with 2–3 players (Test → Clients and Servers): register → dough → sauce → make-line → load → oven → cut → carryout and delivery.
 
 ## Swapping in real models
 Station visuals are generated by `src/server/StationArt.luau`. To replace one with a Creator Store or custom model:
 1. In Studio, create a folder `ServerStorage/StationModels` (Rojo doesn't manage ServerStorage, so it's saved in the place file).
-2. Put a Model in it, named after the piece: `Register`, `DoughTable`, `MakeLine`, `Oven`, `CutTable`, `DeliveryRack`, `Pickup`, `Fridge`, `SupplyTruck`. (The dough table carries the Stretch + Sauce stations; the make-line carries Cheese + Toppings. Their work spots come from `StationArt.Layout`.)
-3. Set the model's pivot to its **bottom center**, with the pivot's front (blue arrow / LookVector) pointing **toward where the worker stands**. Scale it to roughly the generated station's footprint.
+2. Put a Model in it, named after the piece: `Register`, `DoughTable`, `MakeLine`, `ReadyRack`, `Oven`, `CutTable`, `DeliveryRack`, `Pickup`, `Fridge`, `SupplyTruck`. (The dough table carries the Stretch + Sauce stations; the make-line carries Cheese + Toppings; the ready rack carries Load Oven. Their work spots come from `StationArt.Layout`.)
+3. Set the model's pivot to its **bottom center**, with the pivot's front (blue arrow / LookVector) pointing **toward where the worker stands** (for the oven: toward its exit end, where the oven tender is). Scale it to roughly the generated station's footprint.
 
 The model replaces the generated art in the HQ and every franchise. Prompts and gameplay sit on an invisible hitbox, so they're unaffected, but some stations expose named parts that gameplay uses. Keep these if you want the feature:
-- `Oven`: `ConveyorIn` / `ConveyorOut` parts (where the belt starts and ends).
-- `CutTable`: `Box_Small` / `Box_Medium` / `Box_Large` parts with `BoxSize` and `WallHeight` attributes, and `Lid_<Size>` parts with an `OpenAngle` attribute.
+- `Oven`: `OvenIn_1` … `OvenIn_6` and `OvenOut_1` … `OvenOut_6` parts (a pizza's center at the start and end of each lane; slots 1-2 top oven, 3-4 middle, 5-6 bottom), and `OvenMouthIn_<n>` / `OvenMouthOut_<n>` where each lane enters and leaves the bake chamber (pizzas brown between them and can be pulled once past the exit mouth).
+- `CutTable`: `Box_Small` / `Box_Medium` / `Box_Large` parts with `BoxSize` and `WallHeight` attributes, `Lid_<Size>` parts with an `OpenAngle` attribute, and a `CutLanding` part (where a pulled pizza waits).
 - `DoughTable`: `SkinSlot_1` … `SkinSlot_30` parts where each rack screen rests (rack 1 top to bottom, then rack 2).
 - `MakeLine`: `SaucedQueue` and `CheesedQueue` parts where pizzas wait for cheese and toppings.
+- `ReadyRack`: `ReadySlot_1` … `ReadySlot_15` parts where each screen rests (top first).
+- Job aid cards: any part with a `JobAid` attribute set to its station (`Dough`, `Sauce`, `Cheese`, `Toppings`, `CutTable`) can be clicked to read up close.
 - `Fridge`: a SurfaceGui named `StockBoard` with a TextLabel named `Text`.
 
 ## Layout
 - `src/shared/` – `Config` (all tuning), `Remotes`, `GameClock`, `Pizza3D` (3D pizza builder used on both sides)
-- `src/server/` – `MapBuilder` + `StationArt` (the world), `ShopService` (orders, stations, scoring, pay), `SalesPlan` + `ClockService` (forecast and clock), `CarService`, `FranchiseService`, `DataService`
-- `src/client/` – `Main.client` (HUD, menus, delivery waypoint), `WorkHud` (station bar, order queue, "what next?"), `Minigames` (register, supply truck), `Minigames3D` + `Workstation` (first-person pizza stations), `Driving`, `Ui`
+- `src/server/` – `MapBuilder` + `StationArt` (the world, job aid cards), `ShopService` (orders, pizzas, ovens, stations, scoring, pay), `SalesPlan` + `ClockService` (forecast and clock), `CarService`, `FranchiseService`, `DataService`
+- `src/client/` – `Main.client` (HUD, menus, delivery waypoint), `StationMode` (staying at a station between jobs), `StationPicks` (clicking job aids and pizzas in the world), `Loading` (loading pizzas, order-matching setting), `WorkHud` (station bar, station rail, queue panels), `Minigames` (register, supply truck), `Minigames3D` + `Workstation` (first-person pizza stations, fixed station cameras), `Driving`, `Ui`

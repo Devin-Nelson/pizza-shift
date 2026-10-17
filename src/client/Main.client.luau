@@ -1,5 +1,5 @@
 --!strict
--- Client entry point: HUD, menus, minigame wiring, delivery waypoint.
+-- Client entry point: HUD, menus, minigame and station wiring, delivery waypoint.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -12,6 +12,9 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Ui = require(script.Parent.Ui)
 local Minigames = require(script.Parent.Minigames)
 local Driving = require(script.Parent.Driving)
+local Loading = require(script.Parent.Loading)
+local StationMode = require(script.Parent.StationMode)
+local StationPicks = require(script.Parent.StationPicks)
 local WorkHud = require(script.Parent.WorkHud)
 local T = Ui.Theme
 
@@ -84,8 +87,8 @@ RunService.RenderStepped:Connect(function()
 	local day, hour = GameClock.split(weekHour)
 	local open = GameClock.isOpen(weekHour)
 	clockLabel.Text = string.format('%s %s  <font color="%s">%s</font>', string.sub(GameClock.dayName(day), 1, 3):upper(), GameClock.format(hour), if open then "#46C86E" else "#E6463C", if open then "OPEN" else "CLOSED")
-	-- The minigame control strip docks at the bottom; keep the HUD out of its way.
-	local busy = Minigames.IsOpen()
+	-- The minigame / station strip docks at the bottom; keep the HUD out of its way.
+	local busy = Minigames.IsOpen() or StationMode.Current() ~= nil
 	hud.Visible = not busy
 	clockInButton.Visible = not busy
 end)
@@ -151,10 +154,9 @@ local function applyPrompt(pp: ProximityPrompt)
 		pp.Enabled = def == nil or table.find(def.stations, station) ~= nil
 	elseif parent:GetAttribute("HouseId") ~= nil then
 		pp.Enabled = delivering
-	elseif parent.Name == "Chassis" and parent.Parent then
+	elseif pp:GetAttribute("CarOwner") ~= nil then
 		-- Delivery car: only its owner sees the Drive prompt.
-		local seat = parent.Parent:FindFirstChild("DriverSeat")
-		pp.Enabled = seat ~= nil and seat:GetAttribute("Owner") == player.UserId
+		pp.Enabled = pp:GetAttribute("CarOwner") == player.UserId
 	end
 end
 
@@ -188,7 +190,11 @@ Remotes.StartMinigame.OnClientEvent:Connect(function(kind: string, token: string
 	end, function()
 		if currentToken == token then
 			currentToken = nil
-			Remotes.CancelMinigame:FireServer(token)
+			if StationMode.Current() then
+				StationMode.Exit() -- X on a station job steps away from the station
+			else
+				Remotes.CancelMinigame:FireServer(token)
+			end
 		end
 	end)
 end)
@@ -357,6 +363,7 @@ end)
 
 player.CharacterAdded:Connect(function()
 	Minigames.Close()
+	StationMode.Leave()
 	currentToken = nil
 	clearWaypoint()
 end)
@@ -366,4 +373,17 @@ task.delay(3, function()
 end)
 
 Driving.Init()
+StationMode.Init(Minigames.IsOpen, function()
+	Minigames.Close()
+	Loading.Close()
+end)
+Loading.Init()
+-- Pizzas clicked in the world: load one from the ready rack, pull one at the oven exit.
+StationPicks.Init(function(stationId: string, pieId: number, size: string)
+	if stationId == "Load" then
+		Loading.Load(pieId, size)
+	elseif stationId == "CutTable" then
+		Remotes.UseStation:FireServer("CutTable", pieId)
+	end
+end, Minigames.IsOpen)
 WorkHud.Init(Minigames.IsOpen)
