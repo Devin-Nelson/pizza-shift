@@ -295,7 +295,9 @@ StationArt.Layout = {
 	},
 	MakeLine = {
 		width = 17,
-		boardZ = -1.05,
+		depth = 4.7, -- front face at z -1.8
+		grateDepth = 2.9, -- a Large is 2.4 across (2.55 on its screen): room to spare front and back
+		boardZ = -0.3, -- center of the grate (where pizzas sit), just behind the front lip
 		boardTop = 3.445,
 		saucedQueueX = -6.5,
 		cheeseX = -2.5,
@@ -518,10 +520,12 @@ end
 -- separate table at the oven end.
 Builders.MakeLine = function(m, base)
 	local L = StationArt.Layout.MakeLine
-	local w = L.width
-	local top = L.boardTop
-	P(m, base, Vector3.new(w, 0.4, 3.4), at(0, 0.2, 0.1), BLACK, Enum.Material.SmoothPlastic) -- kick plate
-	P(m, base, Vector3.new(w, 2.8, 3.6), at(0, 1.8, 0), STEEL, Enum.Material.Metal, { name = "Cabinet", reflect = 0.05 })
+	local w, depth, top = L.width, L.depth, L.boardTop
+	local front = -1.8 -- the cabinet's front face (the makers stand in front of it)
+	local back = front + depth
+	local mid = (front + back) / 2
+	P(m, base, Vector3.new(w, 0.4, depth - 0.2), at(0, 0.2, mid + 0.1), BLACK, Enum.Material.SmoothPlastic) -- kick plate
+	P(m, base, Vector3.new(w, 2.8, depth), at(0, 1.8, mid), STEEL, Enum.Material.Metal, { name = "Cabinet", reflect = 0.05 })
 	-- Front: a door at each end, two drawers in each column between
 	local PANEL = Color3.fromRGB(206, 210, 216)
 	local sections = 5
@@ -529,55 +533,61 @@ Builders.MakeLine = function(m, base)
 	for k = 1, sections do
 		local x = -w / 2 + sw * (k - 0.5)
 		if k == 1 or k == sections then
-			P(m, base, Vector3.new(sw - 0.16, 2.5, 0.06), at(x, 1.8, -1.83), PANEL, Enum.Material.Metal, { name = "Door" })
+			P(m, base, Vector3.new(sw - 0.16, 2.5, 0.06), at(x, 1.8, front - 0.03), PANEL, Enum.Material.Metal, { name = "Door" })
 			-- Recessed pull along the top of the door
-			P(m, base, Vector3.new(0.9, 0.14, 0.03), at(x + (if k == 1 then 0.7 else -0.7), 2.8, -1.865), BLACK, Enum.Material.SmoothPlastic, { collide = false })
+			P(m, base, Vector3.new(0.9, 0.14, 0.03), at(x + (if k == 1 then 0.7 else -0.7), 2.8, front - 0.065), BLACK, Enum.Material.SmoothPlastic, { collide = false })
 		else
 			for _, y in { 2.45, 1.15 } do
-				P(m, base, Vector3.new(sw - 0.16, 1.2, 0.06), at(x, y, -1.83), PANEL, Enum.Material.Metal, { name = "Drawer" })
-				P(m, base, Vector3.new(1.3, 0.09, 0.09), at(x, y + 0.3, -1.95), STEEL, Enum.Material.Metal, { reflect = 0.3, collide = false })
+				P(m, base, Vector3.new(sw - 0.16, 1.2, 0.06), at(x, y, front - 0.03), PANEL, Enum.Material.Metal, { name = "Drawer" })
+				P(m, base, Vector3.new(1.3, 0.09, 0.09), at(x, y + 0.3, front - 0.15), STEEL, Enum.Material.Metal, { reflect = 0.3, collide = false })
 				for _, sx in { -1, 1 } do
-					P(m, base, Vector3.new(0.08, 0.08, 0.14), at(x + sx * 0.6, y + 0.3, -1.9), STEEL, Enum.Material.Metal, { collide = false })
+					P(m, base, Vector3.new(0.08, 0.08, 0.14), at(x + sx * 0.6, y + 0.3, front - 0.1), STEEL, Enum.Material.Metal, { collide = false })
 				end
 			end
 		end
 	end
-	-- Work surface: a wire grate over a dark well, with a stainless front lip.
-	-- Rod tops sit at boardTop, so pizzas rest on the grate.
-	P(m, base, Vector3.new(w - 0.3, 0.2, 1.6), at(0, top - 0.17, L.boardZ), Color3.fromRGB(45, 46, 50), Enum.Material.Metal, { name = "Well", collide = true })
-	for i = 0, 12 do
-		P(m, base, Vector3.new(w - 0.3, 0.035, 0.035), at(0, top - 0.0175, L.boardZ - 0.75 + i * 0.125), STEEL, Enum.Material.Metal, { reflect = 0.2, collide = false })
+	-- Work surface: a wire grate over a dark well, deep enough for a Large on
+	-- its screen with room to spare, with a stainless front lip. Rod tops sit
+	-- at boardTop, so pizzas rest on the grate.
+	local gd = L.grateDepth
+	P(m, base, Vector3.new(w - 0.3, 0.2, gd + 0.1), at(0, top - 0.17, L.boardZ), Color3.fromRGB(45, 46, 50), Enum.Material.Metal, { name = "Well", collide = true })
+	local rods = math.floor(gd / 0.125)
+	for i = 0, rods do
+		P(m, base, Vector3.new(w - 0.3, 0.035, 0.035), at(0, top - 0.0175, L.boardZ - gd / 2 + i * gd / rods), STEEL, Enum.Material.Metal, { reflect = 0.2, collide = false })
 	end
 	for i = 0, 10 do
-		P(m, base, Vector3.new(0.05, 0.05, 1.55), at(-w / 2 + 0.3 + i * (w - 0.6) / 10, top - 0.06, L.boardZ), STEEL_DARK, Enum.Material.Metal, { collide = false })
+		P(m, base, Vector3.new(0.05, 0.05, gd - 0.05), at(-w / 2 + 0.3 + i * (w - 0.6) / 10, top - 0.06, L.boardZ), STEEL_DARK, Enum.Material.Metal, { collide = false })
 	end
-	P(m, base, Vector3.new(w, 0.3, 0.08), at(0, top - 0.1, L.boardZ - 0.84), STEEL, Enum.Material.Metal, { name = "FrontLip" })
+	P(m, base, Vector3.new(w, 0.3, 0.08), at(0, top - 0.1, front - 0.04), STEEL, Enum.Material.Metal, { name = "FrontLip" })
 	-- Pan rail behind the grate: one long row of small black pans
+	local railFront = L.boardZ + gd / 2 + 0.05
+	local railZ = railFront + 0.65
 	local railTop = top + 0.25
-	P(m, base, Vector3.new(w, railTop - 3.2, 1.3), at(0, (3.2 + railTop) / 2, 0.4), STEEL, Enum.Material.Metal, { name = "Rail" })
+	P(m, base, Vector3.new(w, railTop - 3.2, 1.3), at(0, (3.2 + railTop) / 2, railZ), STEEL, Enum.Material.Metal, { name = "Rail" })
 	local fills = { "Sauce", "Cheese", "Cheese", "Pepperoni", "Pepperoni", "Ham", "Pineapple", "Peppers", "Mushrooms", "Olives", "Pepperoni", "Cheese", "", "", "" }
 	local count = #fills
 	local pw = (w - 0.6) / count
 	for i, ing in fills do
 		local x = -w / 2 + 0.3 + pw * (i - 0.5)
-		P(m, base, Vector3.new(pw - 0.08, 0.06, 0.95), at(x, railTop + 0.01, 0.4), Color3.fromRGB(28, 28, 30), Enum.Material.SmoothPlastic, { collide = false })
+		P(m, base, Vector3.new(pw - 0.08, 0.06, 0.95), at(x, railTop + 0.01, railZ), Color3.fromRGB(28, 28, 30), Enum.Material.SmoothPlastic, { collide = false })
 		local color = Config.IngredientColors[ing]
 		if color then
-			P(m, base, Vector3.new(pw - 0.2, 0.05, 0.8), at(x, railTop + 0.02, 0.4), color, if ing == "Cheese" or ing == "Pineapple" then Enum.Material.Sand else Enum.Material.SmoothPlastic, { collide = false })
+			P(m, base, Vector3.new(pw - 0.2, 0.05, 0.8), at(x, railTop + 0.02, railZ), color, if ing == "Cheese" or ing == "Pineapple" then Enum.Material.Sand else Enum.Material.SmoothPlastic, { collide = false })
 		end
 	end
-	-- Sloped stainless canopy over the pans, rising toward the back ledge
+	-- Sloped stainless canopy over the pans, rising to the back ledge
 	local slope = math.rad(-14) -- back edge up
-	P(m, base, Vector3.new(w, 0.06, 1.9), at(0, top + 1.35, 0.95) * CFrame.Angles(slope, 0, 0), STEEL, Enum.Material.Metal, { name = "Canopy", reflect = 0.15 })
-	P(m, base, Vector3.new(w, 0.22, 0.05), at(0, top + 1.03, 0.04), STEEL, Enum.Material.Metal, { collide = false })
+	local canopyZ = railFront + 1.0
+	P(m, base, Vector3.new(w, 0.06, 1.6), at(0, top + 1.35, canopyZ) * CFrame.Angles(slope, 0, 0), STEEL, Enum.Material.Metal, { name = "Canopy", reflect = 0.15 })
+	P(m, base, Vector3.new(w, 0.22, 0.05), at(0, top + 1.03, railFront + 0.23), STEEL, Enum.Material.Metal, { collide = false })
 	for _, sx in { -1, 1 } do
-		P(m, base, Vector3.new(0.06, 1.15, 1.9), at(sx * (w / 2 - 0.03), top + 0.85, 0.95), STEEL, Enum.Material.Metal)
+		P(m, base, Vector3.new(0.06, 1.15, 1.6), at(sx * (w / 2 - 0.03), top + 0.85, canopyZ), STEEL, Enum.Material.Metal)
 	end
-	P(m, base, Vector3.new(w, 0.08, 0.5), at(0, top + 1.6, 1.85), STEEL, Enum.Material.Metal, { name = "BackLedge" })
+	P(m, base, Vector3.new(w, 0.08, 0.4), at(0, top + 1.55, back - 0.2), STEEL, Enum.Material.Metal, { name = "BackLedge" })
 	-- Job aids stand up on the back ledge, on top of the make-line and out of the
 	-- way of the work (read them up close with the station rail's Job Aid button).
-	jobAid(m, base, at(L.cheeseX, top + 1.64, 1.7), Vector2.new(1.4, 1.0), "Cheese", "CHEESE", drawCheese, math.rad(15))
-	jobAid(m, base, at(L.toppingsX, top + 1.64, 1.7), Vector2.new(2.2, 1.5), "Toppings", "TOPPING PORTIONS", drawPortions, math.rad(15))
+	jobAid(m, base, at(L.cheeseX, top + 1.6, back - 0.35), Vector2.new(1.4, 1.0), "Cheese", "CHEESE", drawCheese, math.rad(15))
+	jobAid(m, base, at(L.toppingsX, top + 1.6, back - 0.35), Vector2.new(2.2, 1.5), "Toppings", "TOPPING PORTIONS", drawPortions, math.rad(15))
 	-- Where waiting pizzas sit (ShopService lines them up here)
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(L.saucedQueueX, top, L.boardZ), BLACK, nil, { name = "SaucedQueue", transparency = 1, collide = false })
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(L.cheesedQueueX, top, L.boardZ), BLACK, nil, { name = "CheesedQueue", transparency = 1, collide = false })
