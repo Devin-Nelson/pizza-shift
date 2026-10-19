@@ -300,16 +300,20 @@ local function formatMinutes(seconds: number): string
 	return string.format("%d:%02d", seconds // 60, math.floor(seconds % 60))
 end
 
+local function itemKey(it: Item): string
+	return it.size .. "|" .. table.concat(it.toppings, "+")
+end
+
 -- Items rung in vs. items wanted: fraction that match (as multisets).
 local function itemAccuracy(entered: { Item }, desired: { Item }): number
 	local want: { [string]: number } = {}
 	for _, it in desired do
-		local k = it.size .. "|" .. it.pizza
+		local k = itemKey(it)
 		want[k] = (want[k] or 0) + 1
 	end
 	local matched = 0
 	for _, it in entered do
-		local k = it.size .. "|" .. it.pizza
+		local k = itemKey(it)
 		if (want[k] or 0) > 0 then
 			want[k] -= 1
 			matched += 1
@@ -460,7 +464,7 @@ local function updateBoards(shop: Shop)
 			end
 			local items = {}
 			for _, t in o.tickets do
-				table.insert(items, { size = t.item.size, pizza = t.item.pizza, loaded = t.pie ~= nil or t.boxed })
+				table.insert(items, { size = t.item.size, toppings = t.item.toppings, loaded = t.pie ~= nil or t.boxed })
 			end
 			table.insert(orders, { id = o.id, delivery = o.delivery, age = now - o.created, items = items })
 		end
@@ -1125,12 +1129,13 @@ end
 -- Topping accuracy against an order item: Config.PortionFactor for each topping
 -- on its recipe, half credit for anything that shouldn't be there.
 local function toppingAccuracy(item: Item, counts: { [string]: number }?): number
-	local recipe = Config.Recipes[item.pizza] or {}
+	local recipe = item.toppings
 	local factors = {}
 	for _, topping in Config.Toppings do
 		local n = (counts and counts[topping]) or 0
 		if table.find(recipe, topping) then
-			table.insert(factors, Config.PortionFactor(n, Config.PortionFor(topping, item.size, #recipe)))
+			-- Counted toppings by the piece, weighed ones by the ounce.
+			table.insert(factors, Config.PortionFactor(Config.ToppingAmount(topping, n), Config.PortionFor(topping, item.size, #recipe)))
 		elseif n > 0 then
 			table.insert(factors, 0.5)
 		end
@@ -1150,7 +1155,7 @@ local function matchTicket(shop: Shop, pie: Pie, order: Order?): Ticket?
 		end
 		for _, t in o.tickets do
 			if not t.pie and not t.boxed and t.item.size == pie.size then
-				local score = matchScore(Config.Recipes[t.item.pizza] or {}, pie.counts)
+				local score = matchScore(t.item.toppings, pie.counts)
 				if score > bestScore or (score == bestScore and o.created < bestAge) then
 					best, bestScore, bestAge = t, score, o.created
 				end
@@ -1208,7 +1213,7 @@ local function loadPie(shop: Shop, player: Player?, pie: Pie, orderId: number?):
 	if topper and topper.Parent then
 		pay(shop, topper, Config.Pay.Toppings, accuracy, if ticket then "Topped " .. ticketLabel(ticket) else "Topped an extra pizza")
 		if ticket and accuracy < 1 then
-			notify(topper, string.format("%s is a %s %s: its toppings or portions were off.", ticketLabel(ticket), ticket.item.size, ticket.item.pizza), Color3.fromRGB(255, 180, 100))
+			notify(topper, string.format("%s is a %s: its toppings or portions were off.", ticketLabel(ticket), SalesPlan.name(ticket.item)), Color3.fromRGB(255, 180, 100))
 		end
 	end
 	if ticket then
@@ -1841,19 +1846,19 @@ local function neededSize(shop: Shop, spare: { [string]: number }?, have: { [str
 	return nil
 end
 
--- The recipe to put on a `size` pizza next: the oldest needed item of that
+-- The toppings to put on a `size` pizza next: the oldest needed item of that
 -- size not already covered by a topped pizza (or one being topped).
-local function neededRecipe(shop: Shop, size: string): string?
-	local want: { string } = {}
+local function neededToppings(shop: Shop, size: string): { string }?
+	local want: { { string } } = {}
 	for _, t in neededTickets(shop) do
 		if t.item.size == size then
-			table.insert(want, t.item.pizza)
+			table.insert(want, t.item.toppings)
 		end
 	end
 	local function cover(counts: { [string]: number }?)
 		local best, bestScore = nil, -math.huge
-		for i, pizza in want do
-			local score = matchScore(Config.Recipes[pizza] or {}, counts)
+		for i, toppings in want do
+			local score = matchScore(toppings, counts)
 			if score > bestScore then
 				best, bestScore = i, score
 			end
@@ -2085,12 +2090,11 @@ local function crewJobAt(shop: Shop, c: Crew, s: string): any?
 			return nil
 		end
 		for _, pie in shop.pies do
-			local pizza = if pie.stage == "Cheesed" and not pie.claimedBy then neededRecipe(shop, pie.size) else nil
-			if pizza then
-				local recipe = Config.Recipes[pizza]
+			local recipe = if pie.stage == "Cheesed" and not pie.claimedBy then neededToppings(shop, pie.size) else nil
+			if recipe then
 				local counts: { [string]: number } = {}
 				for _, topping in recipe do
-					counts[topping] = Config.PortionFor(topping, pie.size, #recipe)
+					counts[topping] = Config.PortionPieces(topping, pie.size, #recipe)
 				end
 				pie.claimedBy = c
 				return { what = "Toppings", pie = pie, counts = counts }
@@ -2101,7 +2105,7 @@ local function crewJobAt(shop: Shop, c: Crew, s: string): any?
 		for _, pie in shop.pies do
 			if pie.stage == "Ready" and not pie.claimedBy then
 				local t = matchTicket(shop, pie, nil)
-				if t and matchScore(Config.Recipes[t.item.pizza] or {}, pie.counts) == 0 then
+				if t and matchScore(t.item.toppings, pie.counts) == 0 then
 					pie.claimedBy = c
 					return { what = "Load", pie = pie }
 				end
@@ -2371,7 +2375,7 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 			visual = pie.visual, -- the waiting copy, hidden locally while this player works it
 		}
 		if kind == "Toppings" then
-			-- Any toppings, no targets: makers go by the order screen and the job aid.
+			-- Any toppings, no targets: makers go by the tickets and the tip card.
 			-- Bins that are out of stock can't be used.
 			data.toppings = Config.Toppings
 			data.out = {}
@@ -2422,7 +2426,7 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 		local ticket = pie.ticket
 		begin(player, shop, stationName, {
 			ticket = if ticket then string.sub(ticketLabel(ticket), 2) else nil, -- UIs add their own "#"
-			pizza = if ticket then ticket.item.pizza else "extra",
+			pizza = if ticket then SalesPlan.name(ticket.item) else "extra",
 			size = pie.size,
 			cuts = slices // 2,
 			bubbles = bubbles,
@@ -2661,10 +2665,24 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		end
 		local items: { Item } = {}
 		for _, it in rawItems do
-			if type(it) ~= "table" or type(it.pizza) ~= "string" or not Config.Recipes[it.pizza] or type(it.size) ~= "string" or not table.find(Config.Sizes, it.size) then
+			if type(it) ~= "table" or type(it.size) ~= "string" or not table.find(Config.Sizes, it.size) or type(it.toppings) ~= "table" or #it.toppings > Config.MaxToppings then
 				return
 			end
-			table.insert(items, { pizza = it.pizza, size = it.size })
+			-- Known toppings, each once, kept in menu order.
+			local on: { [string]: boolean } = {}
+			for _, t in it.toppings do
+				if type(t) ~= "string" or not table.find(Config.Toppings, t) or on[t] then
+					return
+				end
+				on[t] = true
+			end
+			local toppings = {}
+			for _, t in Config.Toppings do
+				if on[t] then
+					table.insert(toppings, t)
+				end
+			end
+			table.insert(items, { size = it.size, toppings = toppings })
 		end
 		if entry.kind == "phone" then
 			if not isNumber(house) or house ~= math.floor(house) then
@@ -2811,7 +2829,7 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		end
 		stepDone(player, "Toppings", pie)
 	elseif kind == "Cut" then
-		local angles, popped, box, season = payload.angles, payload.popped, payload.box, payload.season
+		local angles, popped, box = payload.angles, payload.popped, payload.box
 		local cuts = session.data.cuts
 		if type(angles) ~= "table" or #angles ~= cuts then
 			return
@@ -2841,21 +2859,9 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		local bubbleCount = #session.data.bubbles
 		local poppedCount = if isNumber(popped) then math.clamp(math.floor(popped), 0, bubbleCount) else 0
 		local bubbleScore = if bubbleCount == 0 then 1 else poppedCount / bubbleCount
-		-- Seasoning: share of the crust's sectors covered, less what was shaken off the crust.
-		local seasonScore = 0
-		if type(season) == "table" and type(season.sectors) == "table" then
-			local hit = 0
-			for i = 1, Config.Cut.SeasonSectors do
-				if season.sectors[i] == true then
-					hit += 1
-				end
-			end
-			local off = if isNumber(season.off) then math.clamp(season.off, 0, 1) else 0
-			seasonScore = hit / Config.Cut.SeasonSectors * (1 - off * 0.5)
-		end
 		local pie = session.pie :: Pie
 		local boxOk = box == pie.size
-		local score = 0.45 * cutScore + 0.15 * bubbleScore + 0.2 * seasonScore + (if boxOk then 0.2 else 0)
+		local score = 0.6 * cutScore + 0.2 * bubbleScore + (if boxOk then 0.2 else 0)
 
 		endSession(player, session, false)
 		local profile = DataService.Get(player)
@@ -3034,7 +3040,7 @@ local function queueSnapshot(shop: Shop): any
 		if o.stage == "Making" and not o.cancelled and loadedCount(o) < #o.tickets and #makeQueue < 12 then
 			local items = {}
 			for _, t in o.tickets do
-				table.insert(items, { size = t.item.size, pizza = t.item.pizza, loaded = t.pie ~= nil or t.boxed })
+				table.insert(items, { size = t.item.size, toppings = t.item.toppings, loaded = t.pie ~= nil or t.boxed })
 			end
 			table.insert(makeQueue, { id = o.id, delivery = o.delivery, house = o.house, age = now - o.created, items = items })
 		end
@@ -3052,7 +3058,7 @@ local function queueSnapshot(shop: Shop): any
 				id = p.id,
 				slot = slot,
 				size = p.size,
-				label = if t then string.format("#%s %s", string.sub(ticketLabel(t), 2), t.item.pizza) else "extra",
+				label = if t then string.format("#%s %s", string.sub(ticketLabel(t), 2), if #t.item.toppings > 0 then table.concat(t.item.toppings, " ") else "Cheese") else "extra",
 				out = p.stage == "Exit", -- out of the chamber: can be pulled
 				left = math.max(0, (lane.mouthOut - p.pos - diameter(p.size) / 2) / speed), -- until it comes out
 				fallsIn = if p.exitAt then math.max(0, Config.Oven.FallAfter - (now - p.exitAt)) else nil,

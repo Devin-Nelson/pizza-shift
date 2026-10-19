@@ -95,15 +95,42 @@ local function register(data: any, finish: Finish, cancel: Cancel)
 		Parent = speech,
 	})
 
-	local chosen: { pizza: string?, size: string?, house: number? } = {}
-	local cart: { { pizza: string, size: string } } = {}
+	local chosen: { size: string?, house: number? } = {}
+	local toppings: { [string]: boolean } = {} -- the toppings keys that are on
+	local cart: { { size: string, toppings: { string } } } = {}
 
-	Ui.caption("Pizza", { Position = UDim2.fromOffset(0, 66), Parent = body })
-	local pizzaButtons: { [string]: TextButton } = {}
-	pizzaButtons = keyRow(body, 84, 44, UDim.new(1, 6), Config.PizzaOrder, function(name)
-		chosen.pizza = name
-		selectGroup(pizzaButtons, name)
+	-- Toppings toggle on and off, up to Config.MaxToppings (none = a cheese pizza).
+	Ui.caption(string.format("Toppings  -  up to %d, none for cheese", Config.MaxToppings), { Position = UDim2.fromOffset(0, 66), Parent = body })
+	local toppingButtons: { [string]: TextButton } = {}
+	local function showToppings()
+		for name, b in toppingButtons do
+			Ui.setButtonColor(b, if toppings[name] then C.Red else C.Tile)
+		end
+	end
+	toppingButtons = keyRow(body, 84, 44, UDim.new(1, 6), Config.Toppings, function(name)
+		local on = 0
+		for _ in toppings do
+			on += 1
+		end
+		if toppings[name] then
+			toppings[name] = nil
+		elseif on < Config.MaxToppings then
+			toppings[name] = true
+		end
+		showToppings()
 	end)
+	local function picked(): { string }
+		local list = {}
+		for _, t in Config.Toppings do
+			if toppings[t] then
+				table.insert(list, t)
+			end
+		end
+		return list
+	end
+	local function key(it: { size: string, toppings: { string } }): string
+		return it.size .. " " .. (if #it.toppings > 0 then table.concat(it.toppings, " & ") else "cheese")
+	end
 
 	Ui.caption("Size", { Position = UDim2.fromOffset(0, 138), Parent = body })
 	local sizeButtons: { [string]: TextButton } = {}
@@ -134,12 +161,12 @@ local function register(data: any, finish: Finish, cancel: Cancel)
 		end
 		local order, counts = {}, {}
 		for _, it in cart do
-			local key = it.size .. " " .. it.pizza
-			if not counts[key] then
-				counts[key] = 0
-				table.insert(order, { key = key, item = it })
+			local k = key(it)
+			if not counts[k] then
+				counts[k] = 0
+				table.insert(order, { key = k, item = it })
 			end
-			counts[key] += 1
+			counts[k] += 1
 		end
 		if #order == 0 then
 			Ui.text("Nothing rung in yet.", F.Body, S.Body, { TextColor3 = Color3.fromRGB(139, 132, 120), Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 0, 30), Parent = list })
@@ -153,7 +180,7 @@ local function register(data: any, finish: Finish, cancel: Cancel)
 			x.Position = UDim2.new(1, -12, 0.5, 0)
 			row.Activated:Connect(function()
 				for j = #cart, 1, -1 do
-					if cart[j].size .. " " .. cart[j].pizza == entry.key then
+					if key(cart[j]) == entry.key then
 						table.remove(cart, j)
 						break
 					end
@@ -163,12 +190,12 @@ local function register(data: any, finish: Finish, cancel: Cancel)
 		end
 	end
 	local function add(n: number)
-		if not chosen.pizza or not chosen.size then
+		if not chosen.size then
 			return
 		end
 		for _ = 1, n do
 			if #cart < 40 then
-				table.insert(cart, { pizza = chosen.pizza :: string, size = chosen.size :: string })
+				table.insert(cart, { size = chosen.size :: string, toppings = picked() })
 			end
 		end
 		renderCart()

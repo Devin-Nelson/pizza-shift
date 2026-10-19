@@ -100,8 +100,6 @@ Config.StationView = {
 	Register = { height = 1.6, back = 2.2, side = 1.2, focusBack = -4, focusUp = 0.4, fov = 70, stand = 2.8 }, -- over the POS, out to the customers
 	DeliveryRack = { height = 1.2, back = 4.5, focusUp = 1.0, fov = 70, stand = 3.0 }, -- facing the heat rack shelves
 }
--- Close-up of a job aid card when you click it at a station (studs in front of the card).
-Config.JobAidView = { distance = 2.4, fov = 60 }
 
 -- Order matching when a finished pizza is loaded into the oven (a per-player
 -- setting, tentative while we see which plays better): "Auto" assigns it to
@@ -127,18 +125,17 @@ Config.IngredientColors = {
 	Olives = Color3.fromRGB(35, 35, 35),
 }
 
--- Every pizza gets sauce + cheese; these are its toppings.
-Config.Recipes = {
-	Cheese = {},
-	Pepperoni = { "Pepperoni" },
-	Hawaiian = { "Ham", "Pineapple" },
-	Veggie = { "Peppers", "Mushrooms", "Olives" },
-	Supreme = { "Pepperoni", "Peppers", "Mushrooms", "Olives" },
-}
-Config.PizzaOrder = { "Cheese", "Pepperoni", "Hawaiian", "Veggie", "Supreme" }
-
+-- A pizza is a size plus up to MaxToppings toppings on the sauce and cheese
+-- (no specialty pizzas, tentatively), listed one by one on the tickets, in
+-- Config.Toppings order. Price: the size plus ToppingPrice per topping.
+-- Customers pick 0..3 toppings with ToppingCount odds, each topping as
+-- likely as its ToppingPopularity.
+Config.MaxToppings = 3
 Config.Sizes = { "Small", "Medium", "Large" }
 Config.SizePrice = { Small = 10, Medium = 14, Large = 17 } -- dollars; store sales are tracked in these
+Config.ToppingPrice = { Small = 1.5, Medium = 2, Large = 2.5 }
+Config.ToppingCount = { 0.15, 0.40, 0.30, 0.15 } -- odds of 0, 1, 2, 3 toppings
+Config.ToppingPopularity = { Pepperoni = 0.32, Ham = 0.12, Pineapple = 0.10, Peppers = 0.14, Mushrooms = 0.18, Olives = 0.14 }
 -- Real pizza sizes (10" / 12" / 14"), scaled so a Large is 2.4 studs across.
 Config.PizzaInches = { Small = 10, Medium = 12, Large = 14 }
 Config.StudsPerInch = 2.4 / 14
@@ -149,28 +146,53 @@ for size, inches in Config.PizzaInches do
 	Config.BoxSize[size] = Config.PizzaDiameter[size] + 0.15
 end
 
--- Topping portions (piece counts) by size, for pizzas with
--- { 1 topping, 2-3 toppings, 4+ toppings }. Large Pepperoni is the spec;
--- everything else is a PLACEHOLDER to be fleshed out.
+-- Topping portions by size, for pizzas with { 1 topping, 2-3 toppings }.
+-- Pepperoni and ham are counted in pieces; the rest are weighed in ounces on
+-- the make-line scale (each piece put on weighs PieceOz). Large Pepperoni is
+-- the spec; everything else is a PLACEHOLDER to be fleshed out.
+Config.CountedToppings = { Pepperoni = true, Ham = true }
+Config.PieceOz = { Pineapple = 0.1, Peppers = 0.08, Mushrooms = 0.1, Olives = 0.06 }
 Config.Portions = {
-	Pepperoni = { Small = { 20, 16, 12 }, Medium = { 30, 24, 18 }, Large = { 40, 32, 24 } },
-	Ham = { Small = { 12, 10, 8 }, Medium = { 18, 14, 11 }, Large = { 24, 19, 14 } },
-	Pineapple = { Small = { 12, 10, 8 }, Medium = { 18, 14, 11 }, Large = { 24, 19, 14 } },
-	Peppers = { Small = { 14, 11, 8 }, Medium = { 21, 17, 13 }, Large = { 28, 22, 17 } },
-	Mushrooms = { Small = { 14, 11, 8 }, Medium = { 21, 17, 13 }, Large = { 28, 22, 17 } },
-	Olives = { Small = { 18, 14, 11 }, Medium = { 27, 22, 16 }, Large = { 36, 29, 22 } },
+	Pepperoni = { Small = { 20, 16 }, Medium = { 30, 24 }, Large = { 40, 32 } },
+	Ham = { Small = { 12, 10 }, Medium = { 18, 14 }, Large = { 24, 19 } },
+	Pineapple = { Small = { 1.25, 1 }, Medium = { 1.75, 1.5 }, Large = { 2.5, 2 } },
+	Peppers = { Small = { 1, 0.75 }, Medium = { 1.5, 1.25 }, Large = { 2, 1.75 } },
+	Mushrooms = { Small = { 1.25, 1 }, Medium = { 1.75, 1.5 }, Large = { 2.5, 2 } },
+	Olives = { Small = { 1, 0.75 }, Medium = { 1.5, 1.25 }, Large = { 2, 1.5 } },
 }
 Config.CheesePortion = { Small = 4, Medium = 6, Large = 8 } -- ounces (PLACEHOLDER)
 Config.PortionTolerance = 0.10 -- within ±10% = no penalty
 
 function Config.ToppingTier(count: number): number
-	return if count <= 1 then 1 elseif count <= 3 then 2 else 3
+	return if count <= 1 then 1 else 2
+end
+
+-- How much of `topping` that many pieces is, in its portion unit (pieces,
+-- or ounces for a weighed topping).
+function Config.ToppingAmount(topping: string, pieces: number): number
+	return if Config.CountedToppings[topping] then pieces else pieces * (Config.PieceOz[topping] or 0.1)
+end
+
+-- "40 pcs" / "2.5 oz"
+function Config.PortionText(topping: string, amount: number): string
+	return if Config.CountedToppings[topping] then string.format("%d pcs", amount) else string.format("%g oz", amount)
 end
 
 function Config.PortionFor(topping: string, size: string, toppingCount: number): number
 	local bySize = Config.Portions[topping]
 	local tiers = bySize and bySize[size]
 	return if tiers then tiers[Config.ToppingTier(toppingCount)] else 0
+end
+
+-- Pieces that make the portion (what hired staff put on).
+function Config.PortionPieces(topping: string, size: string, toppingCount: number): number
+	local target = Config.PortionFor(topping, size, toppingCount)
+	return if Config.CountedToppings[topping] then target else math.floor(target / (Config.PieceOz[topping] or 0.1) + 0.5)
+end
+
+-- The price of one pizza.
+function Config.PizzaPrice(size: string, toppings: { string }): number
+	return (Config.SizePrice[size] or 0) + (Config.ToppingPrice[size] or 0) * #toppings
 end
 
 -- 1 inside the tolerance band, then falls off (0 at 60% off target).
@@ -232,9 +254,8 @@ Config.Oven = { BakeTime = 120, FallAfter = 25, Slots = 6, Gap = 0.15 }
 -- screens to be loaded. A toppings job only starts if there's a slot for it.
 Config.ReadyRack = { Slots = 15 }
 -- Cut & box: slices per size (cuts = slices / 2), chance of cheese bubbles to
--- pop, how fast the rocker blade spins (degrees/second) and how long a cut
--- takes, and how many sectors of crust the seasoning is scored over.
-Config.Cut = { Slices = { Small = 6, Medium = 8, Large = 8 }, BubbleChance = 0.6, MaxBubbles = 3, SpinSpeed = 220, CutTime = 0.3, SeasonSectors = 24 }
+-- pop, how fast the rocker blade spins (degrees/second) and how long a cut takes.
+Config.Cut = { Slices = { Small = 6, Medium = 8, Large = 8 }, BubbleChance = 0.6, MaxBubbles = 3, SpinSpeed = 220, CutTime = 0.3 }
 -- Supply truck: crates per run and how much each restocks.
 Config.Supply = { Crates = 5, RestockPerCrate = 12 }
 -- Delivery: real seconds from leaving the rack; full speed bonus under FastTime.

@@ -6,7 +6,7 @@
 -- explains it on a first visit). Each step starts from the
 -- pizza exactly as the last step left it. Space, a mouse click and a tap on
 -- the screen all work as the action button. The make-line is free-form:
--- nothing tells you the portions (the job aids do), and pizzas only meet an
+-- nothing tells you the portions (the tip cards do), and pizzas only meet an
 -- order when they're loaded. Results are raw inputs; the server scores.
 
 local ContextActionService = game:GetService("ContextActionService")
@@ -81,7 +81,7 @@ local function isPointer(input: InputObject): boolean
 	return input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch
 end
 
--- A click/tap meant for the minigame (not a button, a job aid card, or a pizza you can pick).
+-- A click/tap meant for the minigame (not a button or a pizza you can pick).
 local function isPlayClick(input: InputObject, processed: boolean): boolean
 	return not processed and isPointer(input) and not StationPicks.IsPointerOverPick()
 end
@@ -563,7 +563,7 @@ end
 
 ---------------------------------------------------------------------------
 -- Cheese (make-line): hold to pour; the pour speeds up the longer you hold.
--- The portion's on the job aid card, not the screen.
+-- The portion's in the tip card, not on the screen.
 ---------------------------------------------------------------------------
 local function cheese(data: any, finish: Finish, cancel: Cancel)
 	local ctx = open(data, cancel)
@@ -760,14 +760,14 @@ end
 ---------------------------------------------------------------------------
 -- Cut & Box: the oven tender clicked a pizza at the oven exit. Click the box
 -- to put it in (click another box to move it), pop any bubbles, rock the
--- blade through even cuts, season the crust by tracing it, close the lid.
+-- blade through even cuts, close the lid.
 ---------------------------------------------------------------------------
 local function cut(data: any, finish: Finish, cancel: Cancel)
 	local ctx = open(data, cancel)
 	if not ctx then
 		return
 	end
-	local ws, body, cleanup, holding = ctx.ws, ctx.body, ctx.cleanup, ctx.holding
+	local ws, body, cleanup = ctx.ws, ctx.body, ctx.cleanup
 	hideShared(data.visual, cleanup)
 	-- The wide view takes in the oven exits and every box; putting it in a box closes in on it.
 	ws:resetView()
@@ -777,11 +777,10 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 	local cuts = tonumber(data.cuts) or 4
 	local spec = if type(data.spec) == "table" then data.spec else { size = data.size, baked = true }
 	local d = Config.PizzaDiameter[spec.size] or 2.4
-	local R = d / 2
 	local top = 0.12
 	local station = data.station :: BasePart
-	-- Which pizza this is, at the start of the strip: "#4 LARGE PEPPERONI" or "LARGE EXTRA".
-	local title = if data.ticket then string.format("#%s %s %s", tostring(data.ticket), tostring(data.size), tostring(data.pizza)) else tostring(data.size) .. " extra"
+	-- Which pizza this is, at the start of the strip: "#4 LARGE PEPPERONI & HAM" or "LARGE EXTRA".
+	local title = if data.ticket then string.format("#%s %s", tostring(data.ticket), tostring(data.pizza)) else tostring(data.size) .. " extra"
 	local function titleChip(order: number)
 		local chip = Ui.chip(title, C.Cream, C.Ink, { Size = UDim2.fromOffset(0, 28), LayoutOrder = order, Parent = body })
 		chip.TextSize = S.Body
@@ -815,7 +814,7 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 	local angles: { number } = {}
 	local chosenBox = ""
 	local center = exitPos -- world center of the pizza once it's in its box
-	local stage = "box" -- "box" | "cut" | "season" | "close"
+	local stage = "box" -- "box" | "cut" | "close"
 	local stepConn: RBXScriptConnection? = nil
 	local function newPhase()
 		clearBody(body)
@@ -832,16 +831,6 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		local ray = Workstation.pointerRay()
 		return workspace:Raycast(ray.Origin, ray.Direction * 80, params)
 	end
-	-- Where the pointer is over the pizza: local (x, z) from its center, and the world point.
-	local function overPizza(): (Vector3?, number, number)
-		local hit = ws:pointer(center.Y - ws.frame.Position.Y + top)
-		if not hit then
-			return nil, 0, 0
-		end
-		local offset = hit - center
-		return hit, offset:Dot(ws.right), offset:Dot(ws.toWorker)
-	end
-
 	-- Bubbles sit on the pizza; they move with it if it's moved to another box.
 	local bubbleData = if type(data.bubbles) == "table" then data.bubbles else {}
 	local bubbleParts: { BasePart } = {}
@@ -862,8 +851,8 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		end
 	end
 
-	-- 4) CLOSE THE LID ------------------------------------------------------
-	local function closeLid(season: any)
+	-- 3) CLOSE THE LID ------------------------------------------------------
+	local function closeLid()
 		newPhase()
 		stage = "close"
 		note("Closing", 1)
@@ -914,68 +903,8 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		task.delay(0.9, function()
 			if active then
 				Minigames3D.Close()
-				finish({ angles = angles, popped = popped, box = chosenBox, season = season })
+				finish({ angles = angles, popped = popped, box = chosenBox })
 			end
-		end)
-	end
-
-	-- 3) SEASON: trace the crust with the shaker -------------------------------
-	local function seasonPhase()
-		newPhase()
-		stage = "season"
-		note("Crust", 1)
-		local status = Ui.text("0%", F.Mono, S.Title, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 28), LayoutOrder = 2, Parent = body })
-		Ui.new("UIPadding", { PaddingRight = UDim.new(0, 8), Parent = status })
-		local closeBtn = actionButton(body, "Close box", 3, 150)
-		local shaker = localPart(ctx.folder, "Shaker", Vector3.new(0.6, 0.3, 0.3), Color3.fromRGB(235, 225, 190), Enum.Material.Plastic, Enum.PartType.Cylinder)
-		local capPart = localPart(ctx.folder, "ShakerCap", Vector3.new(0.12, 0.32, 0.32), Color3.fromRGB(200, 40, 40), Enum.Material.Plastic, Enum.PartType.Cylinder)
-		local n = Config.Cut.SeasonSectors
-		local sectors = table.create(n, false)
-		local onTime, offTime, specks, sinceSpeck = 0, 0, 0, 0
-		local rng = Random.new()
-		stepConn = RunService.RenderStepped:Connect(function(dt)
-			local hit, x, z = overPizza()
-			if not hit then
-				return
-			end
-			-- Shaker held upside down over the pointer, tipped a little toward you.
-			local up = CFrame.new(hit + Vector3.new(0, 0.55, 0)) * rot * CFrame.Angles(math.rad(-15), 0, 0) * CFrame.Angles(0, 0, math.rad(90))
-			shaker.CFrame = up
-			capPart.CFrame = up * CFrame.new(-0.33, 0, 0)
-			if not holding() then
-				return
-			end
-			local r = math.sqrt(x * x + z * z)
-			local onCrust = r >= R * 0.8 and r <= R * 1.06
-			if onCrust then
-				onTime += dt
-				local a = (math.atan2(z, x) + math.pi * 2) % (math.pi * 2)
-				sectors[math.min(n, math.floor(a / (math.pi * 2) * n) + 1)] = true
-			else
-				offTime += dt
-			end
-			sinceSpeck += dt
-			if sinceSpeck > 0.03 and specks < 300 then
-				sinceSpeck = 0
-				specks += 1
-				local speck = localPart(ctx.folder, "Seasoning", Vector3.new(0.04, 0.02, 0.04), if rng:NextNumber() < 0.5 then Color3.fromRGB(120, 40, 25) else Color3.fromRGB(70, 110, 50))
-				speck.CFrame = CFrame.new(hit + ws.right * rng:NextNumber(-0.06, 0.06) + ws.toWorker * rng:NextNumber(-0.06, 0.06) + Vector3.new(0, 0.02, 0))
-			end
-			local covered = 0
-			for _, s in sectors do
-				if s then
-					covered += 1
-				end
-			end
-			status.Text = string.format("%d%%", math.floor(covered / n * 100 + 0.5))
-		end)
-		closeBtn.Activated:Connect(function()
-			if stage ~= "season" then
-				return
-			end
-			shaker:Destroy()
-			capPart:Destroy()
-			closeLid({ sectors = sectors, off = if onTime + offTime > 0 then offTime / (onTime + offTime) else 0 })
 		end)
 	end
 
@@ -1051,7 +980,7 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 						for _, h in handles do
 							h.part:Destroy()
 						end
-						seasonPhase()
+						closeLid()
 					end
 				end)
 			end

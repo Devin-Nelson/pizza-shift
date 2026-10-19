@@ -8,7 +8,7 @@
 --    and the ones on the road.
 --  * Stations tab (bottom left, at your store): collapsed by default. It opens
 --    sideways along the bottom into a key per station (gold badge = jobs
---    waiting), then Help (the station's tip), Job Aid, the order-matching
+--    waiting), then Help (the station's tip and portions), the order-matching
 --    switch, Exit and Stores.
 --    While it's open the work strip steps aside so nothing covers the pizza.
 --  * Follow chip (above the tab) after a step: takes that pizza to its next
@@ -27,7 +27,6 @@ local Icons = require(ReplicatedStorage.Shared.Icons)
 local TicketRows = require(ReplicatedStorage.Shared.TicketRows)
 local Loading = require(script.Parent.Loading)
 local StationMode = require(script.Parent.StationMode)
-local StationPicks = require(script.Parent.StationPicks)
 local StationTips = require(script.Parent.StationTips)
 local Ui = require(script.Parent.Ui)
 
@@ -42,7 +41,7 @@ local player = Players.LocalPlayer
 local FOLLOW_SECONDS = 12 -- how long the follow chip stays up
 local TICKET_W = 138
 local MAX_TICKETS = 6
-local MAX_ROWS = 6 -- per ticket; the rest fold into "+N more"
+local MAX_ROWS = 8 -- lines per ticket; the rest fold into "+N more"
 local KEY_W = 64 -- utility keys on the open bar
 local STATION_ICONS: { [string]: string } = {
 	Register = "register",
@@ -85,7 +84,7 @@ end
 ---------------------------------------------------------------------------
 -- Tickets
 ---------------------------------------------------------------------------
-type Row = { size: string?, text: string, done: boolean? }
+type Row = { size: string?, text: string, done: boolean?, indent: boolean? }
 
 -- One ticket: a coloured header (title + time) over cream rows.
 -- Returns the ticket and its time label.
@@ -108,12 +107,16 @@ local function ticket(parent: Instance, order: number, title: string, time: stri
 	local timeLabel = Ui.text(time, F.Mono, S.Small, { TextColor3 = headFg, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 0), Size = UDim2.new(0, 60, 1, 0), Parent = head })
 	for i, r in rows do
 		local row = Ui.box(C.Cream, { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = i, Parent = t })
-		Ui.box(C.Rule, { Size = UDim2.new(1, 0, 0, 1), Parent = row })
+		if not r.indent then
+			Ui.box(C.Rule, { Size = UDim2.new(1, 0, 0, 1), Parent = row })
+		end
 		local x = 6
 		if r.size then
 			local sq = Ui.box(C.Panel, { Position = UDim2.fromOffset(6, 3), Size = UDim2.fromOffset(15, 15), Parent = row })
 			Ui.text(string.sub(r.size, 1, 1), F.Mono, S.Tiny, { TextColor3 = C.Cream, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = sq })
 			x = 27
+		elseif r.indent then
+			x = 27 -- another topping of the pizza above
 		end
 		local text = string.upper(r.text)
 		Ui.text(if r.done then "<s>" .. text .. "</s>" else text, F.Label, S.Small, {
@@ -124,7 +127,7 @@ local function ticket(parent: Instance, order: number, title: string, time: stri
 			TextTruncate = Enum.TextTruncate.AtEnd,
 			Parent = row,
 		})
-		if r.done then
+		if r.done and not r.indent then
 			local chk = Ui.box(C.Green, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -5, 0, 3), Size = UDim2.fromOffset(15, 15), Parent = row })
 			local ico = Icons.make("check", 11, chk, { color = C.White })
 			ico.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -187,11 +190,14 @@ function WorkHud.Init(_isBusy: () -> boolean)
 					overflow(#snapshot.orders - MAX_TICKETS, i)
 					break
 				end
-				-- Identical pizzas share a row ("PEPPERONI x3"), so big orders still fit.
+				-- Identical pizzas share a row ("PEPPERONI x3"), so big orders still
+				-- fit; each topping gets its own line under the size.
 				local grouped, hidden = TicketRows.fit(TicketRows.group(o.items), MAX_ROWS)
 				local rows: { Row } = {}
 				for _, g in grouped do
-					table.insert(rows, { size = g.size, text = TicketRows.label(g), done = TicketRows.done(g) })
+					for j, text in TicketRows.lines(g) do
+						table.insert(rows, { size = if j == 1 then g.size else nil, indent = j > 1, text = text, done = TicketRows.done(g) })
+					end
 				end
 				if hidden > 0 then
 					table.insert(rows, { text = string.format("+%d more", hidden) })
@@ -364,7 +370,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 	local function rebuildBar()
 		local here = StationMode.Current()
 		local stations = myStations()
-		local sig = table.concat({ tostring(here), tostring(player:GetAttribute("StoreId")), Loading.mode, tostring(StationPicks.HasAid()) }, "|")
+		local sig = table.concat({ tostring(here), tostring(player:GetAttribute("StoreId")), Loading.mode }, "|")
 		for _, id in stations do
 			sig ..= "|" .. waitingAt(id)
 		end
@@ -384,12 +390,6 @@ function WorkHud.Init(_isBusy: () -> boolean)
 			table.insert(utils, { text = "Help", icon = "help", fn = function()
 				setExpanded(false)
 				StationTips.Show(tipFor, true)
-			end })
-		end
-		if here and StationPicks.HasAid() then
-			table.insert(utils, { text = "Job Aid", icon = "aid", fn = function()
-				setExpanded(false)
-				StationPicks.ToggleAid()
 			end })
 		end
 		if here == "Toppings" or here == "Load" then

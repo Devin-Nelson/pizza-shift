@@ -1,7 +1,9 @@
 --!strict
 -- First-visit tips: the first time you work a station, a printed job card
--- (left side, clear of the work) says how it works in a few short steps. On
--- screen everything else is short labels. "Got it" closes it for good (saved
+-- (left side, clear of the work) says how it works in a few short steps, with
+-- its portions (made from Config, so they're always current). There are no
+-- job aid cards in the world; this is the reference. On screen everything
+-- else is short labels. "Got it" closes it for good (saved
 -- server-side via Remotes.TipSeen, read back from the TipsSeen attribute);
 -- Help on the Stations bar brings it back.
 
@@ -21,7 +23,7 @@ local player = Players.LocalPlayer
 local TIPS: { [string]: { string } } = {
 	Register = {
 		"Listen to the customer or caller.",
-		"Ring in every pizza: pick the pizza and size, then +1 or +5.",
+		"Ring in every pizza: pick up to 3 toppings (none for cheese) and the size, then +1 or +5.",
 		"Phone orders need the house number. Then send it to the kitchen.",
 	},
 	Dough = {
@@ -36,12 +38,13 @@ local TIPS: { [string]: { string } } = {
 	},
 	Cheese = {
 		"Hold to pour. It speeds up the longer you hold.",
-		"Portion it by the cheese card, within 10%.",
+		"Portion it by the chart below, within 10%.",
 		"Press Done when it's right.",
 	},
 	Toppings = {
-		"Pick a topping, then hold on the pizza to drop it.",
-		"Portions are on the card. -5 picks some back off.",
+		"Each topping is on its own line of the ticket.",
+		"Pick a topping, then hold on the pizza. Pepperoni and ham go by the piece, the rest by weight.",
+		"Portions are below, within 10%. -5 picks some back off.",
 		"Load sends it to the oven; To Rack puts it on the ready rack.",
 	},
 	Load = {
@@ -51,12 +54,51 @@ local TIPS: { [string]: { string } } = {
 	CutTable = {
 		"Click a pizza as it comes out of an oven, before it falls off.",
 		"Click the right box. Pop any bubbles.",
-		"Rock the blade through even cuts, season the crust, close the lid.",
+		"Rock the blade through even cuts, then close the lid.",
 	},
 	DeliveryRack = {
 		"Pick an order from the tickets.",
 		"Grab the bag, drive to the house and walk it to the door. Faster, bigger tip.",
 	},
+}
+
+-- Each station's reference chart, in lines of fixed-width text.
+local function pad(text: string, width: number): string
+	return text .. string.rep(" ", math.max(1, width - #text))
+end
+local REFS: { [string]: () -> { string } } = {
+	Sauce = function()
+		return { string.format("Sauce line: %g\" in from the edge, every size.", Config.Sauce.BorderInches) }
+	end,
+	Cheese = function()
+		local lines = {}
+		for _, size in Config.Sizes do
+			table.insert(lines, pad(string.upper(size), 8) .. Config.PortionText("Cheese", Config.CheesePortion[size]))
+		end
+		return lines
+	end,
+	Toppings = function()
+		local head = pad("1 / 2-3 top", 12)
+		for _, size in Config.Sizes do
+			head ..= pad(string.upper(string.sub(size, 1, 1)), 10)
+		end
+		local lines = { head }
+		for _, topping in Config.Toppings do
+			local line = pad(string.upper(topping), 12)
+			for _, size in Config.Sizes do
+				line ..= pad(string.format("%g/%g", Config.PortionFor(topping, size, 1), Config.PortionFor(topping, size, 2)), 10)
+			end
+			table.insert(lines, line .. (if Config.CountedToppings[topping] then "pcs" else "oz"))
+		end
+		return lines
+	end,
+	CutTable = function()
+		local lines = {}
+		for _, size in Config.Sizes do
+			table.insert(lines, pad(string.upper(size), 8) .. Config.Cut.Slices[size] .. " slices")
+		end
+		return lines
+	end,
 }
 
 local card: Frame? = nil
@@ -97,10 +139,11 @@ function StationTips.Show(id: string, again: boolean?)
 	end
 	StationTips.Hide()
 	local info = Config.StationInfo(id)
+	local ref = REFS[id]
 	local root = Ui.box(C.Cream, {
 		Name = "Tip",
 		Position = UDim2.fromOffset(10, 170),
-		Size = UDim2.fromOffset(300, 0),
+		Size = UDim2.fromOffset(if ref then 360 else 300, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = Ui.Root,
 	}, {
@@ -134,6 +177,18 @@ function StationTips.Show(id: string, again: boolean?)
 			Size = UDim2.new(1, -30, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Parent = row,
+		})
+	end
+	if ref then
+		local block = Ui.box(C.Panel, { Size = UDim2.fromScale(1, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 50, Parent = root }, {
+			Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }),
+		})
+		Ui.text(table.concat(ref(), "\n"), Style.Font.Mono, Style.Size.Small, {
+			TextColor3 = C.Cream,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Parent = block,
 		})
 	end
 	local foot = Ui.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 46), LayoutOrder = 100, Parent = root })

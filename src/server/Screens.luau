@@ -82,7 +82,7 @@ export type Kds = {
 
 local KDS_TICKET_W = 156
 local KDS_MAX_TICKETS = 6
-local KDS_MAX_ROWS = 5
+local KDS_MAX_ROWS = 7 -- lines per ticket
 
 function Screens.kds(gui: SurfaceGui, m: Kds)
 	local parts = { m.idle or "", m.used, m.ready, m.dough.Small or 0, m.dough.Medium or 0, m.dough.Large or 0 }
@@ -137,20 +137,26 @@ function Screens.kds(gui: SurfaceGui, m: Kds)
 			local time = text(h, "", F.Mono, 14, { TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 0), Size = UDim2.new(0, 54, 1, 0) })
 			refs[o.id] = { head = h, title = title, time = time }
 			local rows, hidden = TicketRows.fit(TicketRows.group(o.items), KDS_MAX_ROWS)
-			for j, row in rows do
-				local line = frame(ticket, { Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, LayoutOrder = j })
-				frame(line, { Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = C.Rule })
-				local sq = frame(line, { Position = UDim2.fromOffset(6, 3), Size = UDim2.fromOffset(13, 13), BackgroundColor3 = C.Panel })
-				text(sq, string.sub(row.size, 1, 1), F.Mono, 10, { TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1) })
+			local n = 0
+			for _, row in rows do
 				local done = TicketRows.done(row)
-				local label = TicketRows.label(row)
-				text(line, if done then "<s>" .. label .. "</s>" else label, F.Label, 13, {
-					RichText = true,
-					TextColor3 = if done then Color3.fromRGB(139, 132, 120) else C.Ink,
-					Position = UDim2.fromOffset(24, 1),
-					Size = UDim2.new(1, -28, 1, -1),
-					TextTruncate = Enum.TextTruncate.AtEnd,
-				})
+				-- The size on the first line; each topping on a line of its own.
+				for k, label in TicketRows.lines(row) do
+					n += 1
+					local line = frame(ticket, { Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, LayoutOrder = n })
+					if k == 1 then
+						frame(line, { Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = C.Rule })
+						local sq = frame(line, { Position = UDim2.fromOffset(6, 3), Size = UDim2.fromOffset(13, 13), BackgroundColor3 = C.Panel })
+						text(sq, string.sub(row.size, 1, 1), F.Mono, 10, { TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1) })
+					end
+					text(line, if done then "<s>" .. label .. "</s>" else label, F.Label, 13, {
+						RichText = true,
+						TextColor3 = if done then Color3.fromRGB(139, 132, 120) else C.Ink,
+						Position = UDim2.fromOffset(24, 1),
+						Size = UDim2.new(1, -28, 1, -1),
+						TextTruncate = Enum.TextTruncate.AtEnd,
+					})
+				end
 			end
 			if hidden > 0 then
 				local line = frame(ticket, { Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, LayoutOrder = 99 })

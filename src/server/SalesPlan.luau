@@ -10,7 +10,8 @@ local SalesPlan = {}
 
 export type Week = { total: number, days: { number } }
 export type Mix = { small: number, medium: number, large: number }
-export type Item = { pizza: string, size: string }
+-- One pizza: a size and its toppings (0..Config.MaxToppings, in Config.Toppings order).
+export type Item = { size: string, toppings: { string } }
 
 local function sizeWeights(): { number }
 	local weights = {}
@@ -70,21 +71,39 @@ function SalesPlan.rollPizzaCount(mix: Mix, rng: Random): number
 	return rng:NextInteger(O.Large.min, O.Large.max)
 end
 
+-- 0..MaxToppings different toppings, the popular ones more often, in menu order.
+function SalesPlan.rollToppings(rng: Random): { string }
+	local count = math.min(weightedIndex(Config.ToppingCount, rng) - 1, Config.MaxToppings)
+	local left = table.clone(Config.Toppings)
+	local picked: { [string]: boolean } = {}
+	for _ = 1, count do
+		local weights = {}
+		for i, t in left do
+			weights[i] = Config.ToppingPopularity[t] or 0
+		end
+		picked[table.remove(left, weightedIndex(weights, rng)) :: string] = true
+	end
+	local toppings = {}
+	for _, t in Config.Toppings do
+		if picked[t] then
+			table.insert(toppings, t)
+		end
+	end
+	return toppings
+end
+
 function SalesPlan.rollItems(mix: Mix, rng: Random): { Item }
 	local n = SalesPlan.rollPizzaCount(mix, rng)
 	local weights = sizeWeights()
 	-- Big orders tend to repeat a few favorites (party orders), small ones are anything.
 	local favorites = {}
 	for _ = 1, if n > 4 then 3 else n do
-		table.insert(favorites, {
-			pizza = Config.PizzaOrder[rng:NextInteger(1, #Config.PizzaOrder)],
-			size = Config.Sizes[weightedIndex(weights, rng)],
-		})
+		table.insert(favorites, { size = Config.Sizes[weightedIndex(weights, rng)], toppings = SalesPlan.rollToppings(rng) })
 	end
 	local items = {}
 	for i = 1, n do
 		local pick = favorites[((i - 1) % #favorites) + 1]
-		table.insert(items, { pizza = pick.pizza, size = pick.size })
+		table.insert(items, { size = pick.size, toppings = table.clone(pick.toppings) })
 	end
 	return items
 end
@@ -92,9 +111,17 @@ end
 function SalesPlan.price(items: { Item }): number
 	local total = 0
 	for _, item in items do
-		total += Config.SizePrice[item.size] or 0
+		total += Config.PizzaPrice(item.size, item.toppings)
 	end
 	return total
+end
+
+-- "Large pepperoni & mushrooms", "Small cheese"
+function SalesPlan.name(item: Item): string
+	if #item.toppings == 0 then
+		return item.size .. " cheese"
+	end
+	return item.size .. " " .. string.lower(table.concat(item.toppings, " & "))
 end
 
 -- Cumulative share of a day's sales that should have come in by `hour`.
@@ -118,18 +145,22 @@ function SalesPlan.expectedTicket(mix: Mix): number
 	local medium = (O.Medium.min + O.Medium.max) / 2
 	local large = (O.Large.min + O.Large.max) / 2
 	local pizzas = mix.small * small + mix.medium * medium + mix.large * large
+	local avgToppings = 0
+	for i, w in Config.ToppingCount do
+		avgToppings += w * (i - 1)
+	end
 	local avgPrice = 0
 	for size, w in O.SizeMix do
-		avgPrice += w * (Config.SizePrice[size] or 0)
+		avgPrice += w * ((Config.SizePrice[size] or 0) + (Config.ToppingPrice[size] or 0) * avgToppings)
 	end
 	return pizzas * avgPrice
 end
 
--- "2 Large Pepperoni, 1 Medium Cheese"
+-- "2 Large pepperoni & mushrooms, 1 Medium cheese"
 function SalesPlan.describe(items: { Item }): string
 	local order, counts = {}, {}
 	for _, item in items do
-		local key = item.size .. " " .. item.pizza
+		local key = SalesPlan.name(item)
 		if not counts[key] then
 			counts[key] = 0
 			table.insert(order, key)

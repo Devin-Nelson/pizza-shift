@@ -32,7 +32,6 @@ export type Workstation = typeof(setmetatable({} :: {
 	fov: number,
 	folder: Folder, -- local-only parts while at this station
 	_view: any,
-	_saved: { eye: Vector3, focus: Vector3, fov: number }?, -- the view to go back to after pushView
 	_standAt: Vector3,
 	_root: BasePart?,
 	_hidden: { [Instance]: boolean }, -- what we hid of our own character
@@ -180,7 +179,6 @@ function Workstation.enter(station: BasePart): Workstation?
 		_root = root,
 		_hidden = {},
 		_others = {},
-		_saved = nil,
 	}, Workstation)
 	self:resetView()
 
@@ -244,14 +242,8 @@ function Workstation.enter(station: BasePart): Workstation?
 	return self
 end
 
--- Sets the working view. While something's pushed on top (pushView), this
--- becomes the view popView() returns to instead.
 local function setView(self: Workstation, eye: Vector3, focus: Vector3, fov: number)
-	if self._saved then
-		self._saved = { eye = eye, focus = focus, fov = fov }
-	else
-		self.eye, self.focus, self.fov = eye, focus, fov
-	end
+	self.eye, self.focus, self.fov = eye, focus, fov
 end
 
 -- Back to this station's own view (Config.StationView).
@@ -260,27 +252,6 @@ function Workstation.resetView(self: Workstation)
 	local spot = self.frame.Position
 	local side = self.right * (v.side or 0)
 	setView(self, spot + self.toWorker * v.back + Vector3.yAxis * v.height + side, spot + self.toWorker * (v.focusBack or 0) + Vector3.yAxis * (v.focusUp or 0) + side, v.fov)
-end
-
--- Looks at something else for a moment (e.g. a job aid card up close); popView()
--- goes back to the working view.
-function Workstation.pushView(self: Workstation, eye: Vector3, focus: Vector3, fov: number)
-	if not self._saved then
-		self._saved = { eye = self.eye, focus = self.focus, fov = self.fov }
-	end
-	self.eye, self.focus, self.fov = eye, focus, fov
-end
-
-function Workstation.popView(self: Workstation)
-	local saved = self._saved
-	if saved then
-		self._saved = nil
-		self.eye, self.focus, self.fov = saved.eye, saved.focus, saved.fov
-	end
-end
-
-function Workstation.viewPushed(self: Workstation): boolean
-	return self._saved ~= nil
 end
 
 -- The standard close-up working angle (Config.StationView.Default) over `point`.

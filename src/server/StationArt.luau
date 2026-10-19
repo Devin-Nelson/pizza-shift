@@ -99,180 +99,6 @@ local function crate(parent: Instance, base: CFrame, offset: CFrame, ingredient:
 end
 
 ---------------------------------------------------------------------------
--- Job aids: laminated reference cards propped up at a station, tilted back
--- toward the worker so they show in the station camera. `JobAid` = the
--- station they belong to (clients let you click one to read it up close).
----------------------------------------------------------------------------
-
-local AID_PPS = 200 -- card print resolution (pixels per stud)
-local CRUST = Color3.fromRGB(225, 180, 110)
-
-local function guiFrame(parent: Instance, props: { [string]: any }): Frame
-	local f = Instance.new("Frame")
-	f.BorderSizePixel = 0
-	for k, v in props do
-		(f :: any)[k] = v
-	end
-	f.Parent = parent
-	return f
-end
-
-local function guiText(parent: Instance, text: string, props: { [string]: any }): TextLabel
-	local t = Instance.new("TextLabel")
-	t.BackgroundTransparency = 1
-	t.FontFace = Style.Font.LabelBold
-	t.TextScaled = true
-	t.TextColor3 = Style.Color.Ink
-	t.Text = text
-	for k, v in props do
-		if k == "Font" then
-			t.FontFace = if v == Enum.Font.Code then Style.Font.Mono else Style.Font.Heading
-		else
-			(t :: any)[k] = v
-		end
-	end
-	t.Parent = parent
-	return t
-end
-
--- A circle `d` px across centered at (x, y) px.
-local function guiCircle(parent: Instance, x: number, y: number, d: number, color: Color3, outline: Color3?): Frame
-	local c = guiFrame(parent, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(d, d), BackgroundColor3 = color })
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = c
-	if outline then
-		local s = Instance.new("UIStroke")
-		s.Color = outline
-		s.Thickness = 3
-		s.Parent = c
-	end
-	return c
-end
-
--- The card: a white plate with a red title band, standing with its bottom
--- edge at `offset` and leaning back. `draw` fills the body (given its size in
--- pixels). Returns the card part.
-local AID_TILT = math.rad(55) -- lying back for cards on a work surface, seen from above
-local function jobAid(parent: Instance, base: CFrame, offset: CFrame, size: Vector2, stationId: string, title: string, draw: (Frame, Vector2) -> (), tilt: number?): Part
-	local lay = tilt or AID_TILT
-	local rise, lean = size.Y / 2 * math.cos(lay), size.Y / 2 * math.sin(lay)
-	local card = P(parent, base, Vector3.new(size.X, size.Y, 0.05), offset * CFrame.new(0, rise, lean) * CFrame.Angles(lay, 0, 0), Color3.fromRGB(250, 250, 245), Enum.Material.SmoothPlastic, { name = "JobAid", collide = false })
-	card:SetAttribute("JobAid", stationId)
-	local gui = Instance.new("SurfaceGui")
-	gui.Face = Enum.NormalId.Front -- toward the worker
-	gui.LightInfluence = 0
-	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	gui.PixelsPerStud = AID_PPS
-	local px = size * AID_PPS
-	local bg = guiFrame(gui, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Style.Color.Cream })
-	local band = guiFrame(bg, { Size = UDim2.new(1, 0, 0, px.Y * 0.18), BackgroundColor3 = Config.Brand.Red })
-	guiText(band, title, { Size = UDim2.fromScale(1, 1), TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBlack })
-	local body = guiFrame(bg, { Position = UDim2.fromOffset(0, px.Y * 0.18), Size = UDim2.new(1, 0, 1, -px.Y * 0.18), BackgroundTransparency = 1 })
-	draw(body, Vector2.new(px.X, px.Y * 0.82))
-	gui.Parent = card
-	-- A prop holding up its top edge
-	P(parent, base, Vector3.new(0.06, rise * 2, 0.06), offset * CFrame.new(0, rise, lean * 2 + 0.04), STEEL_DARK, Enum.Material.Metal, { collide = false })
-	return card
-end
-
--- The sauce line: 3/4" in from the edge on every size.
-local function drawSauce(body: Frame, px: Vector2)
-	local d = px.Y * 0.8
-	local cx = px.X * 0.3
-	guiCircle(body, cx, px.Y * 0.5, d, CRUST)
-	-- Drawn wider than true scale so the border reads at a glance.
-	guiCircle(body, cx, px.Y * 0.5, d * 0.78, Config.IngredientColors.Sauce)
-	guiText(body, string.format("%s\" BORDER\nevery size\n\nCover to the line.\nKeep the rim clean.", if Config.Sauce.BorderInches == 0.75 then "3/4" else tostring(Config.Sauce.BorderInches)), {
-		Position = UDim2.fromOffset(px.X * 0.56, px.Y * 0.08),
-		Size = UDim2.fromOffset(px.X * 0.42, px.Y * 0.84),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-end
-
--- Cheese portions by size.
-local function drawCheese(body: Frame, px: Vector2)
-	local lines = {}
-	for _, size in Config.Sizes do
-		table.insert(lines, string.format("%-7s %g oz", string.upper(size), Config.CheesePortion[size]))
-	end
-	table.insert(lines, "within 10%")
-	guiText(body, table.concat(lines, "\n"), { Position = UDim2.fromOffset(px.X * 0.08, px.Y * 0.06), Size = UDim2.fromOffset(px.X * 0.84, px.Y * 0.88), Font = Enum.Font.Code, TextXAlignment = Enum.TextXAlignment.Left })
-end
-
--- Topping portions: one row per pizza, one column per size.
-local function drawPortions(body: Frame, px: Vector2)
-	local pizzas = {}
-	local totalLines = 0
-	for _, name in Config.PizzaOrder do
-		local recipe = Config.Recipes[name]
-		if recipe and #recipe > 0 then
-			table.insert(pizzas, name)
-			totalLines += #recipe
-		end
-	end
-	local headH = px.Y * 0.12
-	local lineH = (px.Y - headH - px.Y * 0.1) / totalLines
-	local colW = { px.X * 0.28, px.X * 0.24, px.X * 0.24, px.X * 0.24 }
-	-- One text size for the whole table (scaled-to-fit cells came out uneven).
-	local textSize = math.floor(lineH * 0.78)
-	local function cell(col: number, y: number, h: number, text: string, face: Font, size: number, color: Color3?)
-		local x = 0
-		for c = 1, col - 1 do
-			x += colW[c]
-		end
-		guiText(body, text, {
-			Position = UDim2.fromOffset(x + 6, y + 2),
-			Size = UDim2.fromOffset(colW[col] - 10, h - 2),
-			FontFace = face,
-			TextScaled = false,
-			TextSize = size,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextYAlignment = Enum.TextYAlignment.Top,
-			TextColor3 = color or Style.Color.Ink,
-		})
-	end
-	local headSize = math.floor(headH * 0.62)
-	cell(1, 0, headH, "PIZZA", Style.Font.Heading, headSize, Config.Brand.Red)
-	for i, size in Config.Sizes do
-		cell(i + 1, 0, headH, string.upper(size), Style.Font.Heading, headSize, Config.Brand.Red)
-	end
-	local y = headH
-	for _, name in pizzas do
-		local recipe = Config.Recipes[name]
-		local h = lineH * #recipe
-		guiFrame(body, { Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = Color3.fromRGB(200, 200, 195) })
-		cell(1, y, h, string.upper(name), Style.Font.LabelBold, textSize)
-		for i, size in Config.Sizes do
-			local lines = {}
-			for _, topping in recipe do
-				table.insert(lines, string.format("%s %d", string.upper(string.sub(topping, 1, 4)), Config.PortionFor(topping, size, #recipe)))
-			end
-			cell(i + 1, y, h, table.concat(lines, "\n"), Style.Font.Mono, textSize)
-		end
-		y += h
-	end
-	guiText(body, "Cheese pizza: sauce + cheese only. All portions within 10%.", { Position = UDim2.fromOffset(4, px.Y * 0.9), Size = UDim2.fromOffset(px.X - 8, px.Y * 0.09), TextXAlignment = Enum.TextXAlignment.Left })
-end
-
--- Where to cut: even cuts straight through the middle.
-local function drawCuts(body: Frame, px: Vector2)
-	local d = px.Y * 0.62
-	for i, size in Config.Sizes do
-		local slices = Config.Cut.Slices[size]
-		local x = px.X * (i - 0.5) / #Config.Sizes
-		local y = px.Y * 0.4
-		guiCircle(body, x, y, d * Config.PizzaInches[size] / Config.PizzaInches.Large, CRUST)
-		local cuts = slices // 2
-		for c = 0, cuts - 1 do
-			local line = guiFrame(body, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(d * Config.PizzaInches[size] / Config.PizzaInches.Large, 4), BackgroundColor3 = Color3.fromRGB(60, 40, 30) })
-			line.Rotation = c * 180 / cuts
-		end
-		guiText(body, string.format("%s\n%d slices", string.upper(size), slices), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(x, px.Y * 0.74), Size = UDim2.fromOffset(px.X / #Config.Sizes - 10, px.Y * 0.24) })
-	end
-end
-
----------------------------------------------------------------------------
 
 local Builders: { [string]: (Instance, CFrame) -> () } = {}
 
@@ -503,9 +329,6 @@ Builders.DoughTable = function(m, base)
 	for j = 0, 1 do
 		P(m, base, Vector3.new(0.55, 0.55, 0.55), at(w / 2 - 0.65, h + 0.45, 0.85 + j * 0.9), DOUGH, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Ball, collide = false })
 	end
-	-- Job aid: the sauce line, past the sauce spot. (No dough sizes card: the user
-	-- had it removed; the size buttons show the inches.)
-	jobAid(m, base, at(w / 2 - 0.7, h, L.workZ - 0.5), Vector2.new(1.1, 0.95), "Sauce", "SAUCE", drawSauce)
 	-- Cart of proofed dough trays under the table
 	for i = 0, 3 do
 		P(m, base, Vector3.new(4.2, 0.35, 2.8), at(L.stretchX, 1.15 + i * 0.38, 0), Color3.fromRGB(225, 225, 220), Enum.Material.Plastic, { collide = i == 0 })
@@ -518,10 +341,9 @@ end
 -- black topping pans set into the rail behind it, and a sloped stainless
 -- canopy over the pans. The grate is split into four zones, oven side last:
 -- sauced pizzas waiting (SaucedQueue marker), the cheese spot, cheesed pizzas
--- waiting (CheesedQueue marker), and the toppings spot. Job aids (cheese
--- portions, topping portions) stand on the rail behind their spots, where the
--- station cameras can see them. Finished pizzas go on the ready rack, a
--- separate table at the oven end.
+-- waiting (CheesedQueue marker), and the toppings spot. Finished pizzas go on
+-- the ready rack, a separate table at the oven end. (Portions are in the
+-- stations' tip cards; there are no job aid cards.)
 Builders.MakeLine = function(m, base)
 	local L = StationArt.Layout.MakeLine
 	local w, depth, top = L.width, L.depth, L.boardTop
@@ -588,10 +410,6 @@ Builders.MakeLine = function(m, base)
 		P(m, base, Vector3.new(0.06, 1.15, 1.6), at(sx * (w / 2 - 0.03), top + 0.85, canopyZ), STEEL, Enum.Material.Metal)
 	end
 	P(m, base, Vector3.new(w, 0.08, 0.4), at(0, top + 1.55, back - 0.2), STEEL, Enum.Material.Metal, { name = "BackLedge" })
-	-- Job aids stand up on the back ledge, on top of the make-line and out of the
-	-- way of the work (read them up close with the station rail's Job Aid button).
-	jobAid(m, base, at(L.cheeseX, top + 1.6, back - 0.35), Vector2.new(1.4, 1.0), "Cheese", "CHEESE", drawCheese, math.rad(15))
-	jobAid(m, base, at(L.toppingsX, top + 1.6, back - 0.35), Vector2.new(2.2, 1.5), "Toppings", "TOPPING PORTIONS", drawPortions, math.rad(15))
 	-- Where waiting pizzas sit (ShopService lines them up here)
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(L.saucedQueueX, top, L.boardZ), BLACK, nil, { name = "SaucedQueue", transparency = 1, collide = false })
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(L.cheesedQueueX, top, L.boardZ), BLACK, nil, { name = "CheesedQueue", transparency = 1, collide = false })
@@ -768,8 +586,6 @@ Builders.CutTable = function(m, base)
 	for j = 0, 3 do
 		P(m, base, Vector3.new(1.2, 0.05, 1.2), at(0.9, h + 0.03 + j * 0.055, 1.9), cardboard, Enum.Material.Cardboard, { collide = false })
 	end
-	-- Job aid: the cut guide
-	jobAid(m, base, at(-w / 2 + 2.4, h, -0.9), Vector2.new(2.0, 1.3), "CutTable", "CUT GUIDE", drawCuts)
 
 	-- Under the table: white storage bins and a tall stack of flat boxes
 	for i, bx in { -3.2, -0.8 } do

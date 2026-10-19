@@ -151,21 +151,34 @@ spec("the dough timing zone is a sane fraction of the bar", function()
 	assert(g[2] + 2 * Config.Dough.Yellow < 1, "green + yellow bands must fit on the bar")
 end)
 
-spec("every recipe topping is a portioned, colored topping for every size", function()
-	for _, name in Config.PizzaOrder do
-		local recipe = Config.Recipes[name]
-		assert(recipe, "PizzaOrder has unknown recipe " .. name)
-		for _, top in recipe do
-			assert(table.find(Config.Toppings, top), name .. " uses non-topping " .. top)
-			for _, size in Config.Sizes do
-				local p = Config.Portions[top] and Config.Portions[top][size]
-				assert(p and #p > 0, "no portion for " .. size .. " " .. top)
-			end
+spec("every topping has a color, a popularity and a portion for 1 and 2-3 toppings on every size", function()
+	for _, top in Config.Toppings do
+		assert(Config.ToppingPopularity[top] and Config.ToppingPopularity[top] > 0, "no popularity for " .. top)
+		assert(Config.CountedToppings[top] or Config.PieceOz[top], top .. " is neither counted nor weighed")
+		for _, size in Config.Sizes do
+			local p = Config.Portions[top] and Config.Portions[top][size]
+			assert(p and #p == 2 and p[1] > 0 and p[2] > 0, "no portions for " .. size .. " " .. top)
 		end
 	end
 	for _, ing in Config.Ingredients do
 		assert(Config.IngredientColors[ing], "no color for " .. ing)
 	end
+	near(sum(Config.ToppingCount), 1, "ToppingCount odds")
+	eq(#Config.ToppingCount, Config.MaxToppings + 1, "odds for 0..MaxToppings toppings")
+end)
+
+spec("pepperoni and ham go by the piece, everything else by the ounce", function()
+	eq(Config.ToppingAmount("Pepperoni", 40), 40, "pepperoni pieces")
+	eq(Config.ToppingAmount("Ham", 12), 12, "ham pieces")
+	near(Config.ToppingAmount("Mushrooms", 25), 2.5, "mushrooms by weight")
+	eq(Config.PortionFor("Pepperoni", "Large", 1), 40, "the Large Pepperoni spec")
+	eq(Config.PortionFor("Pepperoni", "Large", 3), 32, "2-3 toppings share a portion")
+	eq(Config.PortionPieces("Pepperoni", "Large", 1), 40, "pieces for counted toppings")
+	eq(Config.PortionPieces("Mushrooms", "Large", 1), 25, "pieces that weigh the portion")
+	eq(Config.PortionText("Mushrooms", 2.5), "2.5 oz", "weighed text")
+	eq(Config.PortionText("Pepperoni", 40), "40 pcs", "counted text")
+	eq(Config.PizzaPrice("Large", { "Pepperoni", "Ham" }), 22, "size + 2 toppings")
+	eq(Config.PizzaPrice("Small", {}), 10, "a cheese pizza")
 end)
 
 spec("capacities match the store design (30 skins, 15 ready, 6 oven slots, 2 min bake)", function()
@@ -500,8 +513,8 @@ spec("party orders repeat at most 3 favorites", function()
 		local items = SalesPlan.rollItems(mix, rng)
 		local kinds = {}
 		for _, it in items do
-			assert(Config.Recipes[it.pizza] and Config.SizePrice[it.size], "bad item")
-			kinds[it.size .. it.pizza] = true
+			assert(Config.SizePrice[it.size] and #it.toppings <= Config.MaxToppings, "bad item")
+			kinds[it.size .. table.concat(it.toppings, "+")] = true
 		end
 		local n = 0
 		for _ in kinds do
@@ -511,18 +524,39 @@ spec("party orders repeat at most 3 favorites", function()
 	end
 end)
 
+spec("customers pick 0 to 3 different toppings, in menu order, popular ones more", function()
+	local rng = Random.new(5)
+	local counts, seen = { 0, 0, 0, 0 }, {}
+	for _ = 1, 4000 do
+		local tops = SalesPlan.rollToppings(rng)
+		counts[#tops + 1] += 1
+		local last = 0
+		for _, t in tops do
+			local i = table.find(Config.Toppings, t) :: number
+			assert(i > last, "toppings in menu order, each once")
+			last = i
+			seen[t] = (seen[t] or 0) + 1
+		end
+	end
+	for i, n in counts do
+		assert(math.abs(n / 4000 - Config.ToppingCount[i]) < 0.03, (i - 1) .. " toppings: " .. n)
+	end
+	assert(seen.Pepperoni > seen.Pineapple, "pepperoni beats pineapple")
+end)
+
 spec("price, share-by-hour and describe", function()
-	eq(SalesPlan.price({ { pizza = "Cheese", size = "Large" }, { pizza = "Cheese", size = "Small" } }), 27, "price")
+	eq(SalesPlan.price({ { size = "Large", toppings = {} }, { size = "Small", toppings = {} } }), 27, "price")
+	eq(SalesPlan.price({ { size = "Large", toppings = { "Pepperoni" } } }), 19.5, "a topping costs extra")
 	near(SalesPlan.shareByHour(10), 0, "share at open")
 	near(SalesPlan.shareByHour(16), 0.2, "share after lunch")
 	near(SalesPlan.shareByHour(24), 1, "share at close")
 	eq(
 		SalesPlan.describe({
-			{ pizza = "Pepperoni", size = "Large" },
-			{ pizza = "Cheese", size = "Medium" },
-			{ pizza = "Pepperoni", size = "Large" },
+			{ size = "Large", toppings = { "Pepperoni", "Mushrooms" } },
+			{ size = "Medium", toppings = {} },
+			{ size = "Large", toppings = { "Pepperoni", "Mushrooms" } },
 		}),
-		"2 Large Pepperoni, 1 Medium Cheese",
+		"2 Large pepperoni & mushrooms, 1 Medium cheese",
 		"describe"
 	)
 	assert(SalesPlan.expectedTicket(SalesPlan.dayMix(Random.new(3))) > 0, "expected ticket")
@@ -564,45 +598,54 @@ end)
 ------------------------------------------------------------------ TicketRows
 spec("identical pizzas share a ticket row, in rung-in order", function()
 	local rows = TicketRows.group({
-		{ size = "Large", pizza = "Pepperoni" },
-		{ size = "Small", pizza = "Cheese" },
-		{ size = "Large", pizza = "Pepperoni", loaded = true },
-		{ size = "Medium", pizza = "Pepperoni" },
+		{ size = "Large", toppings = { "Pepperoni" } },
+		{ size = "Small", toppings = {} },
+		{ size = "Large", toppings = { "Pepperoni" }, loaded = true },
+		{ size = "Large", toppings = { "Pepperoni", "Ham" } },
+		{ size = "Medium", toppings = { "Pepperoni" } },
 	})
-	eq(#rows, 3, "rows")
-	eq(rows[1].pizza, "Pepperoni", "first row")
+	eq(#rows, 4, "rows")
 	eq(rows[1].size, "Large", "first row size")
 	eq(rows[1].count, 2, "large pepperoni count")
 	eq(rows[1].loaded, 1, "large pepperoni loaded")
-	eq(rows[2].pizza, "Cheese", "second row keeps rung-in order")
-	eq(rows[3].size, "Medium", "a different size is its own row")
+	eq(#rows[2].toppings, 0, "second row keeps rung-in order")
+	eq(#rows[3].toppings, 2, "another topping is another pizza")
+	eq(rows[4].size, "Medium", "a different size is its own row")
 end)
 
-spec("a row reads its count, or loaded/total while part-loaded", function()
-	eq(TicketRows.label({ size = "Large", pizza = "Veggie", count = 1, loaded = 0 }), "VEGGIE", "single")
-	eq(TicketRows.label({ size = "Large", pizza = "Veggie", count = 3, loaded = 0 }), "VEGGIE x3", "three, none loaded")
-	eq(TicketRows.label({ size = "Large", pizza = "Veggie", count = 3, loaded = 1 }), "VEGGIE 1/3", "one of three loaded")
-	eq(TicketRows.label({ size = "Large", pizza = "Veggie", count = 3, loaded = 3 }), "VEGGIE x3", "all loaded")
-	eq(TicketRows.done({ size = "Large", pizza = "Veggie", count = 3, loaded = 2 }), false, "not done at 2/3")
-	eq(TicketRows.done({ size = "Large", pizza = "Veggie", count = 3, loaded = 3 }), true, "done at 3/3")
+spec("a row lists each topping on its own line, the count on the first", function()
+	local function lines(row)
+		return table.concat(TicketRows.lines(row), "|")
+	end
+	eq(lines({ size = "Large", toppings = { "Pepperoni", "Mushrooms", "Olives" }, count = 1, loaded = 0 }), "PEPPERONI|MUSHROOMS|OLIVES", "single")
+	eq(lines({ size = "Large", toppings = {}, count = 1, loaded = 0 }), "CHEESE", "no toppings")
+	eq(lines({ size = "Large", toppings = { "Ham" }, count = 3, loaded = 0 }), "HAM x3", "three, none loaded")
+	eq(lines({ size = "Large", toppings = { "Ham", "Pineapple" }, count = 3, loaded = 1 }), "HAM 1/3|PINEAPPLE", "one of three loaded")
+	eq(lines({ size = "Large", toppings = { "Ham" }, count = 3, loaded = 3 }), "HAM x3", "all loaded")
+	eq(TicketRows.done({ size = "Large", toppings = {}, count = 3, loaded = 2 }), false, "not done at 2/3")
+	eq(TicketRows.done({ size = "Large", toppings = {}, count = 3, loaded = 3 }), true, "done at 3/3")
 end)
 
 spec("a 30-pizza party order fits a ticket", function()
 	local items = {}
+	local choices = { {}, { "Pepperoni" }, { "Ham", "Pineapple" }, { "Peppers", "Mushrooms", "Olives" } }
 	for i = 1, 30 do
-		local pizzas = { "Cheese", "Pepperoni", "Hawaiian", "Veggie", "Supreme" }
 		local sizes = { "Small", "Medium", "Large" }
-		table.insert(items, { size = sizes[i % 3 + 1], pizza = pizzas[i % 5 + 1] })
+		table.insert(items, { size = sizes[i % 3 + 1], toppings = choices[i % 4 + 1] })
 	end
 	local rows = TicketRows.group(items)
-	local shown, hidden = TicketRows.fit(rows, 5)
-	eq(#shown, 4, "rows shown when folding (the last line is the +N)")
+	local shown, hidden = TicketRows.fit(rows, 8)
+	local used = 0
+	for _, r in shown do
+		used += math.max(1, #r.toppings)
+	end
+	assert(used <= 7, "shown rows leave the last line for the +N, used " .. used)
 	local total = hidden
 	for _, r in shown do
 		total += r.count
 	end
 	eq(total, 30, "no pizza lost when folding")
-	local same, none = TicketRows.fit(TicketRows.group({ { size = "Large", pizza = "Cheese" } }), 5)
+	local same, none = TicketRows.fit(TicketRows.group({ { size = "Large", toppings = { "Ham", "Pineapple", "Olives" } } }), 8)
 	eq(#same, 1, "short tickets keep every row")
 	eq(none, 0, "nothing folded")
 end)

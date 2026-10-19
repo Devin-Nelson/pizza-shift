@@ -36,7 +36,7 @@ local function openPicker(pieId: number, size: string)
 		for _, item in o.items do
 			if not item.loaded and item.size == size then
 				need += 1
-				table.insert(names, item.pizza)
+				table.insert(names, if #item.toppings > 0 then table.concat(item.toppings, " & ") else "Cheese")
 			end
 		end
 		if need > 0 then
