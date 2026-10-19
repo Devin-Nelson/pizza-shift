@@ -236,7 +236,7 @@ Remotes.OpenStorePicker.OnClientEvent:Connect(function(lots: { any }, focus: num
 			local chip = Ui.chip("You're here", C.Green, C.White, { AnchorPoint = at.AnchorPoint, Position = at.Position, Size = UDim2.fromOffset(0, 30), Parent = row })
 			chip.TextSize = Style.Size.Body
 		elseif lot.owner ~= nil and lot.count >= lot.max then
-			Ui.flatButton("Full", "dark", at)
+			Ui.flatButton("Full", "key", at)
 		else
 			local b = Ui.flatButton(if lot.owner == nil then "Open store" else "Join", "primary", at)
 			b.Activated:Connect(function()
@@ -252,6 +252,86 @@ Remotes.OpenStorePicker.OnClientEvent:Connect(function(lots: { any }, focus: num
 			closeMenu()
 		end)
 	end
+end)
+
+---------------------------------------------------------------------------
+-- Staff menu: your store's hired staff (NPCs). The owner hires insiders and
+-- drivers and moves insiders between stations; co-workers can look. Managers
+-- come from the staff roll (not live yet).
+---------------------------------------------------------------------------
+Remotes.OpenStaffMenu.OnClientEvent:Connect(function(info: any)
+	closeMenu()
+	local root, body, close = Ui.panel(if info.canEdit then "Your staff" else string.format("%s's staff", tostring(info.owner)), 560, 560)
+	menuOpen = root
+	close.Activated:Connect(closeMenu)
+	local scroll = Ui.new("ScrollingFrame", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 4,
+		ScrollBarImageColor3 = C.CreamDim,
+		Parent = body,
+	})
+	Ui.new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = scroll })
+	local order = 0
+	local function nextOrder(): number
+		order += 1
+		return order
+	end
+	local function row(title: string, sub: string, edge: Color3): Frame
+		local r = Ui.box(C.Tile, { Size = UDim2.new(1, -8, 0, 54), LayoutOrder = nextOrder(), Parent = scroll })
+		Ui.edge(r, "left", 4, edge)
+		Ui.text(string.upper(title), Style.Font.Heading, Style.Size.Big, { Position = UDim2.fromOffset(16, 6), Size = UDim2.new(1, -190, 0, 22), TextTruncate = Enum.TextTruncate.AtEnd, Parent = r })
+		Ui.text(sub, Style.Font.Body, Style.Size.Small, { TextColor3 = C.CreamDim, Position = UDim2.fromOffset(16, 30), Size = UDim2.new(1, -190, 0, 18), Parent = r })
+		return r
+	end
+	local function rightButton(r: Frame, text: string, kind: string): TextButton
+		return Ui.flatButton(text, kind, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(160, 36), Parent = r })
+	end
+
+	Ui.caption(string.format("Crew (%d)", #info.staff), { LayoutOrder = nextOrder(), Parent = scroll })
+	if #info.staff == 0 then
+		Ui.text(if info.canEdit then "No staff yet - hire someone below." else "No staff yet.", Style.Font.Body, Style.Size.Body, { TextColor3 = C.CreamDim, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = nextOrder(), Parent = scroll })
+	end
+	for i, h in info.staff do
+		local r = row(h.name, h.display, if h.kind == "Driver" then C.Green else C.Gold)
+		if h.kind ~= "Insider" then
+			Ui.chip("Heat rack", C.Panel, C.Cream, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(0, 30), Parent = r })
+		elseif info.canEdit then
+			-- Click to move them to the next station.
+			local b = rightButton(r, tostring(h.stationLabel) .. "  >", "key")
+			b.Activated:Connect(function()
+				local at = 1
+				for j, s in info.stations do
+					if s.id == h.station then
+						at = j % #info.stations + 1
+					end
+				end
+				Remotes.AssignStaff:FireServer(i, info.stations[at].id)
+			end)
+		else
+			Ui.chip(tostring(h.stationLabel), C.Panel, C.Cream, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(0, 30), Parent = r })
+		end
+	end
+
+	Ui.caption("Hire", { LayoutOrder = nextOrder(), Parent = scroll })
+	for _, k in info.hire do
+		local r = row(k.display, string.format("%d/%d hired", k.count, k.max), C.Line)
+		if k.count >= k.max then
+			rightButton(r, "Fully staffed", "key")
+		elseif info.canEdit then
+			local b = rightButton(r, string.format("Hire - %d", k.cost), if info.coins >= k.cost then "primary" else "key")
+			b.Activated:Connect(function()
+				Remotes.HireStaff:FireServer(k.kind)
+			end)
+		end
+	end
+
+	Ui.caption("Managers", { LayoutOrder = nextOrder(), Parent = scroll })
+	local r = row("Staff roll", "Roll for a " .. table.concat(info.roll.kinds, " or "), C.Red)
+	rightButton(r, if info.roll.enabled then string.format("Roll - %d", info.roll.cost) else "Coming soon", "key")
 end)
 
 ---------------------------------------------------------------------------

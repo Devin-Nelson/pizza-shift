@@ -2,10 +2,11 @@
 -- Runs every store: the sales forecast and order flow, carryout customers,
 -- phone + online orders (one or many pizzas each), dough prep (skins on the
 -- rack), the per-pizza ticket pipeline (Make-Line -> conveyor Oven -> end of
--- belt -> Cut & Box), the heat rack and deliveries, stock, open hours, and the
--- server side of every station minigame. The client only ever reports inputs;
--- scoring and payouts happen here.
+-- belt -> Cut & Box), the heat rack and deliveries, hired staff (NPCs), stock,
+-- open hours, and the server side of every station minigame. The client only
+-- ever reports inputs; scoring and payouts happen here.
 
+local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -43,7 +44,7 @@ type PendingOrder = {
 	house: number?,
 	customer: Customer?,
 	created: number,
-	claimedBy: Player?,
+	claimedBy: any, -- a Player, or a hired staff member (Crew)
 }
 
 type Order = {
@@ -63,7 +64,7 @@ type Order = {
 	readyAt: number?, -- when its last pizza was boxed (total time = readyAt - created)
 	cancelled: boolean,
 	stage: string, -- "Making" | "Rack" | "Out" | "Pickup" | "Done"
-	claimedBy: Player?,
+	claimedBy: any, -- a Player, or a hired staff member (Crew)
 }
 
 -- One pizza an order asked for. It's filled when a finished pizza is loaded
@@ -85,7 +86,7 @@ type Pie = {
 	id: number,
 	size: string,
 	stage: string, -- "Sauced" | "Cheesed" | "Ready" (on the ready rack) | "Oven" | "Exit" (end of the belt) | "Cutting" | "Boxed"
-	claimedBy: Player?,
+	claimedBy: any, -- a Player, or a hired staff member (Crew)
 	quality: { number }, -- dough, sauce, cheese, toppings, cut (each 0..1)
 	visual: Model?,
 	sauce: number?, -- sauce score (also how full the sauce layer looks)
@@ -105,6 +106,19 @@ type Pie = {
 	exitAt: number?, -- when it reached the end of the belt
 	boxWrong: boolean,
 }
+
+-- A hired staff member (an NPC) at work in a store. `station`: where it works
+-- (drivers wait at the heat rack). `job`: what it's in the middle of, done at `busyUntil`.
+type Crew = {
+	kind: string, -- "Insider" | "Driver"
+	name: string,
+	station: string,
+	npc: Model?,
+	busyUntil: number,
+	job: any?,
+}
+-- What StoreService hands over from the owner's save.
+export type CrewSpec = { kind: string, name: string, station: string? }
 
 export type Shop = {
 	id: number,
@@ -133,6 +147,7 @@ export type Shop = {
 	rack: { [number]: RackSkin }, -- dough rack slot -> stretched skin (nil = empty)
 	lastRestock: number,
 	spawning: number,
+	crew: { Crew },
 	alive: boolean,
 }
 
@@ -215,9 +230,24 @@ local function membersOf(shop: Shop): { Player }
 	return list
 end
 
--- Delivery orders need a second player (or, later, a hired driver).
+local function crewCount(shop: Shop, kind: string): number
+	local n = 0
+	for _, c in shop.crew do
+		if c.kind == kind then
+			n += 1
+		end
+	end
+	return n
+end
+
+-- Delivery orders need a second player or a hired driver.
 local function takesDeliveries(shop: Shop): boolean
-	return #membersOf(shop) >= Config.Store.DeliveryMinPlayers
+	return #membersOf(shop) >= Config.Store.DeliveryMinPlayers or crewCount(shop, "Driver") > 0
+end
+
+-- Who has hold of something: a player or a hired staff member.
+local function whoName(who: any): string?
+	return if typeof(who) == "Instance" then (who :: Player).DisplayName elseif type(who) == "table" then who.name else nil
 end
 
 local function average(list: { number }): number
@@ -1132,7 +1162,7 @@ end
 -- Loads a pizza from the ready rack into the next free oven slot and matches
 -- it to an order: the one picked if `orderId`, none at all if it's 0 (an
 -- extra), otherwise automatically. Returns why not, if it can't.
-local function loadPie(shop: Shop, player: Player, pie: Pie, orderId: number?): string?
+local function loadPie(shop: Shop, player: Player?, pie: Pie, orderId: number?): string?
 	if pie.stage ~= "Ready" or pie.claimedBy then
 		return "That pizza isn't on the ready rack any more."
 	end
@@ -1162,7 +1192,9 @@ local function loadPie(shop: Shop, player: Player, pie: Pie, orderId: number?): 
 	pie.pos = 0
 	pie.loadedAt = now
 	pie.settleAt = now + 0.7 -- the slide into the slot plays first
-	pie.workers[player] = true
+	if player then
+		pie.workers[player] = true
+	end
 	setStage(pie, "Oven")
 	table.insert(shop.lanes[slot], pie)
 
@@ -1368,73 +1400,83 @@ local function checkOrder(shop: Shop, order: Order)
 	end
 end
 
+-- A plain R15 NPC in a `torso`-coloured shirt (yields), with the default
+-- walk/idle so it doesn't slide around. Nil if the avatar service failed.
+local function newNpc(torso: Color3): (Model?, Humanoid?)
+	local desc = Instance.new("HumanoidDescription")
+	local skin = randomFrom(SKIN)
+	desc.HeadColor = skin
+	desc.LeftArmColor = skin
+	desc.RightArmColor = skin
+	desc.TorsoColor = torso
+	local pants = Color3.fromHSV(math.random(), 0.4, 0.4)
+	desc.LeftLegColor = pants
+	desc.RightLegColor = pants
+	local ok, npc = pcall(function()
+		return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+	end)
+	if not ok or not npc then
+		warn("[ShopService] couldn't build an NPC:", npc)
+		return nil, nil
+	end
+	local humanoid = npc:FindFirstChildOfClass("Humanoid") :: Humanoid
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
+	local walkAnim = Instance.new("Animation")
+	walkAnim.AnimationId = "rbxassetid://507777826"
+	local idleAnim = Instance.new("Animation")
+	idleAnim.AnimationId = "rbxassetid://507766388"
+	local okW, walkTrack = pcall(animator.LoadAnimation, animator, walkAnim)
+	local okI, idleTrack = pcall(animator.LoadAnimation, animator, idleAnim)
+	if okW and okI then
+		idleTrack:Play()
+		humanoid.Running:Connect(function(speed)
+			if speed > 0.5 then
+				if not walkTrack.IsPlaying then
+					walkTrack:Play(0.2)
+				end
+			elseif walkTrack.IsPlaying then
+				walkTrack:Stop(0.2)
+			end
+		end)
+	end
+	return npc, humanoid
+end
+
+local function npcFolder(shop: Shop): Folder
+	local folder = shop.model:FindFirstChild("NPCs")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "NPCs"
+		folder.Parent = shop.model
+	end
+	return folder :: Folder
+end
+
 local function spawnCustomer(shop: Shop, items: { Item }, online: boolean)
 	shop.spawning += 1
 	task.spawn(function()
-		local desc = Instance.new("HumanoidDescription")
-		local skin = randomFrom(SKIN)
-		desc.HeadColor = skin
-		desc.LeftArmColor = skin
-		desc.RightArmColor = skin
-		desc.TorsoColor = Color3.fromHSV(math.random(), 0.5, 0.85)
-		local pants = Color3.fromHSV(math.random(), 0.4, 0.4)
-		desc.LeftLegColor = pants
-		desc.RightLegColor = pants
-
-		local ok, npc = pcall(function()
-			return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
-		end)
+		local npc, hum = newNpc(Color3.fromHSV(math.random(), 0.5, 0.85))
 		shop.spawning -= 1
-		if not ok or not npc or not shop.alive or not isOpen() then
-			if not ok then
-				warn("[ShopService] couldn't spawn customer:", npc)
-			end
-			if ok and npc then
+		if not npc or not hum or not shop.alive or not isOpen() then
+			if npc then
 				npc:Destroy()
 			end
 			return
 		end
+		local humanoid = hum :: Humanoid
 		npc.Name = "Customer"
-		local humanoid = npc:FindFirstChildOfClass("Humanoid") :: Humanoid
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 		humanoid.WalkSpeed = 12
 		npc:PivotTo(CFrame.new(spot(shop, "CustomerSpawn")))
-		local folder = shop.model:FindFirstChild("NPCs")
-		if not folder then
-			folder = Instance.new("Folder")
-			folder.Name = "NPCs"
-			folder.Parent = shop.model
-		end
-		npc.Parent = folder
+		npc.Parent = npcFolder(shop)
 		local root = npc:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
 			pcall(function()
 				root:SetNetworkOwner(nil)
-			end)
-		end
-
-		-- Default R15 walk/idle so NPCs don't slide around.
-		local animator = humanoid:FindFirstChildOfClass("Animator")
-		if not animator then
-			animator = Instance.new("Animator")
-			animator.Parent = humanoid
-		end
-		local walkAnim = Instance.new("Animation")
-		walkAnim.AnimationId = "rbxassetid://507777826"
-		local idleAnim = Instance.new("Animation")
-		idleAnim.AnimationId = "rbxassetid://507766388"
-		local okW, walkTrack = pcall(animator.LoadAnimation, animator, walkAnim)
-		local okI, idleTrack = pcall(animator.LoadAnimation, animator, idleAnim)
-		if okW and okI then
-			idleTrack:Play()
-			humanoid.Running:Connect(function(speed)
-				if speed > 0.5 then
-					if not walkTrack.IsPlaying then
-						walkTrack:Play(0.2)
-					end
-				elseif walkTrack.IsPlaying then
-					walkTrack:Stop(0.2)
-				end
 			end)
 		end
 
@@ -1458,7 +1500,7 @@ local function newOrder(shop: Shop, items: { Item })
 	local S = Config.Sales
 	local delivery = shop.rng:NextNumber() < S.DeliveryShare and takesDeliveries(shop)
 	local online = shop.rng:NextNumber() < S.OnlineShare
-	local staff = #membersOf(shop)
+	local staff = #membersOf(shop) + crewCount(shop, "Insider")
 	local capacity = staff * Config.Crew.PizzasPerWorker - openPizzas(shop)
 	local playable = staff > 0 and #items <= capacity
 	if not playable then
@@ -1624,6 +1666,534 @@ local function consume(shop: Shop, needs: { [string]: number })
 	end
 end
 
+---------------------------------------------------------------------------
+-- Station steps: what each job does to the kitchen, whoever did it (a
+-- player's minigame, or hired staff). `player` is nil for staff.
+---------------------------------------------------------------------------
+
+-- A skin off the rack, sauced: a new pizza on the make-line.
+local function saucePie(shop: Shop, skin: RackSkin, score: number, player: Player?): Pie
+	shop.pieCounter += 1
+	local pie: Pie = {
+		id = shop.pieCounter,
+		size = skin.size,
+		stage = "Sauced",
+		claimedBy = nil,
+		quality = { skin.quality, score }, -- how well the dough was stretched, then sauced
+		visual = nil,
+		sauce = score,
+		cheese = nil,
+		cheeseFactor = 1,
+		counts = nil,
+		portionFactor = 1,
+		toppedBy = nil,
+		workers = {},
+		ticket = nil,
+		slot = nil,
+		pos = 0,
+		bake = 0,
+		settleAt = 0,
+		loadedAt = nil,
+		exitAt = nil,
+		boxWrong = false,
+	}
+	if player then
+		pie.workers[player] = true
+	end
+	table.insert(shop.pies, pie)
+	placeOnLine(shop, pie)
+	updateBoards(shop)
+	return pie
+end
+
+-- `oz` of cheese on it. Returns the portion factor.
+local function cheesePie(shop: Shop, pie: Pie, oz: number, player: Player?): number
+	local target = Config.CheesePortion[pie.size] or 6
+	local factor = Config.PortionFactor(oz, target)
+	pie.claimedBy = nil
+	pie.cheese = oz / target
+	pie.cheeseFactor = factor
+	pie.portionFactor = factor
+	table.insert(pie.quality, factor)
+	if player then
+		pie.workers[player] = true
+	end
+	setStage(pie, "Cheesed")
+	placeOnLine(shop, pie)
+	updateBoards(shop)
+	return factor
+end
+
+-- `counts`: pieces of each topping put on. A bin that's out can't be used.
+-- It's scored against an order when it's loaded.
+local function topPie(shop: Shop, pie: Pie, counts: { [string]: number }, player: Player?)
+	local placed: { [string]: number } = {}
+	for _, topping in Config.Toppings do
+		local n = counts[topping] or 0
+		if n > 0 and (shop.stock[topping] or 0) <= 0 then
+			n = 0
+		end
+		placed[topping] = n
+		if n > 0 then
+			shop.stock[topping] -= 1
+		end
+	end
+	pie.claimedBy = nil
+	pie.counts = placed
+	pie.toppedBy = player
+	if player then
+		pie.workers[player] = true
+	end
+	pie.readySlot = freeReadySlot(shop) -- there's always one: it was counted when the job started
+	setStage(pie, "Ready")
+	placeOnLine(shop, pie)
+	updateBoards(shop)
+end
+
+-- Off the belt and onto the cut table (others see it there while it's
+-- worked). Returns where it was pulled from.
+local function pullPie(shop: Shop, pie: Pie, who: any): Vector3?
+	pie.claimedBy = who
+	local exitPos = if pie.visual and pie.visual.PrimaryPart then pie.visual.PrimaryPart.Position else nil
+	local lanePies = if pie.slot then shop.lanes[pie.slot] else {}
+	local i = table.find(lanePies, pie)
+	if i then
+		table.remove(lanePies, i)
+	end
+	setStage(pie, "Cutting")
+	local landing = marker(shop, "CutLanding")
+	if pie.visual and landing then
+		Pizza3D.place(pie.visual, CFrame.new(landing.Position))
+	end
+	return exitPos
+end
+
+-- Cut and boxed. Returns its order ticket (nil: an extra nobody ordered).
+local function boxPie(shop: Shop, pie: Pie, score: number, boxOk: boolean, player: Player?): Ticket?
+	pie.claimedBy = nil
+	pie.boxWrong = not boxOk
+	table.insert(pie.quality, score)
+	if player then
+		pie.workers[player] = true
+	end
+	setStage(pie, "Boxed")
+	removePie(shop, pie)
+	local ticket = pie.ticket
+	if ticket then
+		ticket.boxed = true
+		for w in pie.workers do
+			ticket.order.workers[w] = true
+		end
+	end
+	updateBoards(shop)
+	if ticket then
+		checkOrder(shop, ticket.order)
+	end
+	return ticket
+end
+
+---------------------------------------------------------------------------
+-- Hired staff (NPCs)
+---------------------------------------------------------------------------
+-- The owner's hires (StoreService keeps them in the owner's save). Insiders
+-- stand at their station and do its job on the real pizzas, at a set speed
+-- and quality; they only sauce and top what open orders still need. Drivers
+-- wait at the heat rack and take delivery orders out for a timed trip.
+
+local CREW_TAG = "CrewNPC" -- the client hides one standing where its player works
+
+-- Order items still waiting on a pizza, oldest order first.
+local function neededTickets(shop: Shop): { Ticket }
+	local need = {}
+	for _, o in shop.orders do
+		if o.stage == "Making" and not o.cancelled then
+			for _, t in o.tickets do
+				if not t.pie and not t.boxed then
+					table.insert(need, t)
+				end
+			end
+		end
+	end
+	return need
+end
+
+-- The size of the oldest needed item that no pizza on the make-line (or in
+-- a saucer's hands) covers yet. `spare`: more of each size that counts as
+-- covering it (racked skins, when deciding what to stretch). `have`: only
+-- sizes with one of these (skins, when deciding what to sauce).
+local function neededSize(shop: Shop, spare: { [string]: number }?, have: { [string]: number }?): string?
+	local inWork: { [string]: number } = table.clone(spare or {})
+	for _, p in shop.pies do
+		if p.stage == "Sauced" or p.stage == "Cheesed" or p.stage == "Ready" then
+			inWork[p.size] = (inWork[p.size] or 0) + 1
+		end
+	end
+	for _, c in shop.crew do
+		if c.job and c.job.what == "Sauce" then
+			inWork[c.job.skin.size] = (inWork[c.job.skin.size] or 0) + 1
+		end
+	end
+	for _, t in neededTickets(shop) do
+		local size = t.item.size
+		if (inWork[size] or 0) > 0 then
+			inWork[size] -= 1
+		elseif not have or (have[size] or 0) > 0 then
+			return size
+		end
+	end
+	return nil
+end
+
+-- The recipe to put on a `size` pizza next: the oldest needed item of that
+-- size not already covered by a topped pizza (or one being topped).
+local function neededRecipe(shop: Shop, size: string): string?
+	local want: { string } = {}
+	for _, t in neededTickets(shop) do
+		if t.item.size == size then
+			table.insert(want, t.item.pizza)
+		end
+	end
+	local function cover(counts: { [string]: number }?)
+		local best, bestScore = nil, -math.huge
+		for i, pizza in want do
+			local score = matchScore(Config.Recipes[pizza] or {}, counts)
+			if score > bestScore then
+				best, bestScore = i, score
+			end
+		end
+		if best then
+			table.remove(want, best)
+		end
+	end
+	for _, p in shop.pies do
+		if p.size == size and p.stage == "Ready" then
+			cover(p.counts)
+		end
+	end
+	for _, c in shop.crew do
+		if c.job and c.job.what == "Toppings" and c.job.pie.size == size then
+			cover(c.job.counts)
+		end
+	end
+	return want[1]
+end
+
+-- Where a staff member stands: like a player at that station, facing the
+-- work; the `k`th one there stands alongside.
+local function crewSpot(shop: Shop, stationName: string, k: number): CFrame?
+	local st = station(shop, stationName)
+	if not st then
+		return nil
+	end
+	local pizzaAt = st:GetAttribute("PizzaAt")
+	local rel = if typeof(pizzaAt) == "Vector3" then pizzaAt else Vector3.new(0, st.Size.Y, -0.5)
+	local art = st.CFrame * CFrame.new(0, -st.Size.Y / 2, 0)
+	local workAt = (art * CFrame.new(rel)).Position
+	local look = art.LookVector
+	local toWorker = Vector3.new(look.X, 0, look.Z).Unit
+	local right = Vector3.new(0, 1, 0):Cross(toWorker).Unit
+	local view = Config.StationView[stationName] or Config.StationView.Default
+	local side = if k == 0 then 0 else (if k % 2 == 1 then 1 else -1) * 2.2 * math.ceil(k / 2)
+	local at = workAt + toWorker * (view.stand or 1.9) + right * side
+	-- On the floor below (the station's base can be up on a counter, like the register).
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { npcFolder(shop) }
+	params.RespectCanCollide = true
+	local hit = workspace:Raycast(Vector3.new(at.X, workAt.Y + 1, at.Z), Vector3.new(0, -20, 0), params)
+	at = Vector3.new(at.X, if hit then hit.Position.Y else art.Position.Y, at.Z)
+	return CFrame.lookAt(at, at - toWorker)
+end
+
+-- Puts the NPC back at its post (after a delivery, or when it spawns).
+local function crewToPost(shop: Shop, c: Crew)
+	local npc = c.npc
+	local root = npc and npc:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = npc and npc:FindFirstChildOfClass("Humanoid")
+	if not npc or not root or not humanoid then
+		return
+	end
+	local k = 0
+	for _, other in shop.crew do
+		if other == c then
+			break
+		elseif other.station == c.station then
+			k += 1
+		end
+	end
+	local cf = crewSpot(shop, c.station, k)
+	if cf then
+		root.Anchored = true
+		npc:PivotTo(cf + Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2, 0))
+	end
+	npc.Parent = npcFolder(shop)
+end
+
+local function spawnCrew(shop: Shop, c: Crew)
+	task.spawn(function()
+		local npc, humanoid = newNpc(Config.Brand.Red)
+		if not npc or not humanoid then
+			return
+		end
+		if not shop.alive or not table.find(shop.crew, c) then
+			npc:Destroy()
+			return
+		end
+		npc.Name = c.name
+		humanoid.DisplayName = c.name
+		humanoid.NameDisplayDistance = 30
+		-- Workers never block anyone (they stand where players work).
+		for _, d in npc:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.CanCollide = false
+			end
+		end
+		setUniform(npc, true)
+		CollectionService:AddTag(npc, CREW_TAG)
+		c.npc = npc
+		if c.job and c.job.what == "Delivery" then
+			return -- out on the road; back at its post when the trip's done
+		end
+		crewToPost(shop, c)
+	end)
+end
+
+-- Off to the car: walk to the driver door, then gone until the trip's done.
+local function crewDriveOff(shop: Shop, c: Crew)
+	local npc = c.npc
+	local root = npc and npc:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = npc and npc:FindFirstChildOfClass("Humanoid")
+	local door = marker(shop, "DriverDoorSign")
+	if not npc or not root or not humanoid or not door then
+		return
+	end
+	root.Anchored = false
+	pcall(function()
+		root:SetNetworkOwner(nil)
+	end)
+	-- shortcut: walks straight at the door (no pathfinding; it can't collide, so it cuts through counters).
+	humanoid:MoveTo(Vector3.new(door.Position.X, root.Position.Y, door.Position.Z))
+	local job = c.job
+	task.delay(5, function()
+		if c.job == job and c.npc == npc then
+			npc.Parent = nil
+		end
+	end)
+end
+
+-- Drops whatever the staff member was doing, back where it came from.
+local function releaseCrew(shop: Shop, c: Crew)
+	local job = c.job
+	c.job = nil
+	if not job then
+		return
+	end
+	local what = job.what
+	if what == "Register" then
+		job.entry.claimedBy = nil
+	elseif what == "Dough" then
+		shop.stock.Dough = math.min(Config.Shop.MaxStock, shop.stock.Dough + 1)
+	elseif what == "Sauce" then
+		rackAdd(shop, job.skin)
+		updateSkinRack(shop)
+		shop.stock.Sauce = math.min(Config.Shop.MaxStock, shop.stock.Sauce + 1)
+	elseif what == "Cheese" or what == "Toppings" or what == "Load" then
+		job.pie.claimedBy = nil
+		if what == "Cheese" then
+			shop.stock.Cheese = math.min(Config.Shop.MaxStock, shop.stock.Cheese + 1)
+		end
+		arrangeMakeLine(shop)
+	elseif what == "Cut" then
+		local pie = job.pie
+		pie.claimedBy = nil
+		if pie.stage == "Cutting" and pie.slot and table.find(shop.pies, pie) then
+			returnToLane(shop, pie)
+		end
+	elseif what == "Delivery" then
+		local o = job.order
+		o.claimedBy = nil
+		if o.stage == "Out" then
+			o.stage = "Rack"
+		end
+		crewToPost(shop, c)
+	end
+	updateBoards(shop)
+end
+
+-- Starts the staff member's next job at its station, if there is one.
+local function crewStart(shop: Shop, c: Crew): any?
+	local s = c.station
+	if c.kind == "Driver" then
+		for _, o in shop.orders do
+			if o.stage == "Rack" and o.delivery and not o.claimedBy and houses[o.house or 0] then
+				o.claimedBy = c
+				o.stage = "Out"
+				return { what = "Delivery", order = o }
+			end
+		end
+	elseif s == "Register" then
+		for _, e in shop.pending do
+			if not e.claimedBy and (e.kind == "phone" or (e.customer and e.customer.state == "Queued")) then
+				e.claimedBy = c
+				return { what = "Register", entry = e }
+			end
+		end
+	elseif s == "Dough" then
+		local skins, used = rackCounts(shop)
+		if used >= Config.RackCapacity() or hasStock(shop, { Dough = 1 }) then
+			return nil
+		end
+		-- A size open orders need and nothing covers yet; otherwise prep whichever
+		-- size is shortest on the racks for how often it's ordered.
+		local spare = table.clone(skins)
+		for _, other in shop.crew do
+			if other.job and other.job.what == "Dough" then
+				spare[other.job.size] = (spare[other.job.size] or 0) + 1
+			end
+		end
+		local size = neededSize(shop, spare, nil)
+		if not size then
+			local best = math.huge
+			for _, sz in Config.Sizes do
+				local ratio = (skins[sz] or 0) / Config.OrderSizes.SizeMix[sz]
+				if ratio < best then
+					size, best = sz, ratio
+				end
+			end
+		end
+		consume(shop, { Dough = 1 })
+		return { what = "Dough", size = size }
+	elseif s == "Sauce" then
+		local size = neededSize(shop, nil, (rackCounts(shop)))
+		if not size or hasStock(shop, { Sauce = 1 }) then
+			return nil
+		end
+		local skin = rackTake(shop, size)
+		if not skin then
+			return nil
+		end
+		consume(shop, { Sauce = 1 })
+		updateSkinRack(shop)
+		return { what = "Sauce", skin = skin }
+	elseif s == "Cheese" then
+		local pie = pickPie(shop, "Sauced")
+		if not pie or hasStock(shop, { Cheese = 1 }) then
+			return nil
+		end
+		consume(shop, { Cheese = 1 })
+		pie.claimedBy = c
+		return { what = "Cheese", pie = pie }
+	elseif s == "Toppings" then
+		if readyRoom(shop) <= 0 then
+			return nil
+		end
+		for _, pie in shop.pies do
+			local pizza = if pie.stage == "Cheesed" and not pie.claimedBy then neededRecipe(shop, pie.size) else nil
+			if pizza then
+				local recipe = Config.Recipes[pizza]
+				local counts: { [string]: number } = {}
+				for _, topping in recipe do
+					counts[topping] = Config.PortionFor(topping, pie.size, #recipe)
+				end
+				pie.claimedBy = c
+				return { what = "Toppings", pie = pie, counts = counts }
+			end
+		end
+	elseif s == "Load" then
+		-- Only pizzas that are exactly what an open order needs (no guessing).
+		for _, pie in shop.pies do
+			if pie.stage == "Ready" and not pie.claimedBy then
+				local t = matchTicket(shop, pie, nil)
+				if t and matchScore(Config.Recipes[t.item.pizza] or {}, pie.counts) == 0 then
+					pie.claimedBy = c
+					return { what = "Load", pie = pie }
+				end
+			end
+		end
+	elseif s == "CutTable" then
+		local pie = pickPie(shop, "Exit")
+		if pie then
+			pullPie(shop, pie, c)
+			return { what = "Cut", pie = pie }
+		end
+	end
+	return nil
+end
+
+-- Finishes the job the staff member started.
+local function crewFinish(shop: Shop, c: Crew)
+	local job = c.job
+	c.job = nil
+	local quality = Config.Staff[c.kind].quality
+	local what = job.what
+	if what == "Register" then
+		local e = job.entry
+		e.claimedBy = nil
+		if table.find(shop.pending, e) and (not e.customer or e.customer.state == "Queued") then
+			removePending(shop, e)
+			createOrder(shop, e.kind, e.items, e.house, table.clone(e.items), e.house, quality, nil, e.customer)
+		end
+	elseif what == "Dough" then
+		local _, used = rackCounts(shop)
+		if used >= Config.RackCapacity() then
+			shop.stock.Dough = math.min(Config.Shop.MaxStock, shop.stock.Dough + 1)
+		else
+			rackAdd(shop, { size = job.size, quality = quality, made = os.clock() })
+			updateSkinRack(shop)
+			updateBoards(shop)
+		end
+	elseif what == "Sauce" then
+		saucePie(shop, job.skin, quality, nil)
+	elseif what == "Cheese" then
+		if job.pie.stage == "Sauced" and table.find(shop.pies, job.pie) then
+			cheesePie(shop, job.pie, Config.CheesePortion[job.pie.size] or 6, nil)
+		end
+	elseif what == "Toppings" then
+		if job.pie.stage == "Cheesed" and table.find(shop.pies, job.pie) then
+			topPie(shop, job.pie, job.counts, nil)
+		end
+	elseif what == "Load" then
+		job.pie.claimedBy = nil
+		if job.pie.stage == "Ready" then
+			loadPie(shop, nil, job.pie, nil) -- the entrance may be busy: it's tried again next time
+		end
+	elseif what == "Cut" then
+		if job.pie.stage == "Cutting" and table.find(shop.pies, job.pie) then
+			boxPie(shop, job.pie, quality, true, nil)
+		end
+	elseif what == "Delivery" then
+		job.order.claimedBy = nil
+		completeOrder(shop, job.order, quality, nil)
+		crewToPost(shop, c)
+	end
+end
+
+-- Once a second: staff finish what's done and pick up the next job.
+local function crewStep(shop: Shop)
+	local now = os.clock()
+	for _, c in shop.crew do
+		if c.job and now >= c.busyUntil then
+			local ok, err = pcall(crewFinish, shop, c)
+			if not ok then
+				warn("[ShopService] staff job failed:", err)
+			end
+			c.busyUntil = now + Config.NextJobDelay
+		elseif not c.job and now >= c.busyUntil and canWork() then
+			c.job = crewStart(shop, c)
+			if c.job then
+				if c.job.what == "Delivery" then
+					local trip = Config.StaffWork.Trip
+					c.busyUntil = now + shop.rng:NextNumber(trip[1], trip[2])
+					crewDriveOff(shop, c)
+				else
+					c.busyUntil = now + (Config.StaffWork.WorkTime[c.station] or 8)
+				end
+				updateBoards(shop)
+			end
+		end
+	end
+end
+
 local PHONE_LINES = {
 	"Hi! Can I get %s delivered to house #%d?",
 	"Yeah, I need %s. I'm at house #%d.",
@@ -1777,19 +2347,7 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 			end
 			return if baking > 0 then string.format("Waiting on the oven: %d pizza%s baking...", baking, if baking == 1 then "" else "s") else "Waiting for pizzas to come out of the oven..."
 		end
-		-- Off the belt and onto the cut table (others see it there while it's worked).
-		pie.claimedBy = player
-		local exitPos = if pie.visual and pie.visual.PrimaryPart then pie.visual.PrimaryPart.Position else nil
-		local lanePies = if pie.slot then shop.lanes[pie.slot] else {}
-		local i = table.find(lanePies, pie)
-		if i then
-			table.remove(lanePies, i)
-		end
-		setStage(pie, "Cutting")
-		local landing = marker(shop, "CutLanding")
-		if pie.visual and landing then
-			Pizza3D.place(pie.visual, CFrame.new(landing.Position))
-		end
+		local exitPos = pullPie(shop, pie, player)
 		local bubbles = {}
 		if math.random() < Config.Cut.BubbleChance then
 			for _ = 1, math.random(1, Config.Cut.MaxBubbles) do
@@ -2139,33 +2697,7 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		end
 		updateSkinRack(shop)
 		endSession(player, session, false)
-		shop.pieCounter += 1
-		local pie: Pie = {
-			id = shop.pieCounter,
-			size = size,
-			stage = "Sauced",
-			claimedBy = nil,
-			quality = { skin.quality, score }, -- how well the dough was stretched, then sauced
-			visual = nil,
-			sauce = score,
-			cheese = nil,
-			cheeseFactor = 1,
-			counts = nil,
-			portionFactor = 1,
-			toppedBy = nil,
-			workers = { [player] = true },
-			ticket = nil,
-			slot = nil,
-			pos = 0,
-			bake = 0,
-			settleAt = 0,
-			loadedAt = nil,
-			exitAt = nil,
-			boxWrong = false,
-		}
-		table.insert(shop.pies, pie)
-		placeOnLine(shop, pie)
-		updateBoards(shop)
+		local pie = saucePie(shop, skin, score, player)
 		pay(shop, player, Config.Pay.Sauce, score, size .. " sauced")
 		if mess > 0.05 then
 			notify(player, "Sauce got on the rim - keep it inside the 3/4\" line.", Color3.fromRGB(255, 180, 100))
@@ -2181,18 +2713,8 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		end
 		local pie = session.pie :: Pie
 		local target = Config.CheesePortion[pie.size] or 6
-		local oz = math.clamp(cheese, 0, target * 3)
-		local factor = Config.PortionFactor(oz, target)
 		endSession(player, session, false)
-		pie.claimedBy = nil
-		pie.cheese = oz / target
-		pie.cheeseFactor = factor
-		pie.portionFactor = factor
-		table.insert(pie.quality, factor)
-		pie.workers[player] = true
-		setStage(pie, "Cheesed")
-		placeOnLine(shop, pie)
-		updateBoards(shop)
+		local factor = cheesePie(shop, pie, math.clamp(cheese, 0, target * 3), player)
 		pay(shop, player, Config.Pay.Cheese, factor, "Cheesed")
 		if factor < 1 then
 			notify(player, "Cheese portion was more than 10% off - the customer will notice.", Color3.fromRGB(255, 180, 100))
@@ -2211,24 +2733,10 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		local placed: { [string]: number } = {}
 		for _, topping in Config.Toppings do
 			local n = counts[topping]
-			n = if isNumber(n) then math.clamp(math.floor(n), 0, 80) else 0
-			if n > 0 and (shop.stock[topping] or 0) <= 0 then
-				n = 0 -- that bin was empty
-			end
-			placed[topping] = n
-			if n > 0 then
-				shop.stock[topping] -= 1
-			end
+			placed[topping] = if isNumber(n) then math.clamp(math.floor(n), 0, 80) else 0
 		end
 		endSession(player, session, false)
-		pie.claimedBy = nil
-		pie.counts = placed
-		pie.toppedBy = player
-		pie.workers[player] = true
-		pie.readySlot = freeReadySlot(shop) -- there's always one: it was counted when the job started
-		setStage(pie, "Ready")
-		placeOnLine(shop, pie)
-		updateBoards(shop)
+		topPie(shop, pie, placed, player)
 		if payload.load == true then
 			local orderId = if isNumber(payload.orderId) then payload.orderId else nil
 			local why = loadPie(shop, player, pie, orderId)
@@ -2285,28 +2793,13 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		local score = 0.45 * cutScore + 0.15 * bubbleScore + 0.2 * seasonScore + (if boxOk then 0.2 else 0)
 
 		endSession(player, session, false)
-		pie.claimedBy = nil
-		pie.boxWrong = not boxOk
-		table.insert(pie.quality, score)
-		pie.workers[player] = true
-		setStage(pie, "Boxed")
-		removePie(shop, pie)
 		local profile = DataService.Get(player)
 		if profile then
 			profile.PizzasMade += 1
 		end
 		pay(shop, player, Config.Pay.Cut, score, if boxOk then "Cut & boxed" else "Wrong box size!")
-		local ticket = pie.ticket
-		if ticket then
-			ticket.boxed = true
-			for w in pie.workers do
-				ticket.order.workers[w] = true
-			end
-			updateBoards(shop)
-			checkOrder(shop, ticket.order)
-		else
+		if not boxPie(shop, pie, score, boxOk, player) then
 			notify(player, "That one was an extra - no order needed it.", Color3.fromRGB(255, 160, 100))
-			updateBoards(shop)
 		end
 		stepDone(player, "CutTable")
 	elseif kind == "Supply" then
@@ -2374,6 +2867,9 @@ local function closeStore(shop: Shop)
 		if session.shop == shop then
 			ShopService.CancelSession(player)
 		end
+	end
+	for _, c in shop.crew do
+		releaseCrew(shop, c)
 	end
 	-- Clear orders before customers leave, so nobody gets "customer gave up" alerts at close.
 	table.clear(shop.pending)
@@ -2504,7 +3000,7 @@ local function queueSnapshot(shop: Shop): any
 				count = #o.tickets,
 				stage = o.stage,
 				age = now - (o.readyAt or o.created),
-				driver = if o.claimedBy then o.claimedBy.DisplayName else nil,
+				driver = whoName(o.claimedBy),
 			})
 		end
 	end
@@ -2539,6 +3035,7 @@ local function tick(shop: Shop)
 	for _, player in idle do
 		assign(player)
 	end
+	crewStep(shop)
 
 	-- Keep everyone working here up to date for the queue panel / station bar.
 	local staff = membersOf(shop)
@@ -2625,6 +3122,7 @@ function ShopService.AddShop(model: Model, name: string, owner: Player?, volume:
 		rack = {},
 		lastRestock = os.clock(),
 		spawning = 0,
+		crew = {},
 		alive = true,
 	}
 	for _, ing in Config.Ingredients do
@@ -2675,6 +3173,7 @@ end
 
 function ShopService.RemoveShop(shop: Shop)
 	shop.alive = false
+	table.clear(shop.crew) -- their NPCs go with the model
 	for player, stay in table.clone(stationed) do
 		if stay.shop == shop then
 			leaveStation(player)
@@ -2693,6 +3192,27 @@ function ShopService.RemoveShop(shop: Shop)
 		table.remove(shops, i)
 	end
 	shop.model:Destroy()
+end
+
+-- The owner's hired staff at `shop` (from their save), rebuilt whole: anyone
+-- mid-job puts it back first. Only kinds that work a station are spawned
+-- (managers from the staff roll don't do anything yet).
+function ShopService.SetCrew(shop: Shop, specs: { CrewSpec })
+	for _, c in shop.crew do
+		releaseCrew(shop, c)
+		if c.npc then
+			c.npc:Destroy()
+		end
+	end
+	table.clear(shop.crew)
+	for _, spec in specs do
+		local post = if spec.kind == "Driver" then "DeliveryRack" else spec.station
+		if (spec.kind == "Insider" or spec.kind == "Driver") and type(post) == "string" and station(shop, post) then
+			local c: Crew = { kind = spec.kind, name = spec.name, station = post, npc = nil, busyUntil = 0, job = nil }
+			table.insert(shop.crew, c)
+			spawnCrew(shop, c)
+		end
+	end
 end
 
 -- Makes `player` one of `shop`'s workers (nil: of no store). Who works where

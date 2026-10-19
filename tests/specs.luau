@@ -189,6 +189,52 @@ spec("the order-matching setting offers Auto and Pick", function()
 end)
 
 ------------------------------------------------------------------ Sales config
+spec("every staff kind is defined; bought kinds have a price, insiders a station and a work time", function()
+	for _, kind in Config.StaffOrder do
+		local def = Config.Staff[kind]
+		assert(def, "StaffOrder lists unknown kind " .. kind)
+		assert(def.max >= 1, kind .. " max")
+		if def.hire == "buy" then
+			assert(def.cost > 0 and def.growth >= 1, kind .. " price")
+			assert(def.quality > 0 and def.quality < 1, kind .. " quality (players should be able to beat it)")
+		else
+			eq(def.hire, "roll", kind .. " hire")
+		end
+	end
+	for _, id in Config.StaffStations do
+		assert(Config.StationInfo(id), "StaffStations has unknown station " .. id)
+		assert(Config.StaffWork.WorkTime[id], id .. " has no staff work time")
+	end
+end)
+
+spec("each hire of a kind costs more than the last", function()
+	eq(Config.HireCost("Insider", 0), 250, "first insider")
+	eq(Config.HireCost("Insider", 1), 400, "second insider")
+	eq(Config.HireCost("Driver", 0), 400, "first driver")
+	for n = 1, Config.Staff.Insider.max do
+		assert(Config.HireCost("Insider", n) > Config.HireCost("Insider", n - 1), "insider price rises at " .. n)
+	end
+end)
+
+spec("staff roll odds sum to 1 and only land on roll kinds", function()
+	local total = 0
+	for _, o in Config.StaffRoll.Odds do
+		total += o.weight
+		eq(Config.Staff[o.kind].hire, "roll", o.kind .. " is a roll kind")
+	end
+	near(total, 1, "odds")
+	eq(Config.RollStaff(0), "AssistantManager", "u = 0")
+	eq(Config.RollStaff(0.95), "StoreManager", "u = 0.95")
+	eq(Config.RollStaff(0.999999), "StoreManager", "u just under 1")
+	local rng, stores = Random.new(7), 0
+	for _ = 1, 10000 do
+		if Config.RollStaff(rng:NextNumber()) == "StoreManager" then
+			stores += 1
+		end
+	end
+	assert(stores > 800 and stores < 1200, "about 10% Store Managers, got " .. stores)
+end)
+
 spec("dayparts tile the open hours exactly and their shares sum to 1", function()
 	local parts = Config.Sales.Dayparts
 	eq(parts[1].from, Config.Day.OpenHour, "first daypart start")

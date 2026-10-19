@@ -18,6 +18,10 @@ local NAMES = {
 	"OpenStorePicker", -- server -> client: (lots, focusLotId?) every lot: { id, owner?, count, max, mine, owned }
 	"RequestStores", -- client -> server: HUD "Stores" button
 	"ChooseStore", -- client -> server: (lotId | nil) open or join the store on that lot; nil = leave yours
+	"RequestStaff", -- client -> server: HUD "Staff" button
+	"OpenStaffMenu", -- server -> client: (info) your store's hired staff, what's for hire, the roll
+	"HireStaff", -- client -> server: (kind) owner buys a Config.Staff kind
+	"AssignStaff", -- client -> server: (index, stationId) owner moves an insider
 	"DeliveryTarget", -- server -> client: (doorPart | nil, seconds for the timer)
 	"TipSeen", -- client -> server: (stationId) the player closed that station's first-visit tip
 }

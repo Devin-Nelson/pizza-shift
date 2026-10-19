@@ -13,6 +13,7 @@
 --    While it's open the work strip steps aside so nothing covers the pizza.
 --  * Follow chip (above the tab) after a step: takes that pizza to its next
 --    station.
+--  * Staff button (beside the tab): the store's hired staff (Staff menu).
 --  * Not at a store: a Stores button where the tab goes (open or join one).
 
 local Players = game:GetService("Players")
@@ -254,14 +255,23 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		Remotes.RequestStores:FireServer()
 	end)
 
-	local tab = Ui.flatButton("", "key", {
-		Name = "StationsTab",
+	-- The Stations tab with the Staff button beside it.
+	local dock = Ui.new("Frame", {
+		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 10, 1, -10),
 		Size = UDim2.fromOffset(0, 40),
 		AutomaticSize = Enum.AutomaticSize.X,
-		Visible = false,
 		Parent = Ui.Root,
+	})
+	list(dock, Enum.FillDirection.Horizontal, 6)
+	local tab = Ui.flatButton("", "key", {
+		Name = "StationsTab",
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Visible = false,
+		LayoutOrder = 1,
+		Parent = dock,
 	})
 	list(tab, Enum.FillDirection.Horizontal, 8, Enum.VerticalAlignment.Center)
 	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), Parent = tab })
@@ -269,6 +279,22 @@ function WorkHud.Init(_isBusy: () -> boolean)
 	Ui.text("STATIONS", F.LabelBold, S.Label, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 40), LayoutOrder = 2, Parent = tab })
 	local tabBadge = Ui.badge("0", { LayoutOrder = 3, Visible = false, Parent = tab })
 	Icons.make("chevron", 12, tab, { dir = "right" }).LayoutOrder = 4
+
+	local staffButton = Ui.flatButton("", "key", {
+		Name = "StaffButton",
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Visible = false,
+		LayoutOrder = 2,
+		Parent = dock,
+	})
+	list(staffButton, Enum.FillDirection.Horizontal, 8, Enum.VerticalAlignment.Center)
+	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), Parent = staffButton })
+	Icons.make("person", 14, staffButton).LayoutOrder = 1
+	Ui.text("STAFF", F.LabelBold, S.Label, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 40), LayoutOrder = 2, Parent = staffButton })
+	staffButton.Activated:Connect(function()
+		Remotes.RequestStaff:FireServer()
+	end)
 
 	local followChip = Ui.flatButton("", "key", {
 		AnchorPoint = Vector2.new(0, 1),
@@ -484,6 +510,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		rail.Visible = onShift and os.clock() - snapshotAt < 3 and info ~= nil and info.queue ~= nil
 		storesButton.Visible = not onShift and here == nil
 		tab.Visible = onShift and not expanded
+		staffButton.Visible = onShift and not expanded
 		if expanded and not onShift then
 			setExpanded(false)
 		end

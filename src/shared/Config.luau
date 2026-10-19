@@ -37,7 +37,7 @@ Config.TicketAge = { Fresh = 120, Aging = 300 }
 
 -- There are no roles: every player at a store can work every station, the
 -- truck and deliveries included (deliveries need the store to take them, see
--- Config.Store.DeliveryMinPlayers).
+-- Config.Store.DeliveryMinPlayers) and hired staff can do the same (Config.Staff).
 
 -- Work stations as the HUD shows them, in workflow order. `stage` is the stage
 -- of the pizzas a station works (pizzas waiting there are in that stage).
@@ -315,9 +315,9 @@ Config.OrderSizes = {
 	SizeMix = { Small = 0.25, Medium = 0.35, Large = 0.40 }, -- how often each pizza size is ordered
 }
 
--- How much of the order flow a store's crew (its players) gets. Orders that
--- would exceed this many open pizzas per worker are handled by the off-screen
--- crew (they still count as store sales).
+-- How much of the order flow a store's crew (its players and hired insiders)
+-- gets. Orders that would exceed this many open pizzas per worker are handled
+-- by the off-screen crew (they still count as store sales).
 Config.Crew = { PizzasPerWorker = 4 }
 
 ---------------------------------------------------------------------------
@@ -335,7 +335,7 @@ Config.Shop = {
 	AutoRestockAmount = 2,
 }
 
--- Store slots: each server has Slots lots (the first is the old HQ site).
+-- Stores: each server has 5 lots (MapBuilder; lot 1 is the old HQ site).
 -- A player opens their own store on a free lot or joins one with room.
 -- The owner earns SaleCut of every completed sale there and OwnerRoyalty on
 -- every other worker's pay (paid by the house, not deducted). When the owner
@@ -348,6 +348,53 @@ Config.Store = {
 	OwnerRoyalty = 0.2,
 	DeliveryMinPlayers = 2,
 }
+
+-- Hired staff (NPCs). The store owner buys them in the Staff menu and they're
+-- saved with the owner's store. Insiders work the station the owner assigns
+-- (any of StaffStations), taking WorkTime seconds a job at `quality` (players
+-- can beat it); they only sauce and top what open orders still need. Drivers
+-- take delivery orders off the heat rack for a Trip of that many seconds. The
+-- first hire of a kind costs `cost`, each next one `growth` times the last;
+-- `max` per store. `hire = "roll"` kinds can't be bought: they come from the
+-- staff roll (Config.StaffRoll), which isn't live yet.
+Config.Staff = {
+	Insider = { display = "Insider", hire = "buy", cost = 250, growth = 1.6, max = 6, quality = 0.75 },
+	Driver = { display = "Delivery Driver", hire = "buy", cost = 400, growth = 1.6, max = 3, quality = 0.75 },
+	AssistantManager = { display = "Assistant Manager", hire = "roll", max = 1 },
+	StoreManager = { display = "Store Manager", hire = "roll", max = 1 },
+}
+Config.StaffOrder = { "Insider", "Driver", "AssistantManager", "StoreManager" }
+Config.StaffStations = { "Register", "Dough", "Sauce", "Cheese", "Toppings", "Load", "CutTable" }
+Config.StaffWork = {
+	WorkTime = { Register = 8, Dough = 10, Sauce = 8, Cheese = 6, Toppings = 10, Load = 3, CutTable = 10 },
+	Trip = { 45, 75 }, -- a driver's round trip, real seconds
+}
+Config.StaffNames = { "Maya", "Leo", "Priya", "Sam", "Ines", "Theo", "Rosa", "Kai", "Nadia", "Omar", "June", "Felix", "Ava", "Marco", "Zoe", "Eli" }
+-- The staff roll (spin) for managers: odds per kind (summing to 1) and the
+-- coins per roll. Not live until Enabled; what managers do is still to design.
+Config.StaffRoll = {
+	Enabled = false,
+	Cost = 2500,
+	Odds = { { kind = "AssistantManager", weight = 0.9 }, { kind = "StoreManager", weight = 0.1 } },
+}
+
+-- Price of the next hire of `kind` when the store already has `owned` of them.
+function Config.HireCost(kind: string, owned: number): number
+	local def = Config.Staff[kind]
+	return math.floor(def.cost * def.growth ^ owned + 0.5)
+end
+
+-- The kind a roll lands on, from a uniform number 0 <= u < 1.
+function Config.RollStaff(u: number): string
+	local odds = Config.StaffRoll.Odds
+	for _, o in odds do
+		if u < o.weight then
+			return o.kind
+		end
+		u -= o.weight
+	end
+	return odds[#odds].kind
+end
 
 -- Set these after creating the products on the Creator Dashboard. 0 = disabled.
 Config.GamePasses = {

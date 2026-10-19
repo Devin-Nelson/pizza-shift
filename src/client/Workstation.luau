@@ -4,8 +4,10 @@
 -- view of the work spot (Config.StationView). The view is the same on every
 -- visit, whatever the character's size or where they walked up from. Their own
 -- character is hidden locally, so the view shows just the pizza and the tools
--- the minigame draws; anyone else standing at the same spot is hidden too.
+-- the minigame draws; anyone else standing at the same spot (a player or
+-- hired staff) is hidden too.
 
+local CollectionService = game:GetService("CollectionService")
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -106,9 +108,18 @@ end
 
 -- Floor height under `at` (collidable parts only), if there is one within reach.
 local function floorBelow(at: Vector3, character: Model): number?
+	-- Not on anyone's head: other players and hired staff can stand on the same spot.
+	local skip: { Instance } = CollectionService:GetTagged("CrewNPC")
+	for _, other in Players:GetPlayers() do
+		if other.Character then
+			table.insert(skip, other.Character)
+		end
+	end
+	table.insert(skip, character)
+	table.insert(skip, workspace.CurrentCamera)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { character, workspace.CurrentCamera }
+	params.FilterDescendantsInstances = skip
 	params.RespectCanCollide = true
 	local hit = workspace:Raycast(at, Vector3.new(0, -20, 0), params)
 	return if hit then hit.Position.Y else nil
@@ -201,10 +212,15 @@ function Workstation.enter(station: BasePart): Workstation?
 			hide(char, self._hidden)
 		end
 		-- Someone else working the same spot would block the view.
+		local others = CollectionService:GetTagged("CrewNPC") -- hired staff (ShopService)
 		for _, other in Players:GetPlayers() do
-			local otherChar = other.Character
-			local otherRoot = otherChar and otherChar:FindFirstChild("HumanoidRootPart") :: BasePart?
-			if other ~= player and otherChar and otherRoot then
+			if other ~= player and other.Character then
+				table.insert(others, other.Character)
+			end
+		end
+		for _, otherChar in others do
+			local otherRoot = otherChar:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if otherRoot then
 				local near = (otherRoot.Position - self._standAt).Magnitude < 3
 				local hiddenParts = self._others[otherChar]
 				if near and not hiddenParts then
