@@ -1,16 +1,18 @@
 --!strict
--- The HUD for working the store, so players can run it however they like:
---  * Station bar (bottom center, on shift but not at a station): one button
---    per station your job can use, with how much is waiting there.
---  * Station rail (left side, while at a station): jump straight to any other
---    station, follow the pizza you just finished to its next step, read the
---    station's job aid up close, switch how loaded pizzas are matched to
---    orders (at the toppings and loading spots), or exit.
---  * Queue panel (right side), depending on the station (Config.Stations
---    `queue`): the make-line queue (orders still waiting on pizzas to go in the
---    oven, loaded ones ticked), the ovens (every pizza baking, with countdowns,
---    and the ones at the exit about to fall), or the heat rack (orders ready to
---    go out - click one to take it - and the ones on the road).
+-- The HUD for working the store, in the store-systems look (Style.luau):
+--  * Tickets (top left), by the station you're at (Config.Stations `queue`):
+--    during the make process, every order still waiting on pizzas (header goes
+--    green, gold, red as it waits; loaded pizzas struck through); at the cut
+--    table, every pizza in the ovens by slot (OUT to pull, red as it's about
+--    to fall); at the heat rack, deliveries ready to go (click one to take it)
+--    and the ones on the road.
+--  * Stations tab (bottom left, on shift): collapsed by default. It opens
+--    sideways along the bottom into a key per station (gold badge = jobs
+--    waiting), then Job Aid, the order-matching switch, Exit and Positions.
+--    While it's open the work strip steps aside so nothing covers the pizza.
+--  * Follow chip (above the tab) after a step: takes that pizza to its next
+--    station.
+--  * Off duty: a Clock In button where the tab goes.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -18,18 +20,36 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Style = require(ReplicatedStorage.Shared.Style)
+local Icons = require(ReplicatedStorage.Shared.Icons)
 local Loading = require(script.Parent.Loading)
 local StationMode = require(script.Parent.StationMode)
 local StationPicks = require(script.Parent.StationPicks)
 local Ui = require(script.Parent.Ui)
-local T = Ui.Theme
 
 local WorkHud = {}
 
+local C = Style.Color
+local F = Style.Font
+local S = Style.Size
+
 local player = Players.LocalPlayer
 
-local FOLLOW_SECONDS = 12 -- how long the "follow this pizza" button stays up
-local LOADED = Color3.fromRGB(90, 210, 110)
+local FOLLOW_SECONDS = 12 -- how long the follow chip stays up
+local TICKET_W = 138
+local MAX_TICKETS = 6
+local KEY_W = 64 -- utility keys on the open bar
+local STATION_ICONS: { [string]: string } = {
+	Register = "register",
+	Dough = "dough",
+	Sauce = "sauce",
+	Cheese = "cheese",
+	Toppings = "toppings",
+	Load = "oven",
+	CutTable = "box",
+	DeliveryRack = "rack",
+	SupplyTruck = "truck",
+}
 
 local function stationLabel(id: string): string
 	local info = Config.StationInfo(id)
@@ -50,50 +70,270 @@ local function myStations(): { string }
 	return list
 end
 
-local function clock(seconds: number): string
-	seconds = math.max(0, seconds)
-	return string.format("%d:%02d", seconds // 60, math.floor(seconds % 60))
+local function list(parent: Instance, dir: Enum.FillDirection, gap: number, valign: Enum.VerticalAlignment?): UIListLayout
+	return Ui.new("UIListLayout", {
+		FillDirection = dir,
+		Padding = UDim.new(0, gap),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		VerticalAlignment = valign or Enum.VerticalAlignment.Top,
+		Parent = parent,
+	})
 end
 
--- Shrinks `frame` (designed at `size`) to fit the screen, leaving `margin` px.
-local function fitToScreen(frame: GuiObject, size: Vector2, margin: Vector2)
-	local scale = Ui.new("UIScale", { Parent = frame })
-	local function fit()
-		local view = workspace.CurrentCamera.ViewportSize
-		scale.Scale = math.min(1, (view.X - margin.X) / size.X, (view.Y - margin.Y) / size.Y)
+---------------------------------------------------------------------------
+-- Tickets
+---------------------------------------------------------------------------
+type Row = { size: string?, text: string, done: boolean? }
+
+-- One ticket: a coloured header (title + time) over cream rows.
+-- Returns the ticket and its time label.
+local function ticket(parent: Instance, order: number, title: string, time: string, headBg: Color3, headFg: Color3, rows: { Row }, clickable: boolean?, dim: boolean?): (GuiObject, TextLabel)
+	local t: GuiObject = Ui.new(if clickable then "TextButton" else "Frame", {
+		BackgroundColor3 = C.Cream,
+		BackgroundTransparency = if dim then 0.35 else 0,
+		Size = UDim2.fromOffset(TICKET_W, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = order,
+		Parent = parent,
+	})
+	if clickable then
+		(t :: any).Text = ""
+		;(t :: any).AutoButtonColor = true
 	end
-	fit()
-	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)
+	list(t, Enum.FillDirection.Vertical, 0)
+	local head = Ui.box(headBg, { Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 0, Parent = t })
+	Ui.text(string.upper(title), F.LabelBold, S.Small, { TextColor3 = headFg, Position = UDim2.fromOffset(6, 0), Size = UDim2.new(1, -50, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = head })
+	local timeLabel = Ui.text(time, F.Mono, S.Small, { TextColor3 = headFg, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 0), Size = UDim2.new(0, 60, 1, 0), Parent = head })
+	for i, r in rows do
+		local row = Ui.box(C.Cream, { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = i, Parent = t })
+		Ui.box(C.Rule, { Size = UDim2.new(1, 0, 0, 1), Parent = row })
+		local x = 6
+		if r.size then
+			local sq = Ui.box(C.Panel, { Position = UDim2.fromOffset(6, 3), Size = UDim2.fromOffset(15, 15), Parent = row })
+			Ui.text(string.sub(r.size, 1, 1), F.Mono, S.Tiny, { TextColor3 = C.Cream, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = sq })
+			x = 27
+		end
+		local text = string.upper(r.text)
+		Ui.text(if r.done then "<s>" .. text .. "</s>" else text, F.Label, S.Small, {
+			RichText = true,
+			TextColor3 = if r.done then Color3.fromRGB(139, 132, 120) else C.Ink,
+			Position = UDim2.fromOffset(x, 1),
+			Size = UDim2.new(1, -x - 24, 1, -1),
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = row,
+		})
+		if r.done then
+			local chk = Ui.box(C.Green, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -5, 0, 3), Size = UDim2.fromOffset(15, 15), Parent = row })
+			local ico = Icons.make("check", 11, chk, { color = C.White })
+			ico.AnchorPoint = Vector2.new(0.5, 0.5)
+			ico.Position = UDim2.fromScale(0.5, 0.5)
+		end
+	end
+	return t, timeLabel
 end
 
-function WorkHud.Init(isBusy: () -> boolean)
+function WorkHud.Init(_isBusy: () -> boolean)
 	local snapshot: any = nil
 	local snapshotAt = 0
 	local follow: any = nil -- the last step's pizza and where it goes next
 	local followAt = 0
+	local expanded = false
 
 	local function waitingAt(id: string): number
 		return if snapshot then tonumber(snapshot.waiting[id]) or 0 else 0
 	end
 
-	-- Station bar (off-station) -------------------------------------------------
-	local bar = Ui.new("Frame", {
-		Name = "StationBar",
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -12),
-		Size = UDim2.fromOffset(820, 56),
+	-- Ticket rail ----------------------------------------------------------------
+	local rail = Ui.new("Frame", {
+		Name = "Tickets",
+		Position = UDim2.fromOffset(10, 10),
+		Size = UDim2.fromOffset((TICKET_W + 6) * MAX_TICKETS + 60, 260),
 		BackgroundTransparency = 1,
 		Visible = false,
-		Parent = Ui.Screen,
-	}, {
-		Ui.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6) }),
+		Parent = Ui.Root,
 	})
-	fitToScreen(bar, Vector2.new(820, 56), Vector2.new(24, 0))
+	list(rail, Enum.FillDirection.Horizontal, 6)
+	-- Ticking times: { label, base age or time left, kind }
+	local timers: { { label: TextLabel, base: number, kind: string } } = {}
+
+	local function clearRail()
+		for _, c in rail:GetChildren() do
+			if c:IsA("GuiObject") then
+				c:Destroy()
+			end
+		end
+		table.clear(timers)
+	end
+
+	local function overflow(n: number, order: number)
+		if n > 0 then
+			Ui.chip("+" .. n, C.Panel, C.Cream, { LayoutOrder = order, Parent = rail })
+		end
+	end
+
+	local function rebuildRail()
+		clearRail()
+		if not snapshot then
+			return
+		end
+		local here = StationMode.Current()
+		local info = if here then Config.StationInfo(here) else nil
+		local mode = if info then info.queue else nil
+		if mode == "make" then
+			for i, o in snapshot.orders do
+				if i > MAX_TICKETS then
+					overflow(#snapshot.orders - MAX_TICKETS, i)
+					break
+				end
+				local rows: { Row } = {}
+				for _, item in o.items do
+					table.insert(rows, { size = item.size, text = item.pizza, done = item.loaded })
+				end
+				local bg, fg = Style.ticketColor(o.age)
+				local kind: string = if o.delivery then "Delivery" else "Carryout"
+				local title = string.format("#%d %s", o.id, kind)
+				local _, timeLabel = ticket(rail, i, title, Style.clock(o.age), bg, fg, rows)
+				table.insert(timers, { label = timeLabel, base = o.age, kind = "age" })
+			end
+		elseif mode == "oven" then
+			for i, p in snapshot.oven do
+				if i > MAX_TICKETS then
+					overflow(#snapshot.oven - MAX_TICKETS, i)
+					break
+				end
+				local bg, fg, time, kind
+				if p.fallsIn then
+					bg, fg, time, kind = C.Red, C.White, "FALLS " .. Style.clock(p.fallsIn), "falls"
+				elseif p.out then
+					bg, fg, time, kind = C.Green, C.White, "PULL", "out"
+				else
+					bg, fg, time, kind = C.Panel, C.Cream, Style.clock(p.left), "left"
+				end
+				local _, timeLabel = ticket(rail, i, "Slot " .. tostring(p.slot), time, bg, fg, { { size = p.size, text = tostring(p.label) } })
+				table.insert(timers, { label = timeLabel, base = if kind == "falls" then p.fallsIn elseif kind == "left" then p.left else 0, kind = kind })
+			end
+		elseif mode == "delivery" then
+			local n = 0
+			for _, o in snapshot.delivery do
+				if o.stage == "Rack" and n < MAX_TICKETS then
+					n += 1
+					local bg, fg = Style.ticketColor(o.age)
+					local t, timeLabel = ticket(rail, n, string.format("#%d House %s", o.id, tostring(o.house)), Style.clock(o.age), bg, fg, { { text = string.format("%d pizza%s - take it", o.count, tostring(if o.count == 1 then "" else "s")) } }, true)
+					table.insert(timers, { label = timeLabel, base = o.age, kind = "age" })
+					local id = o.id;
+					(t :: TextButton).Activated:Connect(function()
+						Remotes.UseStation:FireServer("DeliveryRack", id)
+					end)
+				end
+			end
+			for _, o in snapshot.delivery do
+				if o.stage == "Out" and n < MAX_TICKETS then
+					n += 1
+					ticket(rail, n, string.format("#%d House %s", o.id, tostring(o.house)), "OUT", C.Panel, C.CreamDim, { { text = "with " .. tostring(o.driver or "?") } }, false, true)
+				end
+			end
+		end
+	end
+
+	-- Bottom left: Clock In / Stations tab / open bar / follow chip ---------------
+	local clockIn = Ui.flatButton("Clock In", "primary", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 10, 1, -10),
+		Size = UDim2.fromOffset(150, 44),
+		TextSize = S.Big,
+		Visible = false,
+		Parent = Ui.Root,
+	})
+	clockIn.Activated:Connect(function()
+		Remotes.RequestTimeClock:FireServer()
+	end)
+
+	local tab = Ui.flatButton("", "key", {
+		Name = "StationsTab",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 10, 1, -10),
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Visible = false,
+		Parent = Ui.Root,
+	})
+	list(tab, Enum.FillDirection.Horizontal, 8, Enum.VerticalAlignment.Center)
+	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), Parent = tab })
+	Icons.make("grid", 14, tab).LayoutOrder = 1
+	Ui.text("STATIONS", F.LabelBold, S.Label, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 40), LayoutOrder = 2, Parent = tab })
+	local tabBadge = Ui.badge("0", { LayoutOrder = 3, Visible = false, Parent = tab })
+	Icons.make("chevron", 12, tab, { dir = "right" }).LayoutOrder = 4
+
+	local followChip = Ui.flatButton("", "key", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 10, 1, -56),
+		Size = UDim2.fromOffset(0, 34),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Visible = false,
+		Parent = Ui.Root,
+	})
+	Ui.edge(followChip, "left", 3, C.Gold)
+	list(followChip, Enum.FillDirection.Horizontal, 8, Enum.VerticalAlignment.Center)
+	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), Parent = followChip })
+	Icons.make("chevron", 10, followChip, { dir = "right", color = C.Gold }).LayoutOrder = 1
+	local followText = Ui.text("", F.LabelBold, S.Body, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 34), LayoutOrder = 2, Parent = followChip })
+	followChip.Activated:Connect(function()
+		local f = follow
+		if f then
+			follow = nil
+			Remotes.UseStation:FireServer(f.next, f.pieId)
+		end
+	end)
+
+	local bar = Ui.box(C.Panel, {
+		Name = "StationsBar",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 10, 1, -10),
+		Size = UDim2.new(1, -20, 0, 54),
+		Visible = false,
+		Parent = Ui.Root,
+	})
+	list(bar, Enum.FillDirection.Horizontal, 0)
+
+	local function setExpanded(on: boolean)
+		expanded = on
+		bar.Visible = on
+	end
 
 	local barSig = ""
+	local function key(text: string, icon: string?, width: UDim2, order: number, onClick: () -> (), opts: { on: boolean?, badge: number?, dim: boolean?, iconOpts: any? }?): TextButton
+		local o: any = opts or {}
+		local b = Ui.flatButton("", "key", { Size = width, LayoutOrder = order, Parent = bar })
+		if o.on then
+			Ui.setButtonColor(b, C.Red)
+		end
+		Ui.box(C.Line, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, 1, 1, 0), Parent = b })
+		if icon then
+			local ico = Icons.make(icon, 18, b, o.iconOpts)
+			ico.AnchorPoint = Vector2.new(0.5, 0)
+			ico.Position = UDim2.new(0.5, 0, 0, 9)
+		end
+		Ui.text(string.upper(text), F.Label, S.Small, {
+			TextColor3 = if o.dim then C.CreamDim else C.Cream,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 2, 1, -6),
+			Size = UDim2.new(1, -4, 0, 16),
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = b,
+		})
+		if o.badge and o.badge > 0 then
+			Ui.badge(tostring(o.badge), { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 5), Parent = b })
+		end
+		b.Activated:Connect(onClick)
+		return b
+	end
+
 	local function rebuildBar()
-		local sig = tostring(player:GetAttribute("Job"))
-		for _, id in myStations() do
+		local here = StationMode.Current()
+		local stations = myStations()
+		local sig = table.concat({ tostring(here), tostring(player:GetAttribute("Job")), Loading.mode, tostring(StationPicks.HasAid()) }, "|")
+		for _, id in stations do
 			sig ..= "|" .. waitingAt(id)
 		end
 		if sig == barSig then
@@ -101,281 +341,145 @@ function WorkHud.Init(isBusy: () -> boolean)
 		end
 		barSig = sig
 		for _, c in bar:GetChildren() do
-			if c:IsA("TextButton") then
-				c:Destroy()
-			end
-		end
-		for _, id in myStations() do
-			local n = waitingAt(id)
-			local b = Ui.button(if n > 0 then string.format("%s (%d)", stationLabel(id), n) else stationLabel(id), if n > 0 then T.Accent else T.Card, {
-				Size = UDim2.fromOffset(98, 52),
-				MaxText = 16,
-				Parent = bar,
-			})
-			b.Activated:Connect(function()
-				Remotes.UseStation:FireServer(id)
-			end)
-		end
-	end
-
-	-- Station rail (at a station) -----------------------------------------------
-	local RAIL_W = 168
-	local rail = Ui.new("Frame", {
-		Name = "StationRail",
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 12, 0.45, 0),
-		Size = UDim2.fromOffset(RAIL_W, 470),
-		BackgroundColor3 = T.Bg,
-		BackgroundTransparency = 0.15,
-		Visible = false,
-		Parent = Ui.Screen,
-	}, {
-		Ui.corner(12),
-		Ui.stroke(T.Accent, 2),
-		Ui.pad(8),
-		Ui.new("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }),
-	})
-	fitToScreen(rail, Vector2.new(RAIL_W, 470), Vector2.new(0, 200))
-
-	local railSig = ""
-	local function rebuildRail()
-		local here = StationMode.Current()
-		local f0 = follow
-		-- Only rebuild when something shown changes, so a click isn't lost mid-press.
-		local sig = table.concat({ tostring(here), if f0 then tostring(f0.pieId) else "", tostring(player:GetAttribute("Job")), Loading.mode }, "|")
-		for _, id in myStations() do
-			sig ..= "|" .. waitingAt(id)
-		end
-		if sig == railSig then
-			return
-		end
-		railSig = sig
-		for _, c in rail:GetChildren() do
 			if c:IsA("GuiObject") then
 				c:Destroy()
 			end
 		end
-		local order = 0
-		local function add(inst: GuiObject)
-			order += 1
-			inst.LayoutOrder = order
-			inst.Parent = rail
-		end
-		local exit = Ui.button("Exit Station", Color3.fromRGB(90, 70, 70), { Size = UDim2.new(1, 0, 0, 38), MaxText = 17 })
-		exit.Activated:Connect(StationMode.Exit)
-		add(exit)
-		local f = follow
-		if f and os.clock() - followAt < FOLLOW_SECONDS and table.find(myStations(), f.next) and f.next ~= here then
-			local b = Ui.button(string.format("Follow this %s to %s", tostring(f.label), stationLabel(f.next)), T.Good, { Size = UDim2.new(1, 0, 0, 46), MaxText = 15 })
-			b.Activated:Connect(function()
-				follow = nil
-				Remotes.UseStation:FireServer(f.next, f.pieId)
-			end)
-			add(b)
-		end
-		if StationPicks.HasAid() then
-			local aid = Ui.button("Job Aid", Color3.fromRGB(70, 110, 160), { Size = UDim2.new(1, 0, 0, 34), MaxText = 16 })
-			aid.Activated:Connect(StationPicks.ToggleAid)
-			add(aid)
+		-- Utility keys first (fixed width), so the station keys can share what's left.
+		local utils: { { text: string, icon: string?, fn: () -> (), opts: any? } } = {}
+		if here and StationPicks.HasAid() then
+			table.insert(utils, { text = "Job Aid", icon = "aid", fn = function()
+				setExpanded(false)
+				StationPicks.ToggleAid()
+			end })
 		end
 		if here == "Toppings" or here == "Load" then
 			-- Tentative setting: who decides which order a loaded pizza is for.
-			local b = Ui.button(if Loading.mode == "Pick" then "Loading: I pick the order" else "Loading: auto-match", T.Card, { Size = UDim2.new(1, 0, 0, 40), MaxText = 14 })
-			b.Activated:Connect(function()
+			table.insert(utils, { text = if Loading.mode == "Pick" then "Pick order" else "Auto-match", icon = "check", fn = function()
 				Loading.SetMode(if Loading.mode == "Pick" then "Auto" else "Pick")
-				rebuildRail()
-			end)
-			add(b)
+				rebuildBar()
+			end, opts = { iconOpts = { color = if Loading.mode == "Pick" then C.Gold else C.Green } } })
 		end
-		add(Ui.label("STATIONS", { Size = UDim2.new(1, 0, 0, 18), TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, MaxText = 14 }))
-		for _, id in myStations() do
-			local n = waitingAt(id)
-			local text = if n > 0 then string.format("%s (%d)", stationLabel(id), n) else stationLabel(id)
-			local isHere = id == here
-			local b = Ui.button(if isHere then "> " .. text else text, if isHere then T.Accent2 elseif n > 0 then T.Accent else T.Card, {
-				Size = UDim2.new(1, 0, 0, 36),
-				TextColor3 = if isHere then Color3.fromRGB(30, 30, 30) else T.Text,
-				MaxText = 16,
-			})
-			b.Activated:Connect(function()
-				Remotes.UseStation:FireServer(id)
-			end)
-			add(b)
+		if here then
+			table.insert(utils, { text = "Exit", icon = "close", fn = function()
+				setExpanded(false)
+				StationMode.Exit()
+			end, opts = { dim = true, iconOpts = { color = C.CreamDim } } })
 		end
-	end
-
-	-- Queue panel ---------------------------------------------------------------
-	local panel = Ui.new("Frame", {
-		Name = "QueuePanel",
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, 52),
-		Size = UDim2.new(0, 300, 0.6, 0),
-		BackgroundColor3 = T.Bg,
-		BackgroundTransparency = 0.12,
-		Visible = false,
-		Parent = Ui.Screen,
-	}, { Ui.corner(12), Ui.stroke(T.Accent2, 2) })
-	local panelTitle = Ui.label("ORDERS", { Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -20, 0, 22), Font = T.Title, TextXAlignment = Enum.TextXAlignment.Left, MaxText = 18, Parent = panel })
-	local subLabel = Ui.label("", { Position = UDim2.fromOffset(10, 28), Size = UDim2.new(1, -20, 0, 16), TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, MaxText = 13, Parent = panel })
-	local list = Ui.new("ScrollingFrame", {
-		Position = UDim2.fromOffset(6, 48),
-		Size = UDim2.new(1, -12, 1, -54),
-		BackgroundTransparency = 1,
-		ScrollBarThickness = 5,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		CanvasSize = UDim2.new(),
-		Parent = panel,
-	}, { Ui.new("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }) })
-
-	-- Oven rows whose countdowns tick between snapshots.
-	local timers: { { label: TextLabel, text: string, left: number, out: boolean, fallsIn: number? } } = {}
-
-	local function line(text: string, color: Color3?, order: number, height: number?): TextLabel
-		return Ui.label(text, {
-			Size = UDim2.new(1, 0, 0, height or 22),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = color or T.Text,
-			RichText = true,
-			MaxText = 14,
-			LayoutOrder = order,
-			Parent = list,
-		})
-	end
-
-	local function rebuildPanel()
-		for _, c in list:GetChildren() do
-			if c:IsA("GuiObject") then
-				c:Destroy()
-			end
-		end
-		table.clear(timers)
-		if not snapshot then
-			return
-		end
-		local here = StationMode.Current()
-		local info = if here then Config.StationInfo(here) else nil
-		local mode = if info then info.queue else nil
+		table.insert(utils, { text = "Positions", icon = "person", fn = function()
+			setExpanded(false)
+			Remotes.RequestTimeClock:FireServer()
+		end, opts = { dim = true, iconOpts = { color = C.CreamDim } } })
+		local fixed = #utils * KEY_W + 52
+		local n = math.max(#stations, 1)
 		local order = 0
-		local function nextOrder(): number
+		for _, id in stations do
 			order += 1
-			return order
+			key(stationLabel(id), STATION_ICONS[id], UDim2.new(1 / n, -fixed / n, 1, 0), order, function()
+				setExpanded(false)
+				Remotes.UseStation:FireServer(id)
+			end, { on = id == here, badge = waitingAt(id) })
 		end
-		if mode == "make" then
-			local rack = snapshot.rack
-			panelTitle.Text = string.format("MAKE-LINE (%d)", #snapshot.orders)
-			subLabel.Text = string.format("Dough S %d  M %d  L %d (%d/%d)  |  Ready rack %d/%d", rack.counts.Small or 0, rack.counts.Medium or 0, rack.counts.Large or 0, rack.used, rack.capacity, tonumber(snapshot.ready) or 0, tonumber(snapshot.readyCapacity) or 0)
-			for _, o in snapshot.orders do
-				local where = if o.delivery then "DELIVERY #" .. tostring(o.house) else "CARRYOUT"
-				line(string.format("#%d  %s  %s", o.id, where, clock(o.age)), T.Accent2, nextOrder())
-				for _, item in o.items do
-					if item.loaded then
-						line(string.format("   \u{2713} %s %s", item.size, item.pizza), LOADED, nextOrder())
-					else
-						line(string.format("      %s %s", item.size, item.pizza), T.Text, nextOrder())
-					end
-				end
-			end
-			if #snapshot.orders == 0 then
-				line("Nothing waiting on the make-line.", T.Muted, nextOrder())
-			end
-		elseif mode == "oven" then
-			panelTitle.Text = string.format("OVENS (%d)", #snapshot.oven)
-			subLabel.Text = "Pull pizzas as they come out of the oven"
-			for _, p in snapshot.oven do
-				local text = string.format("Slot %d  %s  %s", p.slot, string.sub(p.size, 1, 1), p.label)
-				local row = line(text, if p.fallsIn then T.Accent elseif p.out then T.Accent2 else T.Text, nextOrder())
-				table.insert(timers, { label = row, text = text, left = p.left, out = p.out == true, fallsIn = p.fallsIn })
-			end
-			if #snapshot.oven == 0 then
-				line("The ovens are empty.", T.Muted, nextOrder())
-			end
-		elseif mode == "delivery" then
-			local ready = 0
-			for _, o in snapshot.delivery do
-				if o.stage == "Rack" then
-					ready += 1
-				end
-			end
-			panelTitle.Text = string.format("HEAT RACK (%d)", ready)
-			subLabel.Text = "Click an order to take it out"
-			for _, o in snapshot.delivery do
-				if o.stage == "Rack" then
-					local b = Ui.button(string.format("#%d  House #%s  %d pizza%s  ready %s", o.id, tostring(o.house), o.count, if o.count == 1 then "" else "s", clock(o.age)), T.Card, {
-						Size = UDim2.new(1, 0, 0, 30),
-						TextXAlignment = Enum.TextXAlignment.Left,
-						MaxText = 14,
-						LayoutOrder = nextOrder(),
-						Parent = list,
-					})
-					b.Activated:Connect(function()
-						Remotes.UseStation:FireServer("DeliveryRack", o.id)
-					end)
-				end
-			end
-			for _, o in snapshot.delivery do
-				if o.stage == "Out" then
-					line(string.format("#%d  House #%s  out with %s", o.id, tostring(o.house), tostring(o.driver or "?")), T.Muted, nextOrder())
-				end
-			end
-			if #snapshot.delivery == 0 then
-				line("No deliveries yet.", T.Muted, nextOrder())
-			end
+		for _, u in utils do
+			order += 1
+			key(u.text, u.icon, UDim2.new(0, KEY_W, 1, 0), order, u.fn, u.opts)
 		end
+		order += 1
+		local collapse = key("", "chevron", UDim2.new(0, 52, 1, 0), order, function()
+			setExpanded(false)
+		end, { iconOpts = { dir = "left" } })
+		-- Centre the chevron (no label under it).
+		local ico = collapse:FindFirstChild("Icon_chevron") :: Frame?
+		if ico then
+			ico.AnchorPoint = Vector2.new(0.5, 0.5)
+			ico.Position = UDim2.fromScale(0.5, 0.5)
+		end
+	end
+
+	tab.Activated:Connect(function()
+		rebuildBar()
+		setExpanded(true)
+	end)
+
+	local function refreshTab()
+		local total = 0
+		for _, id in myStations() do
+			total += waitingAt(id)
+		end
+		tabBadge.Text = tostring(total)
+		tabBadge.Visible = total > 0
 	end
 
 	-- Wiring --------------------------------------------------------------------
-	local panelStation: string? = nil
+	local railStation: string? = nil
 	Remotes.QueueUpdate.OnClientEvent:Connect(function(snap: any)
 		snapshot = snap
 		snapshotAt = os.clock()
-		rebuildBar()
 		rebuildRail()
-		rebuildPanel()
+		refreshTab()
+		if expanded then
+			rebuildBar()
+		end
 	end)
 	Remotes.StepDone.OnClientEvent:Connect(function(info: any)
 		follow = if type(info) == "table" and type(info.next) == "string" then info else nil
 		followAt = os.clock()
-		rebuildRail()
 	end)
 	player:GetAttributeChangedSignal("Job"):Connect(function()
 		follow = nil
-		rebuildBar()
-		rebuildRail()
+		setExpanded(false)
+		barSig = ""
+		refreshTab()
 	end)
 
 	local lastTick = 0
 	RunService.Heartbeat:Connect(function()
 		local onShift = player:GetAttribute("Job") ~= nil
-		local fresh = os.clock() - snapshotAt < 3
 		local here = StationMode.Current()
-		if here ~= panelStation then
-			panelStation = here
+		if here ~= railStation then
+			-- Arriving somewhere new: tickets for that station, bar folded away.
+			railStation = here
+			setExpanded(false)
 			rebuildRail()
-			rebuildPanel()
 		end
-		-- The follow button times out on its own.
-		if follow and os.clock() - followAt > FOLLOW_SECONDS then
+		-- Follow chip: only when the pizza's next station is one we can work.
+		local f = follow
+		if f and os.clock() - followAt > FOLLOW_SECONDS then
 			follow = nil
-			rebuildRail()
+			f = nil
 		end
-		-- Oven countdowns tick between snapshots.
+		local showFollow = f ~= nil and onShift and not expanded and f.next ~= here and table.find(myStations(), f.next) ~= nil
+		followChip.Visible = showFollow
+		if showFollow and f then
+			followText.Text = string.upper(string.format("Follow to %s", stationLabel(f.next)))
+		end
+		-- Times tick between snapshots.
 		if os.clock() - lastTick > 0.2 then
 			lastTick = os.clock()
 			local since = os.clock() - snapshotAt
 			for _, t in timers do
-				if t.fallsIn then
-					t.label.Text = string.format("%s  <b>AT THE END - falls in %s</b>", t.text, clock(t.fallsIn - since))
-				elseif t.out then
-					t.label.Text = string.format("%s  <b>OUT - pull it</b>", t.text)
-				else
-					t.label.Text = string.format("%s  out in %s", t.text, clock(t.left - since))
+				if t.kind == "age" then
+					t.label.Text = Style.clock(t.base + since)
+				elseif t.kind == "left" then
+					t.label.Text = Style.clock(t.base - since)
+				elseif t.kind == "falls" then
+					t.label.Text = "FALLS " .. Style.clock(t.base - since)
 				end
 			end
 		end
 		local info = if here then Config.StationInfo(here) else nil
-		panel.Visible = onShift and fresh and info ~= nil and info.queue ~= nil
-		rail.Visible = onShift and here ~= nil
-		bar.Visible = onShift and here == nil and not isBusy()
+		rail.Visible = onShift and os.clock() - snapshotAt < 3 and info ~= nil and info.queue ~= nil
+		clockIn.Visible = not onShift and here == nil
+		tab.Visible = onShift and not expanded
+		if expanded and not onShift then
+			setExpanded(false)
+		end
+		-- The work strip (and the dough timing bar) step aside while the bar is open.
+		for _, c in Ui.Screen:GetChildren() do
+			if c:IsA("GuiObject") and (c.Name == "Dock" or c.Name == "StretchBar") then
+				c.Visible = not expanded
+			end
+		end
 	end)
 end
 

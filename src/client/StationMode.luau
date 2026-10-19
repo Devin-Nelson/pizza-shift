@@ -29,7 +29,7 @@ local HINTS: { [string]: string } = {
 	Toppings = "The next pizza loads by itself. Load It sends a finished pizza straight to the oven; To Rack puts it on the ready rack.",
 	Load = "Click a pizza on the ready rack to load it into the next free oven slot.",
 	CutTable = "Click a pizza at an oven exit to pull it before it falls off. Click a card to read it.",
-	DeliveryRack = "Pick an order from the heat rack list on the right to take it out.",
+	DeliveryRack = "Pick an order from the tickets (top left) to take it out.",
 }
 
 local function label(id: string): string
@@ -71,7 +71,7 @@ local function showIdle()
 	local dock, body, close = Ui.dock(label(c.name), 150)
 	close.Activated:Connect(StationMode.Exit)
 	local text = Ui.label(status, { Size = UDim2.new(1, -170, 0, 44), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, MaxText = 22, Parent = body })
-	local hint = HINTS[c.name] or "Stay here and the next one loads by itself. Switch stations from the list on the left."
+	local hint = HINTS[c.name] or "The next one loads by itself. Switch with Stations (bottom left)."
 	Ui.label(hint, {
 		Position = UDim2.fromOffset(0, 50),
 		Size = UDim2.new(1, -170, 0, 34),

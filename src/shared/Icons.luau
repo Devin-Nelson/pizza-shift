@@ -160,6 +160,11 @@ end
 DRAW.exit = function(h, size, o)
 	DRAW.close(h, size, o)
 end
+DRAW.person = function(h, _, o)
+	local col = o.color or C.Cream
+	shape(h, 0.3, 0.02, 0.4, 0.4, col, 0.5)
+	shape(h, 0.12, 0.5, 0.76, 0.48, col, 0.3)
+end
 DRAW.coin = function(h, size)
 	local f = shape(h, 0.04, 0.04, 0.92, 0.92, C.Gold, 0.5)
 	local s = Instance.new("UIStroke")

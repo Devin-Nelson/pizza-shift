@@ -9,6 +9,8 @@ local StarterGui = game:GetService("StarterGui")
 local Config = require(ReplicatedStorage.Shared.Config)
 local GameClock = require(ReplicatedStorage.Shared.GameClock)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Style = require(ReplicatedStorage.Shared.Style)
+local Icons = require(ReplicatedStorage.Shared.Icons)
 local Ui = require(script.Parent.Ui)
 local Minigames = require(script.Parent.Minigames)
 local Driving = require(script.Parent.Driving)
@@ -25,58 +27,47 @@ pcall(function()
 end)
 
 ---------------------------------------------------------------------------
--- HUD
+-- HUD: one slim pill, top right - day, time, open dot | coins, level (XP
+-- progress along its bottom edge). Clock In and the Stations tab are WorkHud's.
 ---------------------------------------------------------------------------
-local hud = Ui.new("Frame", {
-	Name = "HUD",
-	Position = UDim2.new(0, 12, 1, -112),
-	Size = UDim2.fromOffset(250, 100),
-	BackgroundColor3 = T.Bg,
-	BackgroundTransparency = 0.15,
-	Parent = Ui.Screen,
-}, { Ui.corner(14), Ui.stroke(T.Accent, 2), Ui.pad(10) })
-local coinsLabel = Ui.label("0 coins", { Size = UDim2.new(1, 0, 0, 28), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = T.Accent2, Font = T.Title, Parent = hud })
-local levelLabel = Ui.label("Level 1", { Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 0, 18), TextXAlignment = Enum.TextXAlignment.Left, MaxText = 16, Parent = hud })
-local xpBar = Ui.new("Frame", { Position = UDim2.fromOffset(0, 52), Size = UDim2.new(1, 0, 0, 8), BackgroundColor3 = T.Card, Parent = hud }, { Ui.corner(4) })
-local xpFill = Ui.new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.Good, Parent = xpBar }, { Ui.corner(4) })
-local jobLabel = Ui.label("Off duty - tap Clock In above", { Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 0, 18), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = T.Muted, MaxText = 15, Parent = hud })
-
-local deliveryLabel = Ui.label("", {
-	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.new(0.5, 0, 0, 230),
-	Size = UDim2.fromOffset(360, 36),
-	BackgroundColor3 = T.Bg,
-	BackgroundTransparency = 0.2,
-	Visible = false,
-	Font = T.Title,
-	Parent = Ui.Screen,
-})
-Ui.corner(10).Parent = deliveryLabel
-
--- Time clock / positions button (opens the job menu for the nearest store).
-local clockInButton = Ui.button("Clock In / Positions", T.Accent, {
-	Position = UDim2.new(0, 12, 1, -162),
-	Size = UDim2.fromOffset(250, 42),
-	MaxText = 18,
-	Parent = Ui.Screen,
-})
-clockInButton.Activated:Connect(function()
-	Remotes.RequestTimeClock:FireServer()
-end)
-
--- Game clock (top right): day, time, open/closed.
-local clockLabel = Ui.label("", {
+local C = Style.Color
+local pillWrap = Ui.box(C.Panel, {
+	Name = "StatusPill",
 	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, -12, 0, 10),
-	Size = UDim2.fromOffset(250, 34),
-	BackgroundColor3 = T.Bg,
-	BackgroundTransparency = 0.15,
-	Font = T.Title,
-	MaxText = 20,
-	RichText = true,
-	Parent = Ui.Screen,
+	Position = UDim2.new(1, -10, 0, 10),
+	Size = UDim2.fromOffset(0, 28),
+	AutomaticSize = Enum.AutomaticSize.X,
+	Parent = Ui.Root,
 })
-Ui.corner(10).Parent = clockLabel
+Ui.edge(pillWrap, "left", 3, C.Red)
+local pill = Ui.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 28), AutomaticSize = Enum.AutomaticSize.X, Parent = pillWrap })
+Ui.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = pill })
+Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 10), Parent = pill })
+local function pillText(font: Font, size: number, color: Color3, order: number): TextLabel
+	return Ui.text("", font, size, { TextColor3 = color, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 28), LayoutOrder = order, Parent = pill })
+end
+local dayLabel = pillText(Style.Font.Label, Style.Size.Small, C.CreamDim, 1)
+local timeLabel = pillText(Style.Font.Mono, Style.Size.Label, C.Cream, 2)
+local openDot = Ui.box(C.Green, { Size = UDim2.fromOffset(8, 8), LayoutOrder = 3, Parent = pill }, { Ui.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+Ui.box(C.Line, { Size = UDim2.fromOffset(1, 16), LayoutOrder = 4, Parent = pill })
+Icons.make("coin", 14, pill).LayoutOrder = 5
+local coinsLabel = pillText(Style.Font.Mono, Style.Size.Label, C.Cream, 6)
+local levelLabel = pillText(Style.Font.LabelBold, Style.Size.Small, C.CreamDim, 7)
+-- XP progress: a 2 px line along the pill's bottom edge.
+local xpTrack = Ui.box(C.Line, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 2), Parent = pillWrap })
+local xpFill = Ui.box(C.Gold, { Size = UDim2.fromScale(0, 1), Parent = xpTrack })
+
+-- Delivery readout (top centre while a delivery is out): house, distance, time left.
+local deliveryBar = Ui.box(C.Panel, {
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0, 10),
+	Size = UDim2.fromOffset(300, 30),
+	Visible = false,
+	Parent = Ui.Root,
+})
+local deliveryEdge = Ui.edge(deliveryBar, "left", 4, C.Green)
+local deliveryLabel = Ui.text("", Style.Font.LabelBold, Style.Size.Label, { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -20, 1, 0), Parent = deliveryBar })
+
 local clockSince, clockBase = os.clock(), GameClock.weekHour()
 ReplicatedStorage:GetAttributeChangedSignal("WeekHour"):Connect(function()
 	clockSince, clockBase = os.clock(), GameClock.weekHour()
@@ -85,27 +76,24 @@ RunService.RenderStepped:Connect(function()
 	-- Interpolate between server updates so the minutes tick smoothly.
 	local weekHour = (clockBase + (os.clock() - clockSince) / Config.Day.RealSecondsPerHour) % 168
 	local day, hour = GameClock.split(weekHour)
-	local open = GameClock.isOpen(weekHour)
-	clockLabel.Text = string.format('%s %s  <font color="%s">%s</font>', string.sub(GameClock.dayName(day), 1, 3):upper(), GameClock.format(hour), if open then "#46C86E" else "#E6463C", if open then "OPEN" else "CLOSED")
-	-- The minigame / station strip docks at the bottom; keep the HUD out of its way.
-	local busy = Minigames.IsOpen() or StationMode.Current() ~= nil
-	hud.Visible = not busy
-	clockInButton.Visible = not busy
+	dayLabel.Text = string.sub(GameClock.dayName(day), 1, 3):upper()
+	timeLabel.Text = GameClock.format(hour)
+	openDot.BackgroundColor3 = if GameClock.isOpen(weekHour) then C.Green else C.Red
 end)
 
 local function refreshHud()
 	local stats = player:FindFirstChild("leaderstats")
 	local coins = stats and stats:FindFirstChild("Coins") :: IntValue?
-	coinsLabel.Text = string.format("%d coins", if coins then coins.Value else 0)
+	local n = if coins then coins.Value else 0
+	-- 1,240 with thousands separators
+	local s = tostring(math.floor(n))
+	local formatted = s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+	coinsLabel.Text = formatted
 	local xp = tonumber(player:GetAttribute("XP")) or 0
 	local level = Config.LevelFromXP(xp)
 	local lo, hi = Config.XPForLevel(level), Config.XPForLevel(level + 1)
-	levelLabel.Text = string.format("Level %d   (%d / %d XP)", level, xp - lo, hi - lo)
+	levelLabel.Text = string.format("LV %d", level)
 	xpFill.Size = UDim2.fromScale(math.clamp((xp - lo) / math.max(hi - lo, 1), 0, 1), 1)
-	local job = player:GetAttribute("Job")
-	local def = if type(job) == "string" then Config.Jobs[job] else nil
-	jobLabel.Text = if def then "On shift: " .. def.display else "Off duty - tap Clock In above"
-	jobLabel.TextColor3 = if def then def.color else T.Muted
 end
 
 task.spawn(function()
@@ -123,7 +111,14 @@ player:GetAttributeChangedSignal("XP"):Connect(refreshHud)
 player:GetAttributeChangedSignal("Job"):Connect(refreshHud)
 refreshHud()
 
-Remotes.Notify.OnClientEvent:Connect(function(text: string, color: Color3?)
+Remotes.Notify.OnClientEvent:Connect(function(text: string, color: Color3?, payInfo: any?)
+	-- Pay results arrive as a slip: grade, what was done, coins, XP.
+	if type(payInfo) == "table" and type(payInfo.grade) == "string" and type(payInfo.what) == "string" then
+		local q = tonumber(payInfo.quality) or 1
+		local gradeColor = if q >= 0.7 then C.Green elseif q >= 0.45 then C.Gold else C.Red
+		Ui.payToast(payInfo.grade, payInfo.what, tonumber(payInfo.coins) or 0, tonumber(payInfo.xp) or 0, gradeColor)
+		return
+	end
 	Ui.toast(text, color)
 end)
 
@@ -317,7 +312,7 @@ local function clearWaypoint()
 		waypoint.a1:Destroy()
 		waypoint = nil
 	end
-	deliveryLabel.Visible = false
+	deliveryBar.Visible = false
 	delivering = false
 	applyAll()
 end
@@ -351,12 +346,12 @@ Remotes.DeliveryTarget.OnClientEvent:Connect(function(door: BasePart?, seconds: 
 	beam.Parent = root
 	local houseId = door:GetAttribute("HouseId")
 	local start = os.clock()
-	deliveryLabel.Visible = true
+	deliveryBar.Visible = true
 	local conn = RunService.Heartbeat:Connect(function()
 		local left = math.max(0, seconds - (os.clock() - start))
 		local dist = (root.Position - door.Position).Magnitude
-		deliveryLabel.Text = string.format("Deliver to House #%s  -  %dm  -  %d:%02d", tostring(houseId), math.floor(dist / 3.5), left // 60, math.floor(left % 60))
-		deliveryLabel.TextColor3 = if left > seconds * 0.6 then T.Good elseif left > 0 then T.Accent2 else T.Accent
+		deliveryLabel.Text = string.format("HOUSE #%s   %d M   %s", tostring(houseId), math.floor(dist / 3.5), Style.clock(left))
+		deliveryEdge.BackgroundColor3 = if left > seconds * 0.6 then C.Green elseif left > 0 then C.Gold else C.Red
 	end)
 	waypoint = { beam = beam, a0 = a0, a1 = a1, conn = conn }
 end)
@@ -369,7 +364,7 @@ player.CharacterAdded:Connect(function()
 end)
 
 task.delay(3, function()
-	Ui.toast(string.format("Welcome to %s! Tap Clock In / Positions (bottom left) at the store to pick a job (%s).", Config.GameName, GameClock.hoursText()), T.Accent2)
+	Ui.toast(string.format("Welcome to %s. Clock in to start a shift (%s).", Config.GameName, GameClock.hoursText()), C.Gold)
 end)
 
 Driving.Init()

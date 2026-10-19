@@ -4,7 +4,7 @@
 local RunService = game:GetService("RunService")
 
 local NAMES = {
-	"Notify", -- server -> client: (text, color?)
+	"Notify", -- server -> client: (text, color?, pay?) pay = { grade, what, coins, xp, quality } shows as a pay slip
 	"StartMinigame", -- server -> client: (kind, token, data)
 	"MinigameResult", -- client -> server: (token, payload)
 	"CancelMinigame", -- both ways: (token)

@@ -197,9 +197,9 @@ local SCREEN_COLOR = Color3.fromRGB(58, 58, 62) -- pizza screens, dark from use 
 -- Helpers
 ---------------------------------------------------------------------------
 
-local function notify(player: Player?, text: string, color: Color3?)
+local function notify(player: Player?, text: string, color: Color3?, payInfo: any?)
 	if player and player.Parent then
-		Remotes.Notify:FireClient(player, text, color)
+		Remotes.Notify:FireClient(player, text, color, payInfo)
 	end
 end
 
@@ -531,7 +531,8 @@ local function pay(shop: Shop, player: Player, base: number, quality: number, wh
 	local xp = math.max(1, math.floor(Config.XPPerTask * (if def then def.xpMult else 1) + 0.5))
 	local leveled = DataService.AddXP(player, xp)
 	local grade = if quality >= 0.9 then "PERFECT" elseif quality >= 0.7 then "Great" elseif quality >= 0.45 then "OK" else "Sloppy"
-	notify(player, string.format("+%d coins  +%d XP  %s - %s", amount, xp, what, grade), Color3.fromRGB(255, 220, 90))
+	-- The client shows this as a pay slip (grade, what, coins, XP); the text is the fallback.
+	notify(player, string.format("+%d coins  +%d XP  %s - %s", amount, xp, what, grade), Color3.fromRGB(255, 220, 90), { grade = grade, what = what, coins = amount, xp = xp, quality = quality })
 	if leveled then
 		notify(player, "LEVEL UP! You're now level " .. DataService.GetLevel(player), Color3.fromRGB(120, 255, 160))
 	end
