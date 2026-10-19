@@ -18,7 +18,6 @@ Loading.mode = "Auto"
 
 local snapshot: any = nil
 local picker: Frame? = nil
-local askAfterTopping = false
 
 local function closePicker()
 	if picker then
@@ -27,8 +26,8 @@ local function closePicker()
 	end
 end
 
--- Pick mode: which order is this pizza for?
-local function openPicker(pieId: number, size: string)
+-- Pick mode: which order is this `size` pizza for? `onPick(orderId)`; 0 = an extra.
+local function openPicker(size: string, onPick: (number) -> ())
 	closePicker()
 	local eligible = {}
 	for _, o in (if snapshot then snapshot.orders else {}) do
@@ -79,7 +78,7 @@ local function openPicker(pieId: number, size: string)
 		})
 		b.Activated:Connect(function()
 			closePicker()
-			Remotes.LoadPizza:FireServer(pieId, o.id)
+			onPick(o.id)
 		end)
 	end
 	if #eligible == 0 then
@@ -88,7 +87,7 @@ local function openPicker(pieId: number, size: string)
 	local extra = Ui.flatButton("Load as an extra", "ghost", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 44), Parent = body })
 	extra.Activated:Connect(function()
 		closePicker()
-		Remotes.LoadPizza:FireServer(pieId, 0) -- 0 = no order: bake it as an extra
+		onPick(0) -- no order: bake it as an extra
 	end)
 end
 
@@ -100,16 +99,17 @@ end
 -- Load a pizza from the ready rack (asks which order first in Pick mode).
 function Loading.Load(pieId: number, size: string)
 	if Loading.mode == "Pick" then
-		openPicker(pieId, size)
+		openPicker(size, function(orderId)
+			Remotes.LoadPizza:FireServer(pieId, orderId)
+		end)
 	else
 		Remotes.LoadPizza:FireServer(pieId)
 	end
 end
 
--- The toppings minigame's "Load It" in Pick mode: ask which order as soon
--- as the pizza is on the ready rack.
-function Loading.AskAfterTopping()
-	askAfterTopping = true
+-- The toppings minigame's Load in Pick mode: which order, before it goes in.
+function Loading.Pick(size: string, onPick: (number) -> ())
+	openPicker(size, onPick)
 end
 
 function Loading.Close()
@@ -119,12 +119,6 @@ end
 function Loading.Init()
 	Remotes.QueueUpdate.OnClientEvent:Connect(function(snap: any)
 		snapshot = snap
-	end)
-	Remotes.StepDone.OnClientEvent:Connect(function(info: any)
-		if askAfterTopping and type(info) == "table" and info.station == "Toppings" and type(info.pieId) == "number" then
-			askAfterTopping = false
-			openPicker(info.pieId, tostring(info.size))
-		end
 	end)
 end
 

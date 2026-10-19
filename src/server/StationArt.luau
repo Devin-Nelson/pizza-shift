@@ -19,7 +19,6 @@ local StationArt = {}
 local STEEL = Color3.fromRGB(196, 200, 206)
 local STEEL_DARK = Color3.fromRGB(120, 124, 130)
 local BLACK = Color3.fromRGB(25, 25, 28)
-local WOOD = Color3.fromRGB(160, 115, 70)
 local SCREEN = Color3.fromRGB(58, 58, 62) -- pizza screens, dark from use (as in the user's photos)
 local DOUGH = Config.IngredientColors.Dough
 
@@ -89,13 +88,6 @@ local function steelTable(parent: Instance, base: CFrame, w: number, d: number, 
 		end
 	end
 	P(parent, base, Vector3.new(w - 0.6, 0.15, d - 0.6), at(0, 0.9, 0), STEEL, Enum.Material.DiamondPlate)
-end
-
-local function crate(parent: Instance, base: CFrame, offset: CFrame, ingredient: string)
-	P(parent, base, Vector3.new(1.8, 1.4, 1.8), offset * at(0, 0.7, 0), Color3.fromRGB(176, 130, 80), Enum.Material.WoodPlanks, { collide = true })
-	P(parent, base, Vector3.new(1.9, 0.15, 1.9), offset * at(0, 1.47, 0), Config.IngredientColors[ingredient] or WOOD, Enum.Material.SmoothPlastic)
-	local tag = P(parent, base, Vector3.new(1.2, 0.5, 0.05), offset * at(0, 0.75, -0.93), Color3.fromRGB(245, 240, 225))
-	surfaceText(tag, Enum.NormalId.Front, string.upper(ingredient), Color3.fromRGB(40, 30, 20))
 end
 
 ---------------------------------------------------------------------------
@@ -728,52 +720,6 @@ Builders.Fridge = function(m, base)
 	text.Text = ""
 	text.Parent = gui
 	gui.Parent = tablet
-end
-
--- Box truck backed up to the loading door, liftgate down with crates.
--- Local origin is the liftgate edge; the truck extends away from the worker (+Z).
-Builders.SupplyTruck = function(m, base)
-	local white = Color3.fromRGB(240, 240, 238)
-	local cab = Color3.fromRGB(35, 110, 190)
-	local cargo = P(m, base, Vector3.new(8, 7.5, 11), at(0, 5.25, 5.5), white, Enum.Material.SmoothPlastic, { name = "Cargo" })
-	surfaceText(cargo, Enum.NormalId.Left, "FRESH SUPPLY CO.", cab)
-	surfaceText(cargo, Enum.NormalId.Right, "FRESH SUPPLY CO.", cab)
-	P(m, base, Vector3.new(8.05, 0.6, 11.05), at(0, 2.2, 5.5), cab, Enum.Material.SmoothPlastic, { collide = false }) -- stripe
-	P(m, base, Vector3.new(7, 0.8, 16), at(0, 1.2, 8), Color3.fromRGB(40, 40, 44), Enum.Material.Metal, { name = "Chassis" })
-	-- Cab
-	P(m, base, Vector3.new(8, 5, 4.5), at(0, 4.0, 13.25), cab, Enum.Material.SmoothPlastic, { name = "Cab" })
-	P(m, base, Vector3.new(8, 2.2, 1.2), at(0, 2.6, 16.1), cab, Enum.Material.SmoothPlastic)
-	P(m, base, Vector3.new(7, 2, 0.1), at(0, 5.0, 15.52), Color3.fromRGB(140, 190, 230), Enum.Material.Glass, { transparency = 0.25 })
-	for _, sx in { -1, 1 } do
-		P(m, base, Vector3.new(0.06, 1.8, 2.2), at(sx * 4.02, 5.0, 13.6), Color3.fromRGB(140, 190, 230), Enum.Material.Glass, { transparency = 0.25 })
-		P(m, base, Vector3.new(0.6, 0.9, 0.1), at(sx * 4.4, 5.2, 15.0), BLACK) -- mirror
-		P(m, base, Vector3.new(1.0, 0.6, 0.1), at(sx * 3.0, 2.8, 16.72), Color3.fromRGB(255, 250, 220), Enum.Material.Neon) -- headlight
-		P(m, base, Vector3.new(0.6, 1.0, 0.1), at(sx * 3.5, 2.6, -0.06), Color3.fromRGB(220, 30, 30), Enum.Material.Neon) -- tail light
-	end
-	P(m, base, Vector3.new(4, 1.3, 0.06), at(0, 2.7, 16.72), Color3.fromRGB(30, 30, 32), Enum.Material.DiamondPlate) -- grille
-	P(m, base, Vector3.new(8.2, 0.6, 0.6), at(0, 1.3, 16.9), Color3.fromRGB(70, 70, 74), Enum.Material.Metal) -- bumper
-	-- Wheels (cylinders already run along X = the axle)
-	for _, z in { 2.5, 4.4, 13.0 } do
-		for _, sx in { -1, 1 } do
-			P(m, base, Vector3.new(1.0, 3, 3), at(sx * 3.7, 1.5, z), Color3.fromRGB(25, 25, 25), Enum.Material.Rubber, { shape = Enum.PartType.Cylinder, collide = true })
-			P(m, base, Vector3.new(1.05, 1.6, 1.6), at(sx * 3.7, 1.5, z), Color3.fromRGB(170, 172, 176), Enum.Material.Metal, { shape = Enum.PartType.Cylinder })
-		end
-	end
-	-- Open rear: dark interior, rolled-up door, lowered liftgate
-	P(m, base, Vector3.new(7.4, 6.8, 0.1), at(0, 5.15, -0.06), Color3.fromRGB(30, 30, 34), Enum.Material.SmoothPlastic, { collide = false })
-	P(m, base, Vector3.new(7.6, 1.0, 0.5), at(0, 8.4, -0.2), Color3.fromRGB(215, 215, 215), Enum.Material.DiamondPlate)
-	P(m, base, Vector3.new(7.4, 0.25, 2.8), at(0, 0.125, -1.5), Color3.fromRGB(150, 152, 156), Enum.Material.DiamondPlate, { name = "Liftgate", collide = true })
-	crate(m, base, at(-2.2, 0.25, -1.5), "Cheese")
-	crate(m, base, at(0, 0.25, -1.5), "Pepperoni")
-	crate(m, base, at(2.2, 0.25, -1.6), "Peppers")
-	crate(m, base, at(-2.2, 1.75, -1.5), "Dough")
-	crate(m, base, at(5.6, 0, -1.2), "Sauce")
-	crate(m, base, at(5.6, 1.5, -1.2), "Mushrooms")
-	-- Hand truck
-	P(m, base, Vector3.new(0.15, 4, 0.15), CFrame.new(-5.2, 2, -1.2) * CFrame.Angles(math.rad(-10), 0, 0), Color3.fromRGB(200, 40, 40), Enum.Material.Metal, { collide = false })
-	P(m, base, Vector3.new(0.15, 4, 0.15), CFrame.new(-6.2, 2, -1.2) * CFrame.Angles(math.rad(-10), 0, 0), Color3.fromRGB(200, 40, 40), Enum.Material.Metal, { collide = false })
-	P(m, base, Vector3.new(1.4, 0.1, 0.8), at(-5.7, 0.1, -1.6), STEEL_DARK, Enum.Material.Metal, { collide = false })
-	P(m, base, Vector3.new(0.3, 0.8, 0.8), at(-5.7, 0.4, -0.6), BLACK, Enum.Material.Rubber, { shape = Enum.PartType.Cylinder, collide = false })
 end
 
 -- Builds art for `kind` under `parent`, preferring a custom model if one exists.

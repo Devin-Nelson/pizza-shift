@@ -14,6 +14,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Follow = require(ReplicatedStorage.Shared.Follow)
 local GameClock = require(ReplicatedStorage.Shared.GameClock)
 local Pizza3D = require(ReplicatedStorage.Shared.Pizza3D)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -173,14 +174,18 @@ type Session = {
 }
 
 -- A player standing at a station between jobs. `status` is the last "waiting
--- for..." text sent to them.
-type Stay = { shop: Shop, name: string, idleSince: number, status: string? }
+-- for..." text sent to them. `size`: while following, the size the top pizza
+-- needs stretched or sauced here (they don't choose).
+type Stay = { shop: Shop, name: string, idleSince: number, status: string?, size: string? }
 
 local ShopService = {}
 
 local shops: { Shop } = {}
 local sessions: { [Player]: Session } = {}
 local stationed: { [Player]: Stay } = {}
+-- Players who picked a make station from the HUD: they stay there instead of
+-- following the top pizza (the default).
+local parked: { [Player]: boolean } = {}
 local playerShop: { [Player]: Shop } = {}
 local houses: { Part } = {}
 local nextShopId = 0
@@ -194,7 +199,6 @@ local STATION_KIND = {
 	Load = "Load",
 	CutTable = "Cut",
 	DeliveryRack = "Delivery",
-	SupplyTruck = "Supply",
 }
 -- Stations you stay at between jobs (Config.Stations `stay`). At `pick`
 -- stations (cut table, heat rack) startStation never starts a job unless
@@ -1835,6 +1839,12 @@ local function neededSize(shop: Shop, spare: { [string]: number }?, have: { [str
 			inWork[c.job.skin.size] = (inWork[c.job.skin.size] or 0) + 1
 		end
 	end
+	-- Followers stretching or saucing the size a ticket needs.
+	for _, s in sessions do
+		if s.shop == shop and (s.kind == "Dough" or s.kind == "Sauce") and type(s.data.size) == "string" then
+			inWork[s.data.size] = (inWork[s.data.size] or 0) + 1
+		end
+	end
 	for _, t in neededTickets(shop) do
 		local size = t.item.size
 		if (inWork[size] or 0) > 0 then
@@ -1844,6 +1854,18 @@ local function neededSize(shop: Shop, spare: { [string]: number }?, have: { [str
 		end
 	end
 	return nil
+end
+
+-- Skins on the racks that no follower is saucing yet (a saucer takes theirs
+-- off the rack when they finish).
+local function freeSkins(shop: Shop): { [string]: number }
+	local counts = rackCounts(shop)
+	for _, s in sessions do
+		if s.shop == shop and s.kind == "Sauce" and type(s.data.size) == "string" then
+			counts[s.data.size] = (counts[s.data.size] or 0) - 1
+		end
+	end
+	return counts
 end
 
 -- The size to stretch next: one open orders need that no pizza in the works,
@@ -2072,7 +2094,7 @@ local function crewJobAt(shop: Shop, c: Crew, s: string): any?
 		consume(shop, { Dough = 1 })
 		return { what = "Dough", size = size }
 	elseif s == "Sauce" then
-		local size = neededSize(shop, nil, (rackCounts(shop)))
+		local size = neededSize(shop, nil, freeSkins(shop))
 		if not size or hasStock(shop, { Sauce = 1 }) then
 			return nil
 		end
@@ -2301,7 +2323,8 @@ end
 -- order on the heat rack. Returns nil once a job has started, otherwise why
 -- there's nothing to do there right now (shown as the station's "waiting
 -- for..." status, or as a toast).
-local function startStation(shop: Shop, stationName: string, player: Player, pickId: number?): string?
+-- `size`: following, the size to stretch or sauce (the top pizza's).
+local function startStation(shop: Shop, stationName: string, player: Player, pickId: number?, size: string?): string?
 	local kind = STATION_KIND[stationName]
 
 	if kind == "Register" then
@@ -2327,12 +2350,13 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 		end
 		local needs = { Dough = 1 }
 		if hasStock(shop, needs) then
-			return "Out of dough! Unload the supply truck out back."
+			return "Out of dough! It's being restocked."
 		end
 		consume(shop, needs)
 		begin(player, shop, stationName, {
 			presses = Config.Dough.Presses,
 			sizes = Config.Sizes,
+			size = size, -- set: no choosing, it's the top pizza's size
 			skins = counts,
 			need = doughNeed(shop, counts), -- highlighted: the size the oldest ticket still needs
 			rackUsed = used,
@@ -2345,12 +2369,15 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 		if used == 0 then
 			return "No dough skins on the racks. Stretch some at the dough table."
 		end
+		if size and (freeSkins(shop)[size] or 0) <= 0 then
+			return "No " .. size .. " skins on the racks."
+		end
 		local needs = { Sauce = 1 }
 		if hasStock(shop, needs) then
-			return "Out of sauce! Unload the supply truck out back."
+			return "Out of sauce! It's being restocked."
 		end
 		consume(shop, needs)
-		begin(player, shop, stationName, { skins = counts, sizes = Config.Sizes, need = neededSize(shop, nil, counts), station = station(shop, stationName) }, { consumed = needs })
+		begin(player, shop, stationName, { skins = counts, sizes = Config.Sizes, size = size, need = neededSize(shop, nil, counts), station = station(shop, stationName) }, { consumed = needs })
 	elseif kind == "Cheese" or kind == "Toppings" then
 		local stage = if kind == "Cheese" then "Sauced" else "Cheesed"
 		local pie = pickPie(shop, stage, pickId)
@@ -2365,7 +2392,7 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 			needs.Cheese = 1
 			local missing = hasStock(shop, needs)
 			if missing then
-				return "Out of " .. missing .. "! Unload the supply truck out back."
+				return "Out of " .. missing .. "! It's being restocked."
 			end
 			consume(shop, needs)
 		elseif readyRoom(shop) <= 0 then
@@ -2443,23 +2470,6 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 			visual = pie.visual, -- hidden locally while the cutter works on it
 			exitPos = exitPos,
 		}, { pie = pie })
-	elseif kind == "Supply" then
-		local room = false
-		for _, ing in Config.Ingredients do
-			room = room or shop.stock[ing] < Config.Shop.MaxStock
-		end
-		if not room then
-			return "The shelves are full - nothing to unload."
-		end
-		local sorted = table.clone(Config.Ingredients)
-		table.sort(sorted, function(a, b)
-			return shop.stock[a] < shop.stock[b]
-		end)
-		local crates = {}
-		for _ = 1, Config.Supply.Crates do
-			table.insert(crates, sorted[math.random(1, 6)])
-		end
-		begin(player, shop, stationName, { crates = crates, shelves = Config.Ingredients })
 	elseif kind == "Delivery" then
 		-- The driver picks which order on the heat rack to take out.
 		local order: Order? = nil
@@ -2551,17 +2561,114 @@ local function occupant(shop: Shop, stationName: string, except: Player?): strin
 	return nil
 end
 
-local enterStation: (shop: Shop, player: Player, stationName: string, pickId: number?) -> ()
+-- Following (the default, unless they parked at a station from the HUD): a
+-- player in the make process goes with each pizza to its next step, then
+-- picks up the top pizza on the tickets.
+local function following(player: Player, stationName: string): boolean
+	return not parked[player] and table.find(Config.MakeSteps, stationName) ~= nil
+end
+
+local function setParked(player: Player, on: boolean)
+	parked[player] = if on then true else nil
+	player:SetAttribute("Following", not on)
+end
+
+-- Someone who'll work `stationName` without a follower: a player parked
+-- there, or staff on shift there.
+local function manned(shop: Shop, stationName: string, except: Player?): boolean
+	for player, stay in stationed do
+		if player ~= except and parked[player] and stay.shop == shop and stay.name == stationName then
+			return true
+		end
+	end
+	for _, c in shop.crew do
+		if c.present and c.station == stationName then
+			return true
+		end
+	end
+	return false
+end
+
+local MAKE_STAGES = { Ready = 1, Cheesed = 2, Sauced = 3 } -- furthest along first
+
+-- Where a follower goes for the top pizza on the tickets (Follow.target):
+-- pizzas being worked, staff at their posts and other followers' skins cover
+-- the oldest tickets.
+local function followTarget(shop: Shop, player: Player): (string, number?, string?)
+	local covered: { [string]: number } = {}
+	local function cover(size: string)
+		covered[size] = (covered[size] or 0) + 1
+	end
+	local free: { Pie } = {}
+	for _, p in shop.pies do
+		if MAKE_STAGES[p.stage] then
+			if p.claimedBy or manned(shop, Config.StationForStage(p.stage) :: string, player) then
+				cover(p.size)
+			else
+				table.insert(free, p)
+			end
+		end
+	end
+	for other, s in sessions do
+		if other ~= player and s.shop == shop and (s.kind == "Dough" or s.kind == "Sauce") and type(s.data.size) == "string" then
+			cover(s.data.size)
+		end
+	end
+	for _, c in shop.crew do
+		if c.job and c.job.what == "Sauce" then
+			cover(c.job.skin.size)
+		elseif c.job and c.job.what == "Dough" then
+			cover(c.job.size)
+		end
+	end
+	table.sort(free, function(a, b)
+		if a.stage ~= b.stage then
+			return MAKE_STAGES[a.stage] < MAKE_STAGES[b.stage]
+		end
+		return a.id < b.id
+	end)
+	local waiting: { Follow.Waiting } = {}
+	for _, p in free do
+		table.insert(waiting, { id = p.id, size = p.size, station = Config.StationForStage(p.stage) :: string })
+	end
+	local needed = {}
+	for _, t in neededTickets(shop) do
+		table.insert(needed, t.item.size)
+	end
+	return Follow.target(needed, covered, waiting, freeSkins(shop))
+end
+
+local enterStation: (shop: Shop, player: Player, stationName: string, pickId: number?, size: string?) -> ()
+local stepDone: (player: Player, stationName: string, pie: Pie?) -> ()
 
 -- Gives a player standing at a station their next job there (or the one they
--- picked, `pickId`), if there is one. In the make process, with nothing to
--- work on they're moved back a step, unless someone's there (then they wait).
+-- picked, `pickId`), if there is one. A follower is sent wherever the top
+-- pizza needs them. A parked player at a make station with nothing to work on
+-- is moved back a step, unless someone's there (then they wait).
 local function assign(player: Player, pickId: number?)
 	local stay = stationed[player]
 	if not stay or sessions[player] or not stay.shop.alive or not canWork() then
 		return
 	end
-	local why = startStation(stay.shop, stay.name, player, pickId)
+	local shop = stay.shop
+	local follows = following(player, stay.name)
+	if follows and pickId == nil then
+		local at, pick, size = followTarget(shop, player)
+		if at ~= stay.name then
+			enterStation(shop, player, at, pick, size)
+			return
+		end
+		pickId, stay.size = pick, size
+	end
+	if follows and pickId and stay.name == "Load" then
+		-- Following a finished pizza to the oven: it goes straight in.
+		local pie = findPie(shop, pickId)
+		if pie and pie.stage == "Ready" and not pie.claimedBy and not loadPie(shop, player, pie, nil) then
+			stepDone(player, "Load", pie)
+			return
+		end
+	end
+	local why = startStation(shop, stay.name, player, pickId, stay.size)
 	if why and pickId then
 		-- What they picked was taken; give them the next one instead (or the status).
 		notify(player, why, Color3.fromRGB(255, 160, 100))
@@ -2574,7 +2681,7 @@ local function assign(player: Player, pickId: number?)
 		Remotes.StationMode:FireClient(player, nil)
 		return
 	end
-	local back = if why and not session then Config.StepBefore(stay.name) else nil
+	local back = if why and not session and not follows then Config.StepBefore(stay.name) else nil
 	if back and not hasWork(stay.shop, stay.name) then
 		local label = (Config.StationInfo(back) :: any).label
 		local who = occupant(stay.shop, back, player)
@@ -2606,7 +2713,8 @@ end
 
 -- Moves the player to a station (from wherever they are, including another
 -- station) and starts them on the job there, or the one they picked.
-function enterStation(shop: Shop, player: Player, stationName: string, pickId: number?)
+-- `size`: following, the size to stretch or sauce there.
+function enterStation(shop: Shop, player: Player, stationName: string, pickId: number?, size: string?)
 	local session = sessions[player]
 	if session then
 		if not holdsStation(session) then
@@ -2622,16 +2730,19 @@ function enterStation(shop: Shop, player: Player, stationName: string, pickId: n
 	end
 	local stay = stationed[player]
 	if not stay or stay.shop ~= shop or stay.name ~= stationName then
-		stationed[player] = { shop = shop, name = stationName, idleSince = os.clock(), status = nil }
+		stay = { shop = shop, name = stationName, idleSince = os.clock(), status = nil }
+		stationed[player] = stay
 		Remotes.StationMode:FireClient(player, stationName, station(shop, stationName))
 	end
+	(stay :: Stay).size = size
 	assign(player, pickId)
 end
 
 -- Every way of using a station ends up here: prompts, the HUD station bar and
 -- rail, clicks on a pizza at the oven exit or an order on the heat rack, and
--- the "follow" button.
-local function useStation(shop: Shop, stationName: string, player: Player, pickId: number?)
+-- the HUD's Follow key. `park`: picked from the HUD, so at a make station they
+-- stay there; otherwise (a prompt) they follow the top pizza.
+local function useStation(shop: Shop, stationName: string, player: Player, pickId: number?, park: boolean?)
 	if not shop.alive then
 		return
 	end
@@ -2643,26 +2754,15 @@ local function useStation(shop: Shop, stationName: string, player: Player, pickI
 		notify(player, "You don't work at this store. Open Stores (bottom left) to join it.", Color3.fromRGB(255, 160, 100))
 		return
 	end
-	if STAY[stationName] then
-		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-		if humanoid and humanoid.SeatPart then
-			notify(player, "Hop out of the car first.", Color3.fromRGB(255, 160, 100))
-			return
-		end
-		enterStation(shop, player, stationName, pickId)
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.SeatPart then
+		notify(player, "Hop out of the car first.", Color3.fromRGB(255, 160, 100))
 		return
 	end
-	-- One-off jobs (the truck): step away from any station first.
-	local session = sessions[player]
-	if session and not holdsStation(session) then
-		notify(player, "Finish what you're doing first!")
-		return
+	if table.find(Config.MakeSteps, stationName) then
+		setParked(player, park == true)
 	end
-	leaveStation(player)
-	local why = startStation(shop, stationName, player, pickId)
-	if why then
-		notify(player, why, Color3.fromRGB(255, 160, 100))
-	end
+	enterStation(shop, player, stationName, pickId)
 end
 
 -- Results faster than a human could manage: drop the task instead of leaving the station stuck.
@@ -2675,32 +2775,28 @@ local function isNumber(v: any): boolean
 	return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
 end
 
--- A station step is done: tell the client (so it can offer to follow this
--- pizza to its next station), and if they're staying at the station, line up
--- the next job there.
-local function stepDone(player: Player, stationName: string, pie: Pie?)
-	local info: any = { station = stationName, next = Config.StepAfter(stationName) }
+-- A station step is done: tell the client, then line up what's next. A
+-- follower goes straight on with the pizza to its next make step, unless
+-- someone stays at that station to do it; otherwise the next job loads at
+-- the station (for a follower, wherever the top pizza needs them).
+function stepDone(player: Player, stationName: string, pie: Pie?)
+	local info: any = { station = stationName }
 	if pie then
 		info.pieId = pie.id
 		info.size = pie.size
-		-- Where the pizza goes now (loaded straight from the toppings: the cut table, once it's baked).
-		info.next = Config.StationForStage(pie.stage) or (if pie.stage == "Oven" then "CutTable" else nil)
-	end
-	if info.next == stationName then
-		info.next = nil
-	end
-	-- Ready right now: the next step's free and the pizza (or a skin) is waiting there.
-	local shop = playerShop[player]
-	if info.next and shop then
-		local waitingThere = if pie then Config.StationForStage(pie.stage) == info.next and not pie.claimedBy else hasWork(shop, info.next)
-		info.ready = waitingThere and occupant(shop, info.next, player) == nil
 	end
 	Remotes.StepDone:FireClient(player, info)
 	local stay = stationed[player]
-	if stay then
-		stay.idleSince = os.clock()
-		task.delay(Config.NextJobDelay, assign, player)
+	if not stay then
+		return
 	end
+	stay.idleSince = os.clock()
+	local nextAt = if pie and (pie.stage == "Sauced" or pie.stage == "Cheesed") and not pie.claimedBy then Config.StationForStage(pie.stage) else nil
+	if pie and nextAt and following(player, stationName) and not manned(stay.shop, nextAt, player) then
+		enterStation(stay.shop, player, nextAt, pie.id)
+		return
+	end
+	task.delay(Config.NextJobDelay, assign, player)
 end
 
 -- Handles the result for every UI minigame. `payload` comes from the client: validate everything.
@@ -2771,7 +2867,7 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		stepDone(player, "Register")
 	elseif kind == "Dough" then
 		local hits, size = payload.hits, payload.size
-		if type(size) ~= "string" or not table.find(Config.Sizes, size) then
+		if type(size) ~= "string" or not table.find(Config.Sizes, size) or (session.data.size and size ~= session.data.size) then
 			return
 		end
 		local presses = Config.Dough.Presses[size]
@@ -2806,7 +2902,7 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		-- Sauce: coverage inside the sauce line and a clean rim, nothing else (the spoodle never runs dry).
 		local sauce, size = payload.sauce, payload.size
 		local S = Config.Sauce
-		if type(size) ~= "string" or not table.find(Config.Sizes, size) then
+		if type(size) ~= "string" or not table.find(Config.Sizes, size) or (session.data.size and size ~= session.data.size) then
 			return
 		end
 		if type(sauce) ~= "table" or type(sauce.cells) ~= "table" or #sauce.cells ~= S.Rings * S.Sectors then
@@ -2932,27 +3028,6 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 			notify(player, "That one was an extra - no order needed it.", Color3.fromRGB(255, 160, 100))
 		end
 		stepDone(player, "CutTable")
-	elseif kind == "Supply" then
-		local answers = payload.answers
-		local crates = session.data.crates
-		if type(answers) ~= "table" or #answers ~= #crates then
-			return
-		end
-		if elapsed < #crates * 0.2 then
-			return tooFast(player)
-		end
-		endSession(player, session, false)
-		-- Paid only for cases that actually went on a shelf, so the truck can't be farmed.
-		local stored = 0
-		for i, crate in crates do
-			if answers[i] == crate and shop.stock[crate] < Config.Shop.MaxStock then
-				stored += 1
-				shop.stock[crate] = math.min(Config.Shop.MaxStock, shop.stock[crate] + Config.Supply.RestockPerCrate)
-			end
-		end
-		updateBoards(shop)
-		pay(shop, player, Config.Pay.Supply, stored / #crates, string.format("Put away %d/%d cases", stored, #crates))
-		stepDone(player, "SupplyTruck")
 	end
 end
 
@@ -3140,30 +3215,8 @@ local function queueSnapshot(shop: Shop): any
 			})
 		end
 	end
-	-- Who's at each station, and where each waiting pizza can be worked next
-	-- (the Next button shows once that station's free).
-	local occupied: { [string]: { name: string, user: number } } = {}
-	for player, stay in stationed do
-		if stay.shop == shop and player.Parent then
-			occupied[stay.name] = { name = player.DisplayName, user = player.UserId }
-		end
-	end
-	for _, c in shop.crew do
-		if c.present and not occupied[c.station] then
-			occupied[c.station] = { name = c.name, user = 0 }
-		end
-	end
-	local pieAt: { [string]: string } = {}
-	for _, p in shop.pies do
-		local at = Config.StationForStage(p.stage)
-		if at and not p.claimedBy then
-			pieAt[tostring(p.id)] = at
-		end
-	end
 	local counts, used = rackCounts(shop)
 	return {
-		occupied = occupied,
-		pieAt = pieAt,
 		waiting = waiting,
 		rack = { counts = counts, used = used, capacity = Config.RackCapacity() },
 		orders = makeQueue,
@@ -3223,7 +3276,7 @@ local function tick(shop: Shop)
 		end
 	end
 
-	-- Trickle restock up to the starting stock; the truck fills the shelves.
+	-- Restock up to the starting stock (no supply truck for now).
 	if now - shop.lastRestock > S.AutoRestockInterval then
 		shop.lastRestock = now
 		for _, ing in Config.Ingredients do
@@ -3393,6 +3446,7 @@ end
 -- is StoreService's call; this keeps the work state in step with it.
 function ShopService.SetMember(player: Player, shop: Shop?)
 	if playerShop[player] ~= shop then
+		setParked(player, false)
 		leaveStation(player)
 		ShopService.CancelSession(player)
 		CarService.Release(player)
@@ -3464,26 +3518,44 @@ function ShopService.Init(houseDoors: { Part })
 			end
 		end
 	end)
-	-- HUD station bar and rail, queue panel clicks, and the "follow" button.
-	-- Works from anywhere in your store; you're moved to the station.
-	Remotes.UseStation.OnServerEvent:Connect(function(player, stationName, pickId)
-		if type(stationName) ~= "string" or (pickId ~= nil and not isNumber(pickId)) then
-			return
-		end
+	-- HUD keys work from anywhere in your store; you're moved to the station.
+	local function hudShop(player: Player): Shop?
 		local shop = playerShop[player]
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if not shop or not shop.alive or not root then
 			notify(player, "Open or join a store first (Stores, bottom left).", Color3.fromRGB(255, 160, 100))
-			return
+			return nil
 		end
 		if (shop.model:GetPivot().Position - root.Position).Magnitude > 90 then
 			notify(player, "Head back to your store to work a station.", Color3.fromRGB(255, 160, 100))
+			return nil
+		end
+		return shop
+	end
+	-- HUD station bar and rail, queue panel clicks (a make station picked here parks you there).
+	Remotes.UseStation.OnServerEvent:Connect(function(player, stationName, pickId)
+		if type(stationName) ~= "string" or (pickId ~= nil and not isNumber(pickId)) then
 			return
 		end
-		if not station(shop, stationName) or stationName == "Pickup" or stationName == "Fridge" then
+		local shop = hudShop(player)
+		if not shop or not station(shop, stationName) or stationName == "Pickup" or stationName == "Fridge" then
 			return
 		end
-		useStation(shop, stationName, player, pickId)
+		useStation(shop, stationName, player, pickId, true)
+	end)
+	-- The HUD's Follow key: back to following the top pizza. Mid-job, the next step follows.
+	Remotes.Follow.OnServerEvent:Connect(function(player)
+		local shop = hudShop(player)
+		if not shop then
+			return
+		end
+		local stay = stationed[player]
+		if stay and stay.shop == shop and table.find(Config.MakeSteps, stay.name) then
+			setParked(player, false)
+			assign(player)
+		else
+			useStation(shop, (followTarget(shop, player)), player)
+		end
 	end)
 
 	local function hookCharacter(player: Player)
@@ -3502,6 +3574,7 @@ function ShopService.Init(houseDoors: { Part })
 	Players.PlayerAdded:Connect(hookCharacter)
 	Players.PlayerRemoving:Connect(function(player)
 		stationed[player] = nil
+		parked[player] = nil
 		ShopService.CancelSession(player) -- also releases anything they had claimed
 		playerShop[player] = nil
 	end)

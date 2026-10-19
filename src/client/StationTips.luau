@@ -27,12 +27,13 @@ local TIPS: { [string]: { string } } = {
 		"Phone orders need the house number. Then send it to the kitchen.",
 	},
 	Dough = {
-		"Pick a size. Skins go on the racks for the saucers.",
+		"You stretch the size the top ticket needs (pick any size when you stay here to prep).",
 		"Press when the marker is in the green. The zone jumps after every press.",
 		"Yellow and misses leave the skin small and lopsided.",
+		"You follow each pizza to its next step. Pick a station on the Stations bar to stay there; Follow brings you back.",
 	},
 	Sauce = {
-		"Pick a skin off the racks.",
+		"The top ticket's skin is laid out for you (pick one when you stay here).",
 		"Hold and spread the sauce out to the 3/4\" line.",
 		"Keep the rim clean, then press Done.",
 	},

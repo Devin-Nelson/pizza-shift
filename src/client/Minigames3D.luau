@@ -475,8 +475,13 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 		bindPress(ctx, press)
 	end
 
-	-- Step 1: choose what size to prep (shows what's already on the racks).
-	sizeTiles(body, skins, false, stretch, if type(data.need) == "string" then data.need else nil)
+	-- Following, the size is the top pizza's; otherwise choose what to prep
+	-- (the tiles show what's already on the racks).
+	if type(data.size) == "string" then
+		stretch(data.size)
+	else
+		sizeTiles(body, skins, false, stretch, if type(data.need) == "string" then data.need else nil)
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -561,8 +566,12 @@ local function sauce(data: any, finish: Finish, cancel: Cancel)
 		end)
 	end
 
-	-- Step 1: which skin to sauce (go by the tickets).
-	sizeTiles(body, if type(data.skins) == "table" then data.skins else {}, true, spread, if type(data.need) == "string" then data.need else nil)
+	-- Following, the top pizza's skin is already on the spot; otherwise pick one (go by the tickets).
+	if type(data.size) == "string" then
+		spread(data.size)
+	else
+		sizeTiles(body, if type(data.skins) == "table" then data.skins else {}, true, spread, if type(data.need) == "string" then data.need else nil)
+	end
 end
 
 -- The make-line's portion scale read-out at this station (StationArt:
@@ -727,7 +736,7 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 		local name = if pan then pan:GetAttribute("Topping") else nil
 		if type(name) == "string" then
 			if out[name] then
-				Ui.toast(string.format("Out of %s - unload the supply truck.", string.lower(name)), C.Red)
+				Ui.toast(string.format("Out of %s - it's being restocked.", string.lower(name)), C.Red)
 			else
 				selected = name
 				refresh()
@@ -743,12 +752,14 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 	local rackBtn = Ui.flatButton("To rack", "ghost", { Size = UDim2.fromOffset(92, 52), LayoutOrder = 22, Parent = body })
 	local loadBtn = actionButton(body, "Load", 23, 110)
 	loadBtn.Activated:Connect(function()
-		Minigames3D.Close()
 		if Loading.mode == "Pick" then
-			-- It lands on the ready rack first; then we ask which order it's for.
-			Loading.AskAfterTopping()
-			finish({ counts = counts, load = false })
+			-- Which order it's for, then it goes in (closing the picker keeps topping).
+			Loading.Pick(data.size, function(orderId: number)
+				Minigames3D.Close()
+				finish({ counts = counts, load = true, orderId = orderId })
+			end)
 		else
+			Minigames3D.Close()
 			finish({ counts = counts, load = true })
 		end
 	end)

@@ -397,7 +397,6 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	station("CutTable", at(6, 1, -10.4), Vector3.new(11, 4, 5.6), "Cut & Box", "Cut Table", nil, Vector3.new(1.5, 3.2, -1.5))
 	station("DeliveryRack", at(-3.5, 1, -10.4), Vector3.new(6, 7, 2.2), "Heat Rack", "Heat Rack", nil, Vector3.new(0, 3.6, -1.1))
 	station("Fridge", at(-27.4, 1, -12) * FACE_RIGHT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler")
-	station("SupplyTruck", at(-10, 0, -30) * FACE_FRONT, Vector3.new(8, 4, 3), "Unload Truck", "Supply Truck", CFrame.new(0, 2, -1.5))
 
 	-- === Lot out back ===
 	part({ Name = "ParkingLot", Size = Vector3.new(36, 0.2, 28), CFrame = at(17, 0.1, -42), Color = Color3.fromRGB(55, 55, 60), Material = Enum.Material.Asphalt, CanCollide = false, Parent = decor })

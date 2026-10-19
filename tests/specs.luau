@@ -80,6 +80,7 @@ local SalesPlan = load("src/server/SalesPlan.luau", { script = { Parent = {} }, 
 local Style = load("src/shared/Style.luau", { script = { Parent = { Config = CONFIG } }, game = game })
 local TicketRows = load("src/shared/TicketRows.luau", { script = { Parent = {} }, game = game })
 local Staff = load("src/shared/Staff.luau", { script = { Parent = { Config = CONFIG } }, game = game })
+local Follow = load("src/shared/Follow.luau", { script = { Parent = {} }, game = game })
 
 local specs: { { string | () -> () } } = {}
 local function spec(name: string, fn: () -> ())
@@ -118,15 +119,28 @@ spec("each pizza stage is worked by the right station", function()
 	eq(Config.StationForStage("Oven"), nil, "Oven (nobody works it)")
 end)
 
+spec("a follower goes with the top pizza: its pizza on the line, else its skin, else stretch it", function()
+	local function go(...)
+		local at, id, size = Follow.target(...)
+		return table.concat({ at, tostring(id), tostring(size) }, " ")
+	end
+	local none = {}
+	eq(go({ "Large", "Small" }, none, none, none), "Dough nil Large", "no skins: stretch the top pizza's size")
+	eq(go({ "Large", "Small" }, none, none, { Large = 1 }), "Sauce nil Large", "its skin is racked: sauce it")
+	eq(go({ "Large", "Small" }, none, none, { Small = 2 }), "Dough nil Large", "a skin of another size doesn't count")
+	eq(go({ "Large", "Small" }, { Large = 1 }, none, { Small = 1 }), "Sauce nil Small", "someone's on the top one: the next")
+	local waiting = { { id = 7, size = "Small", station = "Toppings" }, { id = 3, size = "Large", station = "Cheese" } }
+	eq(go({ "Large", "Small" }, none, waiting, { Large = 1 }), "Cheese 3 nil", "its pizza is already on the line: carry on with it")
+	eq(go({ "Large", "Large" }, { Large = 1 }, waiting, none), "Cheese 3 nil", "covered tickets are skipped per size")
+	eq(go({}, none, waiting, none), "Dough nil nil", "nothing on order: stretch ahead")
+end)
+
 spec("the make process runs Dough to Load; nothing to work moves you back a step", function()
 	eq(table.concat(Config.MakeSteps, ","), "Dough,Sauce,Cheese,Toppings,Load", "make steps")
 	eq(Config.StepBefore("Dough"), nil, "nothing before stretching")
 	eq(Config.StepBefore("Sauce"), "Dough", "no skins: stretch")
 	eq(Config.StepBefore("Load"), "Toppings", "nothing ready: top")
 	eq(Config.StepBefore("CutTable"), nil, "after the bake isn't the make process")
-	eq(Config.StepAfter("Dough"), "Sauce", "stretched: sauce it")
-	eq(Config.StepAfter("Load"), "CutTable", "loaded: cut it once it's baked")
-	eq(Config.StepAfter("Register"), nil, "not a make step")
 	for _, id in Config.MakeSteps do
 		local info = Config.StationInfo(id)
 		assert(info and info.stay, id .. " is a stay station")
@@ -153,12 +167,12 @@ spec("every size has dough presses, slices, price, inches, cheese, diameter and 
 	end
 end)
 
-spec("bigger pizzas take more dough presses (6 / 8 / 10)", function()
+spec("bigger pizzas take more dough presses (3 / 4 / 5)", function()
 	local P = Config.Dough.Presses
 	assert(P.Small < P.Medium and P.Medium < P.Large, "presses must grow with size")
-	eq(P.Small, 6, "Small")
-	eq(P.Medium, 8, "Medium")
-	eq(P.Large, 10, "Large")
+	eq(P.Small, 3, "Small")
+	eq(P.Medium, 4, "Medium")
+	eq(P.Large, 5, "Large")
 end)
 
 spec("the dough timing zone is a sane fraction of the bar", function()
@@ -190,7 +204,11 @@ spec("pepperoni and ham go by the piece, everything else by the ounce", function
 	eq(Config.PortionFor("Pepperoni", "Large", 1), 40, "the Large Pepperoni spec")
 	eq(Config.PortionFor("Pepperoni", "Large", 3), 32, "2-3 toppings share a portion")
 	eq(Config.PortionPieces("Pepperoni", "Large", 1), 40, "pieces for counted toppings")
-	eq(Config.PortionPieces("Mushrooms", "Large", 1), 25, "pieces that weigh the portion")
+	eq(Config.PortionPieces("Mushrooms", "Large", 1), 50, "pieces that weigh the portion")
+	-- Spot checks against the user's portion chart.
+	eq(Config.PortionFor("Ham", "Small", 2), 16, "chart: Small ham, 2-3 toppings")
+	eq(Config.PortionFor("Olives", "Medium", 1), 2, "chart: Medium olives, 1 topping")
+	eq(Config.CheesePortion.Large, 7, "chart: Large cheese")
 	eq(Config.PortionText("Mushrooms", 2.5), "2.5 oz", "weighed text")
 	eq(Config.PortionText("Pepperoni", 40), "40 pcs", "counted text")
 	eq(Config.PizzaPrice("Large", { "Pepperoni", "Ham" }), 22, "size + 2 toppings")

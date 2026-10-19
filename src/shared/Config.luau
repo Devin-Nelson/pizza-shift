@@ -35,8 +35,8 @@ Config.TicketAge = { Fresh = 120, Aging = 300 }
 -- Stations and jobs
 ---------------------------------------------------------------------------
 
--- There are no roles: every player at a store can work every station, the
--- truck and deliveries included (deliveries need the store to take them, see
+-- There are no roles: every player at a store can work every station,
+-- deliveries included (deliveries need the store to take them, see
 -- Config.Store.DeliveryMinPlayers) and hired staff can do the same (Config.Staff).
 
 -- Work stations as the HUD shows them, in workflow order. `stage` is the stage
@@ -55,7 +55,6 @@ Config.Stations = {
 	{ id = "Load", label = "Load Oven", stage = "Ready", stay = true, pick = true, queue = "make" },
 	{ id = "CutTable", label = "Cut & Box", stage = "Exit", stay = true, pick = true, queue = "oven" },
 	{ id = "DeliveryRack", label = "Heat Rack", stay = true, pick = true, queue = "delivery" },
-	{ id = "SupplyTruck", label = "Truck" },
 }
 
 function Config.StationInfo(id: string): any?
@@ -77,19 +76,15 @@ function Config.StationForStage(stage: string): string?
 	return nil
 end
 
--- The make process (everything before the bake), in order. A player at one
--- of these with nothing to work is moved back a step (unless someone's at
--- that one: then they wait). After the last, a pizza's next step is the cut table.
+-- The make process (everything before the bake), in order. Players follow
+-- the top pizza through it by default (ShopService); one who parked at one of
+-- these with nothing to work is moved back a step (unless someone's at that
+-- one: then they wait).
 Config.MakeSteps = { "Dough", "Sauce", "Cheese", "Toppings", "Load" }
 
 function Config.StepBefore(id: string): string?
 	local i = table.find(Config.MakeSteps, id)
 	return if i and i > 1 then Config.MakeSteps[i - 1] else nil
-end
-
-function Config.StepAfter(id: string): string?
-	local i = table.find(Config.MakeSteps, id)
-	return if not i then nil elseif i < #Config.MakeSteps then Config.MakeSteps[i + 1] else "CutTable"
 end
 
 -- Real seconds between finishing a job at a station and the next one loading.
@@ -163,21 +158,22 @@ for size, inches in Config.PizzaInches do
 	Config.BoxSize[size] = Config.PizzaDiameter[size] + 0.15
 end
 
--- Topping portions by size, for pizzas with { 1 topping, 2-3 toppings }.
--- Pepperoni and ham are counted in pieces; the rest are weighed in ounces on
--- the make-line scale (each piece put on weighs PieceOz). Large Pepperoni is
--- the spec; everything else is a PLACEHOLDER to be fleshed out.
+-- Topping portions by size, for pizzas with { 1 topping, 2-3 toppings }, from
+-- the user's portion chart (10" / 12" / 14"; it groups pepperoni with ham,
+-- pineapple and mushrooms with sausage, peppers with olives). Pepperoni and
+-- ham are counted in pieces; the rest are weighed in ounces on the make-line
+-- scale (each piece put on weighs PieceOz).
 Config.CountedToppings = { Pepperoni = true, Ham = true }
 Config.PieceOz = { Pineapple = 0.1, Peppers = 0.08, Mushrooms = 0.1, Olives = 0.06 }
 Config.Portions = {
 	Pepperoni = { Small = { 20, 16 }, Medium = { 30, 24 }, Large = { 40, 32 } },
-	Ham = { Small = { 12, 10 }, Medium = { 18, 14 }, Large = { 24, 19 } },
-	Pineapple = { Small = { 1.25, 1 }, Medium = { 1.75, 1.5 }, Large = { 2.5, 2 } },
-	Peppers = { Small = { 1, 0.75 }, Medium = { 1.5, 1.25 }, Large = { 2, 1.75 } },
-	Mushrooms = { Small = { 1.25, 1 }, Medium = { 1.75, 1.5 }, Large = { 2.5, 2 } },
-	Olives = { Small = { 1, 0.75 }, Medium = { 1.5, 1.25 }, Large = { 2, 1.5 } },
+	Ham = { Small = { 20, 16 }, Medium = { 30, 24 }, Large = { 40, 32 } },
+	Pineapple = { Small = { 2.5, 1.5 }, Medium = { 3.5, 2.5 }, Large = { 5, 3.5 } },
+	Peppers = { Small = { 1.5, 1 }, Medium = { 2, 1.5 }, Large = { 3, 2 } },
+	Mushrooms = { Small = { 2.5, 1.5 }, Medium = { 3.5, 2.5 }, Large = { 5, 3.5 } },
+	Olives = { Small = { 1.5, 1 }, Medium = { 2, 1.5 }, Large = { 3, 2 } },
 }
-Config.CheesePortion = { Small = 4, Medium = 6, Large = 8 } -- ounces (PLACEHOLDER)
+Config.CheesePortion = { Small = 3.5, Medium = 5, Large = 7 } -- ounces
 Config.PortionTolerance = 0.10 -- within ±10% = no penalty
 
 function Config.ToppingTier(count: number): number
@@ -238,7 +234,7 @@ end
 Config.Dough = {
 	Racks = 2,
 	SlotsPerRack = 15,
-	Presses = { Small = 6, Medium = 8, Large = 10 },
+	Presses = { Small = 3, Medium = 4, Large = 5 },
 	GreenWidth = { 0.07, 0.16 },
 	Yellow = 0.08,
 	YellowScore = 0.45,
@@ -273,8 +269,6 @@ Config.ReadyRack = { Slots = 15 }
 -- Cut & box: slices per size (cuts = slices / 2), chance of cheese bubbles to
 -- pop, how fast the rocker blade spins (degrees/second) and how long a cut takes.
 Config.Cut = { Slices = { Small = 6, Medium = 8, Large = 8 }, BubbleChance = 0.6, MaxBubbles = 3, SpinSpeed = 220, CutTime = 0.3 }
--- Supply truck: crates per run and how much each restocks.
-Config.Supply = { Crates = 5, RestockPerCrate = 12 }
 -- Delivery: real seconds from leaving the rack; full speed bonus under FastTime.
 Config.Delivery = { FastTime = 50, SlowTime = 120, WalkSpeed = 20 }
 -- Delivery car (arcade handling, client-driven).
@@ -293,7 +287,6 @@ Config.Pay = {
 	Toppings = 9,
 	Cut = 14,
 	Delivery = 35,
-	Supply = 25,
 }
 Config.MinQualityPay = 0.3 -- even a sloppy job earns 30%
 Config.XPPerTask = 10
@@ -358,14 +351,15 @@ Config.OrderSizes = {
 ---------------------------------------------------------------------------
 
 Config.Shop = {
-	StartingStock = 20,
+	StartingStock = 60,
 	MaxStock = 60,
 	MaxCustomers = 6, -- NPCs in the lobby at once
 	CustomerPatience = 300, -- real seconds any order waits with 1 pizza (the bake alone is ~90 s)...
 	PatiencePerPizza = 75, -- ...plus this much per extra pizza (big orders take a while)
 	AutoRegisterDelay = 12, -- online kiosk takes an order if no one answers (x3 while a player is at the store)
-	AutoRestockInterval = 20, -- trickle restock (up to StartingStock); the truck fills to MaxStock
-	AutoRestockAmount = 2,
+	-- No supply truck for now: the shelves refill to StartingStock (full) on their own.
+	AutoRestockInterval = 20,
+	AutoRestockAmount = 60,
 }
 
 -- Every forecast order is a real order at the store; nothing is made off-screen.

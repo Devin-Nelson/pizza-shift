@@ -1,6 +1,6 @@
 --!strict
 -- Station minigame UIs. Each reports raw inputs; the server scores them.
--- Register and Supply are 2D panels here (the register's shows over the
+-- The Register is a 2D panel here (it shows over the
 -- first-person view of the counter while you're stationed there); the pizza
 -- stations (Dough, Make-Line, Cut & Box) are in-world 3D minigames in Minigames3D.
 
@@ -239,64 +239,8 @@ local function register(data: any, finish: Finish, cancel: Cancel)
 	end)
 end
 
----------------------------------------------------------------------------
--- Supply: shelve each crate on the right shelf (shelves reshuffle).
----------------------------------------------------------------------------
-local function supply(data: any, finish: Finish, cancel: Cancel)
-	local crates: { string } = data.crates or {}
-	local shelves: { string } = table.clone(data.shelves or Config.Ingredients)
-	local _, body = open("Unload the truck", 540, 440, cancel)
-
-	local status = Ui.caption("", { Size = UDim2.new(1, 0, 0, 18), Parent = body })
-	-- The crate in hand.
-	local crate = Ui.box(Color3.fromRGB(150, 105, 60), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 28), Size = UDim2.fromOffset(260, 80), Parent = body }, {
-		Ui.new("UIStroke", { Color = Color3.fromRGB(96, 64, 34), Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
-	})
-	local swatch = Ui.box(C.White, { Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(18, 56), Parent = crate })
-	local crateLabel = Ui.text("", F.Heading, S.Huge, { TextColor3 = C.Cream, Position = UDim2.fromOffset(44, 0), Size = UDim2.new(1, -56, 1, 0), Parent = crate })
-
-	local grid = Ui.new("Frame", { Position = UDim2.fromOffset(0, 124), Size = UDim2.new(1, 0, 1, -124), BackgroundTransparency = 1, Parent = body })
-	local answers: { string } = {}
-	local index = 1
-	local rng = Random.new()
-
-	local function shuffle(list: { string })
-		for i = #list, 2, -1 do
-			local j = rng:NextInteger(1, i)
-			list[i], list[j] = list[j], list[i]
-		end
-	end
-
-	local function render()
-		local current = crates[index]
-		status.Text = string.upper(string.format("Crate %d of %d  -  put it on its shelf", index, #crates))
-		crateLabel.Text = string.upper(current or "")
-		swatch.BackgroundColor3 = Config.IngredientColors[current] or C.White
-		grid:ClearAllChildren()
-		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 3, -8, 0, 64), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
-		shuffle(shelves)
-		for i, ing in shelves do
-			local b = Ui.flatButton("", "dark", { LayoutOrder = i, Parent = grid })
-			Ui.box(Config.IngredientColors[ing] or C.White, { Size = UDim2.new(1, 0, 0, 6), Parent = b })
-			Ui.text(string.upper(ing), F.LabelBold, S.Label, { TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, 0, 1, -6), Parent = b })
-			b.Activated:Connect(function()
-				answers[index] = ing
-				index += 1
-				if index > #crates then
-					Minigames.Close()
-					finish({ answers = answers })
-				else
-					render()
-				end
-			end)
-		end
-	end
-	render()
-end
-
 local HANDLERS: { [string]: (any, Finish, Cancel) -> () } = {
 	Register = register,
-	Supply = supply,
 }
 
 function Minigames.Start(kind: string, data: any, finish: Finish, cancel: Cancel)
