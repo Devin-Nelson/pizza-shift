@@ -273,7 +273,7 @@ export type Sales = {
 	avgTicket: string,
 	avgLoad: string,
 	avgTotal: string,
-	crew: string,
+	lost: string,
 }
 
 function Screens.sales(gui: SurfaceGui, m: Sales)
@@ -303,7 +303,7 @@ function Screens.sales(gui: SurfaceGui, m: Sales)
 			text(cell, s[1], F.Label, 12, { TextColor3 = C.CreamDim, Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -20, 0, 16) })
 			r[s[2]] = text(cell, "", F.Mono, 22, { Position = UDim2.fromOffset(10, 26), Size = UDim2.new(1, -20, 0, 30) })
 		end
-		r.crew = text(bg, "", F.Label, 14, { TextColor3 = C.CreamDim, Position = UDim2.fromOffset(16, 306), Size = UDim2.new(1, -32, 0, 20) })
+		r.lost = text(bg, "", F.Label, 14, { TextColor3 = C.CreamDim, Position = UDim2.fromOffset(16, 306), Size = UDim2.new(1, -32, 0, 20) })
 		text(bg, "LOAD = PLACED TO LAST PIZZA IN THE OVEN   TOTAL = PLACED TO LAST PIZZA BOXED   (REAL MIN)", F.Label, 11, {
 			TextColor3 = Color3.fromRGB(120, 116, 110),
 			Position = UDim2.fromOffset(16, 332),
@@ -322,7 +322,7 @@ function Screens.sales(gui: SurfaceGui, m: Sales)
 	refs.avgTicket.Text = m.avgTicket
 	refs.avgLoad.Text = m.avgLoad
 	refs.avgTotal.Text = m.avgTotal
-	refs.crew.Text = "CREW-COVERED TODAY  " .. m.crew
+	refs.lost.Text = "LOST TODAY  " .. m.lost
 end
 
 return Screens

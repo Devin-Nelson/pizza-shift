@@ -66,6 +66,7 @@ type Order = {
 	cancelled: boolean,
 	stage: string, -- "Making" | "Rack" | "Out" | "Pickup" | "Done"
 	claimedBy: any, -- a Player, or a hired staff member (Crew)
+	lost: boolean?, -- the customer never got it (counted in sales.lostToday)
 }
 
 -- One pizza an order asked for. It's filled when a finished pizza is loaded
@@ -108,14 +109,16 @@ type Pie = {
 	boxWrong: boolean,
 }
 
--- A hired team member (an NPC) in a store. `member`: their saved record in
--- the owner's profile (XP goes straight into it). `present`: in for this
--- shift (scheduled and didn't call out). `job`: what they're in the middle
--- of, done at `busyUntil`.
+-- A hired staff member (an NPC) in a store. `member`: their saved record in
+-- the owner's profile (XP goes straight into it). `station`: the one of
+-- their stations they're at (managers move between theirs; `next` is where
+-- they look for work first). `present`: in for this shift (scheduled and
+-- didn't call out). `job`: what they're in the middle of, done at `busyUntil`.
 type Crew = {
 	member: Staff.Member,
 	name: string,
-	station: string, -- where they work (the heat rack: they drive)
+	station: string, -- the heat rack: they drive
+	next: number,
 	present: boolean,
 	npc: Model?,
 	busyUntil: number,
@@ -145,7 +148,7 @@ export type Shop = {
 	day: number,
 	mix: SalesPlan.Mix,
 	demandToday: number, -- forecast dollars generated so far today
-	sales: { today: number, week: number, crewToday: number, ordersToday: number, loadSum: number, loadCount: number, totalSum: number, totalCount: number },
+	sales: { today: number, week: number, lostToday: number, ordersToday: number, loadSum: number, loadCount: number, totalSum: number, totalCount: number },
 	rack: { [number]: RackSkin }, -- dough rack slot -> stretched skin (nil = empty)
 	lastRestock: number,
 	spawning: number,
@@ -234,20 +237,17 @@ local function membersOf(shop: Shop): { Player }
 	return list
 end
 
--- Team members in for this shift: kitchen staff, and drivers (at the heat rack).
-local function crewOnShift(shop: Shop, driving: boolean): number
-	local n = 0
+-- Delivery orders need a second player, or staff on shift who drive (the heat rack is one of their stations).
+local function takesDeliveries(shop: Shop): boolean
+	if #membersOf(shop) >= Config.Store.DeliveryMinPlayers then
+		return true
+	end
 	for _, c in shop.crew do
-		if c.present and (c.station == "DeliveryRack") == driving then
-			n += 1
+		if c.present and table.find(c.member.stations, "DeliveryRack") then
+			return true
 		end
 	end
-	return n
-end
-
--- Delivery orders need a second player or a driver on shift.
-local function takesDeliveries(shop: Shop): boolean
-	return #membersOf(shop) >= Config.Store.DeliveryMinPlayers or crewOnShift(shop, true) > 0
+	return false
 end
 
 -- Who has hold of something: a player or a hired staff member.
@@ -524,7 +524,7 @@ local function updateSalesBoard(shop: Shop)
 		avgTicket = "~" .. money(SalesPlan.expectedTicket(shop.mix)),
 		avgLoad = if shop.sales.loadCount > 0 then formatMinutes(shop.sales.loadSum / shop.sales.loadCount) else "--:--",
 		avgTotal = if shop.sales.totalCount > 0 then formatMinutes(shop.sales.totalSum / shop.sales.totalCount) else "--:--",
-		crew = money(shop.sales.crewToday),
+		lost = money(shop.sales.lostToday),
 	})
 end
 
@@ -552,13 +552,22 @@ local function pay(shop: Shop, player: Player, base: number, quality: number, wh
 	end
 end
 
-local function recordSale(shop: Shop, amount: number, crew: boolean)
+local function recordSale(shop: Shop, amount: number)
 	shop.sales.today += amount
 	shop.sales.week += amount
 	shop.sales.ordersToday += 1
-	if crew then
-		shop.sales.crewToday += amount
+end
+
+-- An order the customer never got (gave up, timed out, wrong house, closing
+-- time): a lost sale, counted once.
+local function loseSale(shop: Shop, order: Order?, items: { Item })
+	if order then
+		if order.lost then
+			return
+		end
+		order.lost = true
 	end
+	shop.sales.lostToday += SalesPlan.price(items)
 end
 
 ---------------------------------------------------------------------------
@@ -649,9 +658,11 @@ local function customerLeave(shop: Shop, c: Customer, mood: string)
 	for _, entry in table.clone(shop.pending) do
 		if entry.customer == c then
 			removePending(shop, entry)
+			loseSale(shop, nil, entry.items)
 		end
 	end
 	if c.order and c.order.stage ~= "Done" then
+		loseSale(shop, c.order, c.order.desired)
 		c.order.customer = nil
 		c.order.cancelled = true
 		-- Say so out loud, otherwise the order just vanishes from the screens.
@@ -769,21 +780,6 @@ local function removeOrder(shop: Shop, order: Order)
 		table.remove(shop.orders, i)
 	end
 	updateBoards(shop)
-end
-
--- Pizzas the players currently have on their plate (for crew overflow):
--- everything ordered that isn't boxed yet, plus calls and walk-ins not rung in.
-local function openPizzas(shop: Shop): number
-	local n = 0
-	for _, t in shop.tickets do
-		if not t.boxed then
-			n += 1
-		end
-	end
-	for _, e in shop.pending do
-		n += #e.items
-	end
-	return n
 end
 
 ---------------------------------------------------------------------------
@@ -1276,6 +1272,7 @@ local function completeOrder(shop: Shop, order: Order, extra: number, driver: Pl
 	local satisfaction = average(qualities) * accuracy * extra * average(portions) * boxFactor
 
 	if order.delivery and order.house ~= order.desiredHouse then
+		loseSale(shop, order, order.desired)
 		local who = if driver then { driver } else {}
 		for worker in order.workers do
 			table.insert(who, worker)
@@ -1287,7 +1284,7 @@ local function completeOrder(shop: Shop, order: Order, extra: number, driver: Pl
 	end
 
 	local price = SalesPlan.price(order.entered)
-	recordSale(shop, price, false)
+	recordSale(shop, price)
 	updateSalesBoard(shop)
 
 	if order.delivery then
@@ -1499,19 +1496,13 @@ local function spawnCustomer(shop: Shop, items: { Item }, online: boolean)
 	end)
 end
 
--- One new order from the forecast: route it to the players or the off-screen crew.
--- A store that can't take deliveries gets them as carryout instead.
+-- One new order from the forecast; every one comes to the store (what it
+-- can't make in time is lost). A store that can't take deliveries gets them
+-- as carryout instead.
 local function newOrder(shop: Shop, items: { Item })
 	local S = Config.Sales
 	local delivery = shop.rng:NextNumber() < S.DeliveryShare and takesDeliveries(shop)
 	local online = shop.rng:NextNumber() < S.OnlineShare
-	local staff = #membersOf(shop) + crewOnShift(shop, false)
-	local capacity = staff * Config.Crew.PizzasPerWorker - openPizzas(shop)
-	local playable = staff > 0 and #items <= capacity
-	if not playable then
-		recordSale(shop, SalesPlan.price(items), true)
-		return
-	end
 	if delivery then
 		local house = shop.rng:NextInteger(1, #houses)
 		local phones = 0
@@ -1528,12 +1519,11 @@ local function newOrder(shop: Shop, items: { Item })
 		return
 	end
 	-- Carryout: a customer walks in (or comes to pick up an online order).
+	-- A full lobby takes it online instead (they come when it's ready).
 	if #shop.customers + shop.spawning < Config.Shop.MaxCustomers then
 		spawnCustomer(shop, items, online)
-	elseif online then
-		createOrder(shop, "online", items, nil, table.clone(items), nil, 1, nil, nil)
 	else
-		recordSale(shop, SalesPlan.price(items), true)
+		createOrder(shop, "online", items, nil, table.clone(items), nil, 1, nil, nil)
 	end
 end
 
@@ -2029,8 +2019,7 @@ local function releaseCrew(shop: Shop, c: Crew)
 end
 
 -- Starts the staff member's next job at its station, if there is one.
-local function crewStart(shop: Shop, c: Crew): any?
-	local s = c.station
+local function crewJobAt(shop: Shop, c: Crew, s: string): any?
 	if s == "DeliveryRack" then
 		for _, o in shop.orders do
 			if o.stage == "Rack" and o.delivery and not o.claimedBy and houses[o.house or 0] then
@@ -2128,17 +2117,31 @@ local function crewStart(shop: Shop, c: Crew): any?
 	return nil
 end
 
--- The member's level at the station they work.
-local function crewLevel(c: Crew): number
-	local stat = c.member.stats[c.station]
-	return if stat then stat.level else 1
+-- The staff member's next job: at the first of their stations (managers
+-- have several) with work waiting, looking round from where they last found it.
+local function crewStart(shop: Shop, c: Crew): any?
+	local list = c.member.stations
+	for i = 1, #list do
+		local k = (c.next + i - 1) % #list + 1
+		local job = crewJobAt(shop, c, list[k])
+		if job then
+			c.next = k
+			if c.station ~= list[k] then
+				-- shortcut: managers step straight to the next station (no walking between them).
+				c.station = list[k]
+				crewToPost(shop, c)
+			end
+			return job
+		end
+	end
+	return nil
 end
 
 -- Finishes the job the staff member started, and they learn from it.
 local function crewFinish(shop: Shop, c: Crew)
 	local job = c.job
 	c.job = nil
-	local quality = Staff.quality(crewLevel(c))
+	local quality = Staff.jobQuality(c.member, c.station)
 	local what = job.what
 	if what == "Register" then
 		local e = job.entry
@@ -2241,7 +2244,7 @@ local function crewStep(shop: Shop)
 		elseif not c.job and now >= c.busyUntil and canWork() then
 			c.job = crewStart(shop, c)
 			if c.job then
-				local speed = Staff.speed(crewLevel(c))
+				local speed = Staff.jobSpeed(c.member, c.station)
 				if c.job.what == "Delivery" then
 					local trip = Config.StaffWork.Trip
 					c.busyUntil = now + shop.rng:NextNumber(trip[1], trip[2]) * speed
@@ -2467,6 +2470,7 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 		local door = houses[order.house or 0]
 		if not door then
 			-- The phone order was rung in with an address that doesn't exist.
+			loseSale(shop, order, order.desired)
 			removeOrder(shop, order)
 			return "Order #" .. order.id .. " has an invalid address - tossed."
 		end
@@ -2933,10 +2937,16 @@ local function closeStore(shop: Shop)
 		releaseCrew(shop, c)
 	end
 	-- Clear orders before customers leave, so nobody gets "customer gave up" alerts at close.
+	-- Whatever's still open is a lost sale.
+	for _, e in shop.pending do
+		loseSale(shop, nil, e.items)
+	end
 	table.clear(shop.pending)
 	for _, o in table.clone(shop.orders) do
+		loseSale(shop, o, o.desired)
 		removeOrder(shop, o)
 	end
+	updateSalesBoard(shop)
 	-- Whatever's left on the make-line, the shelf and the belts gets thrown out.
 	for _, pie in table.clone(shop.pies) do
 		removePie(shop, pie)
@@ -2967,7 +2977,7 @@ local function runDemand(shop: Shop)
 		shop.day = day
 		shop.demandToday = 0
 		shop.sales.today = 0
-		shop.sales.crewToday = 0
+		shop.sales.lostToday = 0
 		shop.sales.ordersToday = 0
 		shop.sales.loadSum = 0
 		shop.sales.loadCount = 0
@@ -3140,8 +3150,23 @@ local function tick(shop: Shop)
 	-- Impatient customers (not ones already collecting their boxes).
 	for _, c in table.clone(shop.customers) do
 		local collecting = c.order ~= nil and c.order.stage == "Pickup"
-		if c.state ~= "Leaving" and not collecting and now - c.arrived > S.CustomerPatience + S.PatiencePerPizza * (#c.items - 1) then
+		if c.state ~= "Leaving" and not collecting and now - c.arrived > Config.OrderPatience(#c.items) then
 			customerLeave(shop, c, "I've waited forever! >:(")
+		end
+	end
+
+	-- Orders nobody's standing in the lobby for (phone, online, delivery) give
+	-- up too: still being made, or boxed and waiting on a driver.
+	for _, o in table.clone(shop.orders) do
+		if not o.customer and not o.cancelled and (o.stage == "Making" or o.stage == "Rack") and now - o.created > Config.OrderPatience(#o.desired) then
+			loseSale(shop, o, o.desired)
+			o.cancelled = true
+			for _, p in membersOf(shop) do
+				notify(p, string.format("Order #%d waited too long and was cancelled - a lost sale.", o.id), Color3.fromRGB(255, 120, 100))
+			end
+			if o.stage == "Rack" then
+				removeOrder(shop, o)
+			end
 		end
 	end
 
@@ -3179,7 +3204,7 @@ function ShopService.AddShop(model: Model, name: string, owner: Player?, volume:
 		day = 0,
 		mix = { small = 0.88, medium = 0.11, large = 0.01 },
 		demandToday = 0,
-		sales = { today = 0, week = 0, crewToday = 0, ordersToday = 0, loadSum = 0, loadCount = 0, totalSum = 0, totalCount = 0 },
+		sales = { today = 0, week = 0, lostToday = 0, ordersToday = 0, loadSum = 0, loadCount = 0, totalSum = 0, totalCount = 0 },
 		rack = {},
 		lastRestock = os.clock(),
 		spawning = 0,
@@ -3259,8 +3284,7 @@ end
 
 -- The owner's hired staff at `shop`: their saved records (Staff.sanitize'd;
 -- XP is written straight into them). Rebuilt whole: anyone mid-job puts it
--- back first. Only team members work (managers from the roll don't, yet);
--- whoever's scheduled for the shift that's on comes in.
+-- back first; whoever's scheduled for the shift that's on comes in.
 function ShopService.SetCrew(shop: Shop, members: { Staff.Member })
 	for _, c in shop.crew do
 		releaseCrew(shop, c)
@@ -3270,8 +3294,9 @@ function ShopService.SetCrew(shop: Shop, members: { Staff.Member })
 	end
 	table.clear(shop.crew)
 	for _, m in members do
-		if m.kind == "TeamMember" and station(shop, m.station) then
-			table.insert(shop.crew, { member = m, name = m.name, station = m.station, present = false, npc = nil, busyUntil = 0, job = nil })
+		local first = m.stations[1]
+		if first and station(shop, first) then
+			table.insert(shop.crew, { member = m, name = m.name, station = first, next = 0, present = false, npc = nil, busyUntil = 0, job = nil })
 		end
 	end
 	crewRoster(shop)

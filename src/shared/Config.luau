@@ -315,11 +315,6 @@ Config.OrderSizes = {
 	SizeMix = { Small = 0.25, Medium = 0.35, Large = 0.40 }, -- how often each pizza size is ordered
 }
 
--- How much of the order flow a store's crew (its players and kitchen staff on shift)
--- gets. Orders that would exceed this many open pizzas per worker are handled
--- by the off-screen crew (they still count as store sales).
-Config.Crew = { PizzasPerWorker = 4 }
-
 ---------------------------------------------------------------------------
 -- Stores, monetization
 ---------------------------------------------------------------------------
@@ -328,12 +323,20 @@ Config.Shop = {
 	StartingStock = 20,
 	MaxStock = 60,
 	MaxCustomers = 6, -- NPCs in the lobby at once
-	CustomerPatience = 300, -- real seconds for a 1-pizza order (the bake alone is ~90 s)...
+	CustomerPatience = 300, -- real seconds any order waits with 1 pizza (the bake alone is ~90 s)...
 	PatiencePerPizza = 75, -- ...plus this much per extra pizza (big orders take a while)
 	AutoRegisterDelay = 12, -- online kiosk takes an order if no one answers (x3 while a player is at the store)
 	AutoRestockInterval = 20, -- trickle restock (up to StartingStock); the truck fills to MaxStock
 	AutoRestockAmount = 2,
 }
+
+-- Every forecast order is a real order at the store; nothing is made off-screen.
+-- Real seconds a customer waits for an order of `count` pizzas: walk-ins then
+-- leave the lobby, and phone, online and delivery orders are cancelled. Either
+-- way it's a lost sale.
+function Config.OrderPatience(count: number): number
+	return Config.Shop.CustomerPatience + Config.Shop.PatiencePerPizza * (math.max(count, 1) - 1)
+end
 
 -- Stores: each server has 5 lots (MapBuilder; lot 1 is the old HQ site).
 -- A player opens their own store on a free lot or joins one with room.
@@ -356,15 +359,16 @@ Config.Store = {
 -- jobs done there, a Reliability (chance to call out of a shift) and an
 -- Availability (which shifts they can work; all = "open"). The rules are in
 -- Staff.luau. Buying hires a random basic member (StaffGen.Buy); the first
--- costs `cost`, each next one `growth` times the last. `hire = "roll"` kinds
--- come from the staff roll (StaffRoll), which isn't live yet.
+-- costs `cost`, each next one `growth` times the last; `max` per store.
+-- `flexible` kinds (managers) work several stations at once, as many as their
+-- Flexibility stat allows (Config.Flexibility). `hire = "roll"` kinds come
+-- from the staff roll (StaffRoll), which isn't live yet (Studio can grant them).
 Config.Staff = {
-	TeamMember = { display = "Team Member", hire = "buy", cost = 200, growth = 1.25 },
-	AssistantManager = { display = "Assistant Manager", hire = "roll" },
-	StoreManager = { display = "Store Manager", hire = "roll" },
+	TeamMember = { display = "Team Member", hire = "buy", cost = 200, growth = 1.25, max = 3 },
+	AssistantManager = { display = "Assistant Manager", hire = "roll", max = 2, flexible = true },
+	StoreManager = { display = "Store Manager", hire = "roll", max = 1, flexible = true },
 }
 Config.StaffOrder = { "TeamMember", "AssistantManager", "StoreManager" }
-Config.StaffRoster = 16 -- hires per store
 Config.StaffOnShift = 8 -- scheduled per shift
 Config.StaffStations = { "Register", "Dough", "Sauce", "Cheese", "Toppings", "Load", "CutTable", "DeliveryRack" }
 Config.StaffStatNames = {
@@ -389,10 +393,18 @@ Config.StaffWork = {
 -- Reliability 1..Max; each point short of Max adds CalloutPerPoint to the
 -- chance of calling out of a scheduled shift (checked as the shift starts).
 Config.Reliability = { Max = 10, CalloutPerPoint = 0.03 }
--- New hires. `levels`: each station's starting level (range); `reliability`
--- (range); `shifts`: odds of being available for 1, 2 or all 3 shifts.
+-- Flexibility 1..Max (managers only): they handle 1 + Flexibility // 2
+-- stations comfortably. Each station past that makes every job of theirs
+-- Slow slower and Sloppy worse (orders back up, customers leave).
+Config.Flexibility = { Max = 10, Slow = 0.5, Sloppy = 0.15 }
+-- New hires, by pool (a Staff kind, or "Buy" for bought team members).
+-- `levels`: each station's starting level (range); `reliability` (range);
+-- `shifts`: odds of being available for 1, 2 or all 3 shifts; `flexibility`
+-- (range, managers only).
 Config.StaffGen = {
 	Buy = { levels = { 1, 3 }, reliability = { 3, 8 }, shifts = { 0.5, 0.4, 0.1 } },
+	AssistantManager = { levels = { 3, 6 }, reliability = { 5, 9 }, shifts = { 0.2, 0.5, 0.3 }, flexibility = { 2, 6 } },
+	StoreManager = { levels = { 5, 9 }, reliability = { 7, 10 }, shifts = { 0.1, 0.3, 0.6 }, flexibility = { 5, 10 } },
 }
 Config.StaffNames = { "Maya", "Leo", "Priya", "Sam", "Ines", "Theo", "Rosa", "Kai", "Nadia", "Omar", "June", "Felix", "Ava", "Marco", "Zoe", "Eli", "Lena", "Ravi", "Tess", "Hugo" }
 -- The staff roll (spin): odds per kind (summing to 1) and the coins per roll.

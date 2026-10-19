@@ -9,7 +9,8 @@ Read `CLAUDE.md` first (architecture, conventions, every design decision). This 
 - **Store lots, no clock-in or roles** (`9b15521`): 5 lots per server (lot 1 = old HQ site); a store picker on join (open your own, join one with room up to 4, leave); owner handover to the longest-serving member; every player works every station; deliveries need 2+ players or a hired driver, otherwise they arrive as carryout. FranchiseService, the time clock, roles and management slots are gone.
 - **Hired NPC staff** (`014002d`): Staff menu (HUD button beside the Stations tab); owner buys insiders (assigned to a station, click to move) and drivers; saved in the owner's profile (`Staff`). Insiders do the real station work through shared step functions; drivers take delivery orders on a timed trip. Roll/spin prepared but off (`Config.StaffRoll.Enabled = false`).
 - **Team members: stats, levels, shifts** (this session's last commit): one hire kind (team member) for any station incl. the heat rack; per-station levels with XP, reliability (call-outs), availability (Lunch / Dinner / Late Night; open = all 3); the owner schedules shifts (8 per shift, roster 16); hires 200 coins rising x1.25; new `src/shared/Staff.luau` holds the rules. Insiders/Drivers as separate kinds are gone.
-- Tooling: `lune run tests/specs` (43 specs, incl. shifts, levels, call-outs, hire generation, save repair, roll odds), `selene src` (0/0), `rojo build`.
+- **No off-screen crew; managers; cap of 3** (latest commit): every forecast order is a real order with a patience timer; lost sales (timed out, wrong house, open at midnight) on the sales board instead of "crew-covered". Assistant/Store Managers work several stations, limited by Flexibility (overwhelmed = slower and sloppier); granted in Studio only until the roll exists. Team members capped at 3 (managers extra: 2 Assistant, 1 Store).
+- Tooling: `lune run tests/specs` (45 specs, incl. shifts, levels, call-outs, hire generation, save repair, roll odds), `selene src` (0/0), `rojo build`.
 
 ## Verified in Studio (scripted, 2026-10-19)
 - Picker opens on join; claiming lot 1 builds the store, sets `StoreId`/`StoreOwner`, uniform on, player placed at the entrance; leaving frees the lot; opening on lot 2 works; stations work with no clock-in.
@@ -17,6 +18,8 @@ Read `CLAUDE.md` first (architecture, conventions, every design decision). This 
 - A player at a station an NPC works hides that NPC locally and no longer stands on its head.
 
 - Team members (Studio Config patched: free hires, start 3:54 PM; restored): 12 hires with random stats/availability, auto-scheduled up to 8 per shift; at 4 PM the Lunch crew left, the Dinner crew came in and one (reliability 3) called out with a notice; unavailable shifts refused; taking someone off the current shift sends them home; moving a station works; XP accrued per job and a level-up notice fired; the menu renders (screenshot checked).
+
+- Managers and lost sales (Studio Config patched: free hires, 4:54 PM start, 60 s patience; restored): the 4th team member and 3rd Assistant Manager were refused; granted managers got better stats and Flexibility; toggling stations works and over the limit shows OVERWHELMED (red) with a notice; managers moved between their stations for work; a manager with the heat rack turned deliveries on; lost sales counted on the board; no sales recorded off-screen.
 
 ## Not verified
 - The user has **not** hand-playtested any of this (or the earlier UI overhaul).
@@ -29,6 +32,8 @@ Read `CLAUDE.md` first (architecture, conventions, every design decision). This 
 - Old saves: the `Franchise` field was dropped (anyone who bought a franchise loses it, no refund); fine if the game has no real players yet.
 - From the 2026-10-19 audit (numbers match that report): 5 Auto-match can put a pizza on a different recipe (NPC loaders only load exact matches; players still can); 6 pay/scoring rules have no specs; 7 Register accepts up to 40 pizzas; 8 `ShopService.luau` is ~3,300 lines (now also holds the staff); 9 duplicate formatters; 10 dead code; 11 racks rebuild every part; 12 topping names only on hover.
 - Also: the Stations tab sits in the mobile thumbstick zone; the Follow chip disappears after 12 s; extras are paid as "Sloppy"; the 120 s bake is the whole belt.
+
+- From the no-crew change: a solo store at dinner gets far more orders than it can make, so most are lost until it's staffed (intended pressure, but the numbers are untuned); lost walk-ins who were never rung in aren't announced, only counted.
 
 ## Exact next step
 Ask the user to playtest (`rojo serve` in this folder, Connect in the Rojo plugin): pick a store, hire staff (needs coins: 250 / 400), assign insiders, and if possible join with a second player to try handover. Then design the roll/spin with them: its stat pool for team members (a `Config.StaffGen` entry), duplicates, what Assistant/Store Managers do, coins vs Robux, and the spin presentation.

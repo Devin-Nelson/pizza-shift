@@ -21,8 +21,9 @@ local NAMES = {
 	"RequestStaff", -- client -> server: HUD "Staff" button
 	"OpenStaffMenu", -- server -> client: (info) your store's hired staff, what's for hire, the roll
 	"HireStaff", -- client -> server: (kind) owner hires a Config.Staff kind
-	"AssignStaff", -- client -> server: (memberId, stationId) owner moves a team member
+	"AssignStaff", -- client -> server: (memberId, stationId) owner moves a team member / toggles a manager's station
 	"ScheduleStaff", -- client -> server: (memberId, shift, on) owner puts a team member on or off a shift
+	"GrantStaff", -- client -> server: (kind) Studio only, until the staff roll exists: the owner gets a manager
 	"DeliveryTarget", -- server -> client: (doorPart | nil, seconds for the timer)
 	"TipSeen", -- client -> server: (stationId) the player closed that station's first-visit tip
 }

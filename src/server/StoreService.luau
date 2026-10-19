@@ -9,6 +9,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local GameClock = require(ReplicatedStorage.Shared.GameClock)
@@ -265,19 +266,23 @@ local function sendStaff(player: Player)
 		for _, s in Config.StaffStations do
 			table.insert(stats, { name = Config.StaffStatNames[s], level = m.stats[s].level })
 		end
-		local stat = m.stats[m.station]
+		local first = m.stations[1]
+		local stat = m.stats[first]
 		table.insert(list, {
 			id = m.id,
 			name = m.name,
 			display = Config.Staff[m.kind].display,
-			works = m.kind == "TeamMember",
-			station = m.station,
-			stationLabel = stationLabel(m.station),
+			flexible = Staff.isFlexible(m.kind),
+			stations = m.stations,
+			stationLabel = stationLabel(first),
 			level = stat.level,
 			xp = stat.xp,
 			xpNext = Staff.xpToNext(stat.level),
 			stats = stats,
 			reliability = m.reliability,
+			flexibility = m.flexibility,
+			limit = Staff.stationLimit(m.flexibility),
+			overload = Staff.overload(m),
 			avail = m.avail,
 			shifts = m.shifts,
 			open = Staff.isOpen(m.avail),
@@ -290,10 +295,11 @@ local function sendStaff(player: Player)
 	local hire, roll = {}, {}
 	for _, kind in Config.StaffOrder do
 		local def = Config.Staff[kind]
+		local count = countOf(staff, kind)
 		if def.hire == "buy" then
-			table.insert(hire, { kind = kind, display = def.display, cost = Config.HireCost(kind, countOf(staff, kind)) })
+			table.insert(hire, { kind = kind, display = def.display, cost = Config.HireCost(kind, count), count = count, max = def.max })
 		else
-			table.insert(roll, def.display)
+			table.insert(roll, { kind = kind, display = def.display, count = count, max = def.max })
 		end
 	end
 	local stations = {}
@@ -307,13 +313,14 @@ local function sendStaff(player: Player)
 		canEdit = claim.owner == player,
 		coins = if profile then profile.Coins else 0,
 		staff = list,
-		roster = { count = #staff, max = Config.StaffRoster },
 		shifts = shifts,
 		now = Staff.shiftAt(hour),
 		reliabilityMax = Config.Reliability.Max,
 		hire = hire,
 		stations = stations,
 		roll = { enabled = Config.StaffRoll.Enabled, cost = Config.StaffRoll.Cost, kinds = roll },
+		studio = RunService:IsStudio(), -- offers the Studio-only manager grant
+		flexMax = Config.Flexibility.Max,
 	})
 end
 
@@ -331,22 +338,9 @@ local function staffChanged(player: Player, claim: Claim)
 	sendStaff(player)
 end
 
-local function hire(player: Player, kind: string)
-	local claim = ownedClaim(player)
-	local def = Config.Staff[kind]
-	if not claim or not def or def.hire ~= "buy" then
-		return
-	end
+-- Adds a new `kind` from StaffGen `pool` to the owner's staff and puts them to work.
+local function addMember(player: Player, claim: Claim, kind: string, pool: string)
 	local staff = staffOf(player)
-	if #staff >= Config.StaffRoster then
-		notify(player, string.format("Your store has a full roster (%d).", Config.StaffRoster), WARN)
-		return
-	end
-	local cost = Config.HireCost(kind, countOf(staff, kind))
-	if not DataService.SpendCoins(player, cost) then
-		notify(player, string.format("Hiring a %s costs %d coins.", def.display, cost), WARN)
-		return
-	end
 	local nextId, taken = 1, {}
 	for _, m in staff do
 		nextId = math.max(nextId, m.id + 1)
@@ -364,13 +358,13 @@ local function hire(player: Player, kind: string)
 	for _, s in Config.StaffStations do
 		local n = 0
 		for _, m in staff do
-			n += if m.station == s then 1 else 0
+			n += if table.find(m.stations, s) then 1 else 0
 		end
 		if n < fewest then
 			station, fewest = s, n
 		end
 	end
-	local m = Staff.newMember(Random.new(), "Buy", nextId, name, station)
+	local m = Staff.newMember(Random.new(), pool, kind, nextId, name, station)
 	-- Scheduled for every shift they can work that still has room.
 	for _, shift in Staff.Shifts do
 		if m.shifts[shift] and Staff.scheduled(staff, shift) >= Config.StaffOnShift then
@@ -384,17 +378,64 @@ local function hire(player: Player, kind: string)
 			table.insert(can, shift)
 		end
 	end
-	notify(player, string.format("%s joined your crew! Available: %s.", name, if Staff.isOpen(m.avail) then "open (any shift)" else table.concat(can, ", ")), GOOD)
+	local flex = if m.flexibility then string.format(" Flexibility %d/%d.", m.flexibility, Config.Flexibility.Max) else ""
+	notify(player, string.format("%s joined your crew as %s %s! Available: %s.%s", name, if string.find(Config.Staff[kind].display, "^[AEIOU]") then "an" else "a", Config.Staff[kind].display, if Staff.isOpen(m.avail) then "open (any shift)" else table.concat(can, ", "), flex), GOOD)
 	staffChanged(player, claim)
 end
 
+local function hire(player: Player, kind: string)
+	local claim = ownedClaim(player)
+	local def = Config.Staff[kind]
+	if not claim or not def or def.hire ~= "buy" then
+		return
+	end
+	local count = countOf(staffOf(player), kind)
+	if count >= def.max then
+		notify(player, string.format("You have the most %ss a store can have for now (%d).", def.display, def.max), WARN)
+		return
+	end
+	local cost = Config.HireCost(kind, count)
+	if not DataService.SpendCoins(player, cost) then
+		notify(player, string.format("Hiring a %s costs %d coins.", def.display, cost), WARN)
+		return
+	end
+	addMember(player, claim, kind, "Buy")
+end
+
+-- Studio only, until the staff roll exists: a manager for testing.
+local function grant(player: Player, kind: string)
+	local claim = ownedClaim(player)
+	local def = Config.Staff[kind]
+	if not RunService:IsStudio() or not claim or not def or def.hire ~= "roll" or countOf(staffOf(player), kind) >= def.max then
+		return
+	end
+	addMember(player, claim, kind, if Config.StaffGen[kind] then kind else "Buy")
+end
+
+-- A team member moves to `stationId`; a manager takes it on or drops it
+-- (they always keep at least one).
 local function assign(player: Player, id: number, stationId: string)
 	local claim = ownedClaim(player)
 	local m = findMember(staffOf(player), id)
 	if not claim or not m or not table.find(Config.StaffStations, stationId) then
 		return
 	end
-	m.station = stationId
+	if not Staff.isFlexible(m.kind) then
+		m.stations = { stationId }
+	else
+		local i = table.find(m.stations, stationId)
+		if not i then
+			table.insert(m.stations, stationId)
+		elseif #m.stations > 1 then
+			table.remove(m.stations, i)
+		else
+			return
+		end
+		local over = Staff.overload(m)
+		if over > 0 then
+			notify(player, string.format("%s handles %d stations comfortably - %d more makes them slower and sloppier.", m.name, Staff.stationLimit(m.flexibility), over), WARN)
+		end
+	end
 	staffChanged(player, claim)
 end
 
@@ -440,6 +481,11 @@ function StoreService.Init(worldPlots: { Plot })
 	Remotes.HireStaff.OnServerEvent:Connect(function(player, kind)
 		if type(kind) == "string" then
 			hire(player, kind)
+		end
+	end)
+	Remotes.GrantStaff.OnServerEvent:Connect(function(player, kind)
+		if type(kind) == "string" then
+			grant(player, kind)
 		end
 	end)
 	Remotes.AssignStaff.OnServerEvent:Connect(function(player, id, stationId)

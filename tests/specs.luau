@@ -194,11 +194,16 @@ spec("every staff kind is defined; bought kinds have a price; every staff statio
 	for _, kind in Config.StaffOrder do
 		local def = Config.Staff[kind]
 		assert(def, "StaffOrder lists unknown kind " .. kind)
+		assert(def.max and def.max >= 1, kind .. " max")
 		if def.hire == "buy" then
 			assert(def.cost > 0 and def.growth >= 1, kind .. " price")
 			assert(Config.StaffGen.Buy, "no StaffGen.Buy pool")
 		else
 			eq(def.hire, "roll", kind .. " hire")
+		end
+		if def.flexible then
+			local gen = Config.StaffGen[kind]
+			assert(gen and gen.flexibility, kind .. " needs a StaffGen pool with flexibility")
 		end
 	end
 	for _, id in Config.StaffStations do
@@ -206,13 +211,13 @@ spec("every staff kind is defined; bought kinds have a price; every staff statio
 		assert(Config.StaffStatNames[id], id .. " has no stat name")
 		assert(id == "DeliveryRack" or Config.StaffWork.WorkTime[id], id .. " has no staff work time")
 	end
-	assert(Config.StaffOnShift <= Config.StaffRoster, "more on a shift than the roster holds")
+	eq(Config.Staff.TeamMember.max, 3, "team members are capped at 3 for now")
 end)
 
 spec("team members start at 200 coins and each next one costs more", function()
 	eq(Config.HireCost("TeamMember", 0), 200, "first")
 	eq(Config.HireCost("TeamMember", 1), 250, "second")
-	for n = 1, Config.StaffRoster - 1 do
+	for n = 1, Config.Staff.TeamMember.max - 1 do
 		assert(Config.HireCost("TeamMember", n) > Config.HireCost("TeamMember", n - 1), "price rises at " .. n)
 	end
 end)
@@ -261,7 +266,9 @@ spec("bought hires: low stats, middling reliability, open availability is rare",
 	local gen = Config.StaffGen.Buy
 	local rng, open = Random.new(11), 0
 	for i = 1, 2000 do
-		local m = Staff.newMember(rng, "Buy", i, "Test", "Sauce")
+		local m = Staff.newMember(rng, "Buy", "TeamMember", i, "Test", "Sauce")
+		eq(m.flexibility, nil, "team members have no Flexibility")
+		eq(table.concat(m.stations, ","), "Sauce", "one station")
 		for _, s in Config.StaffStations do
 			local l = m.stats[s].level
 			assert(l >= gen.levels[1] and l <= gen.levels[2], "level " .. l)
@@ -284,6 +291,13 @@ spec("saved staff are made safe: unknown kinds dropped, bad fields fixed, schedu
 	local rng = Random.new(3)
 	eq(Staff.sanitize({ kind = "Insider", name = "Old" }, rng, 1), nil, "retired kind")
 	eq(Staff.sanitize("junk", rng, 1), nil, "not a table")
+	eq((Staff.sanitize({ kind = "TeamMember", name = "Old", station = "Dough" }, rng, 2) :: any).stations[1], "Dough", "older one-station saves")
+	local tm = Staff.sanitize({ kind = "TeamMember", name = "Two", stations = { "Dough", "Sauce" }, flexibility = 5 }, rng, 3) :: any
+	eq(table.concat(tm.stations, ","), "Dough", "a team member works one station")
+	eq(tm.flexibility, nil, "only managers have Flexibility")
+	local mgr = Staff.sanitize({ kind = "StoreManager", name = "Boss", stations = { "Dough", "Sauce", "Dough", "Nowhere" }, flexibility = 99 }, rng, 4) :: any
+	eq(table.concat(mgr.stations, ","), "Dough,Sauce", "manager stations, deduplicated")
+	eq(mgr.flexibility, Config.Flexibility.Max, "Flexibility clamped")
 	local m = Staff.sanitize({
 		kind = "TeamMember",
 		name = "Ava",
@@ -294,12 +308,43 @@ spec("saved staff are made safe: unknown kinds dropped, bad fields fixed, schedu
 		shifts = { Lunch = true, Dinner = true },
 	}, rng, 7) :: any
 	eq(m.id, 7, "id")
-	eq(m.station, Config.StaffStations[1], "station")
+	eq(m.stations[1], Config.StaffStations[1], "station")
 	eq(m.reliability, Config.Reliability.Max, "reliability clamped")
 	eq(m.stats.Sauce.level, Config.StaffLevels.Max, "level clamped")
 	assert(m.stats.Dough and m.stats.Dough.level >= 1, "missing stat filled in")
 	eq(m.shifts.Lunch, true, "kept")
 	eq(m.shifts.Dinner, false, "not available, so not scheduled")
+end)
+
+spec("managers: Flexibility sets how many stations they handle; past that they slow down and get sloppy", function()
+	eq(Staff.stationLimit(nil), 1, "team member")
+	eq(Staff.stationLimit(1), 1, "flexibility 1")
+	eq(Staff.stationLimit(2), 2, "flexibility 2")
+	eq(Staff.stationLimit(Config.Flexibility.Max), 6, "max flexibility")
+	local rng = Random.new(5)
+	for _, kind in { "AssistantManager", "StoreManager" } do
+		local range = Config.StaffGen[kind].flexibility
+		for i = 1, 200 do
+			local m = Staff.newMember(rng, kind, kind, i, "Mgr", "Dough")
+			assert(m.flexibility >= range[1] and m.flexibility <= range[2], kind .. " flexibility")
+		end
+	end
+	local m = Staff.newMember(rng, "StoreManager", "StoreManager", 1, "Mgr", "Dough") :: any
+	m.flexibility = 2
+	m.stats.Dough.level = 1
+	m.stations = { "Dough", "Sauce" }
+	eq(Staff.overload(m), 0, "within the limit")
+	near(Staff.jobSpeed(m, "Dough"), Staff.speed(1), "no slowdown")
+	m.stations = { "Dough", "Sauce", "Cheese", "Toppings" }
+	eq(Staff.overload(m), 2, "two past the limit")
+	near(Staff.jobSpeed(m, "Dough"), Staff.speed(1) * 2, "slower")
+	near(Staff.jobQuality(m, "Dough"), Staff.quality(1) * 0.7, "sloppier")
+end)
+
+spec("every order waits 5 minutes, plus 75 s per extra pizza", function()
+	eq(Config.OrderPatience(1), 300, "1 pizza")
+	eq(Config.OrderPatience(3), 450, "3 pizzas")
+	eq(Config.OrderPatience(0), 300, "never less than 1 pizza's")
 end)
 
 spec("staff roll odds sum to 1 and only land on roll kinds", function()
