@@ -23,6 +23,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Style = require(ReplicatedStorage.Shared.Style)
 local Icons = require(ReplicatedStorage.Shared.Icons)
+local TicketRows = require(ReplicatedStorage.Shared.TicketRows)
 local Loading = require(script.Parent.Loading)
 local StationMode = require(script.Parent.StationMode)
 local StationPicks = require(script.Parent.StationPicks)
@@ -40,6 +41,7 @@ local player = Players.LocalPlayer
 local FOLLOW_SECONDS = 12 -- how long the follow chip stays up
 local TICKET_W = 138
 local MAX_TICKETS = 6
+local MAX_ROWS = 6 -- per ticket; the rest fold into "+N more"
 local KEY_W = 64 -- utility keys on the open bar
 local STATION_ICONS: { [string]: string } = {
 	Register = "register",
@@ -187,9 +189,14 @@ function WorkHud.Init(_isBusy: () -> boolean)
 					overflow(#snapshot.orders - MAX_TICKETS, i)
 					break
 				end
+				-- Identical pizzas share a row ("PEPPERONI x3"), so big orders still fit.
+				local grouped, hidden = TicketRows.fit(TicketRows.group(o.items), MAX_ROWS)
 				local rows: { Row } = {}
-				for _, item in o.items do
-					table.insert(rows, { size = item.size, text = item.pizza, done = item.loaded })
+				for _, g in grouped do
+					table.insert(rows, { size = g.size, text = TicketRows.label(g), done = TicketRows.done(g) })
+				end
+				if hidden > 0 then
+					table.insert(rows, { text = string.format("+%d more", hidden) })
 				end
 				local bg, fg = Style.ticketColor(o.age)
 				local kind: string = if o.delivery then "Delivery" else "Carryout"

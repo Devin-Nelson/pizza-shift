@@ -78,6 +78,7 @@ Config = load("src/shared/Config.luau", { script = { Parent = {} }, game = game 
 local GameClock = load("src/shared/GameClock.luau", { script = { Parent = { Config = CONFIG } }, game = game })
 local SalesPlan = load("src/server/SalesPlan.luau", { script = { Parent = {} }, game = game })
 local Style = load("src/shared/Style.luau", { script = { Parent = { Config = CONFIG } }, game = game })
+local TicketRows = load("src/shared/TicketRows.luau", { script = { Parent = {} }, game = game })
 
 local specs: { { string | () -> () } } = {}
 local function spec(name: string, fn: () -> ())
@@ -389,6 +390,52 @@ spec("the UI scale range keeps text readable and never inverts", function()
 	local r = Config.UiScaleRange
 	assert(r[1] > 0 and r[1] < 1 and r[2] > 1, "range should straddle 1")
 	eq(Config.UiReference.X / Config.UiReference.Y > 1.7, true, "reference is widescreen")
+end)
+
+------------------------------------------------------------------ TicketRows
+spec("identical pizzas share a ticket row, in rung-in order", function()
+	local rows = TicketRows.group({
+		{ size = "Large", pizza = "Pepperoni" },
+		{ size = "Small", pizza = "Cheese" },
+		{ size = "Large", pizza = "Pepperoni", loaded = true },
+		{ size = "Medium", pizza = "Pepperoni" },
+	})
+	eq(#rows, 3, "rows")
+	eq(rows[1].pizza, "Pepperoni", "first row")
+	eq(rows[1].size, "Large", "first row size")
+	eq(rows[1].count, 2, "large pepperoni count")
+	eq(rows[1].loaded, 1, "large pepperoni loaded")
+	eq(rows[2].pizza, "Cheese", "second row keeps rung-in order")
+	eq(rows[3].size, "Medium", "a different size is its own row")
+end)
+
+spec("a row reads its count, or loaded/total while part-loaded", function()
+	eq(TicketRows.label({ size = "Large", pizza = "Veggie", count = 1, loaded = 0 }), "VEGGIE", "single")
+	eq(TicketRows.label({ size = "Large", pizza = "Veggie", count = 3, loaded = 0 }), "VEGGIE x3", "three, none loaded")
+	eq(TicketRows.label({ size = "Large", pizza = "Veggie", count = 3, loaded = 1 }), "VEGGIE 1/3", "one of three loaded")
+	eq(TicketRows.label({ size = "Large", pizza = "Veggie", count = 3, loaded = 3 }), "VEGGIE x3", "all loaded")
+	eq(TicketRows.done({ size = "Large", pizza = "Veggie", count = 3, loaded = 2 }), false, "not done at 2/3")
+	eq(TicketRows.done({ size = "Large", pizza = "Veggie", count = 3, loaded = 3 }), true, "done at 3/3")
+end)
+
+spec("a 30-pizza party order fits a ticket", function()
+	local items = {}
+	for i = 1, 30 do
+		local pizzas = { "Cheese", "Pepperoni", "Hawaiian", "Veggie", "Supreme" }
+		local sizes = { "Small", "Medium", "Large" }
+		table.insert(items, { size = sizes[i % 3 + 1], pizza = pizzas[i % 5 + 1] })
+	end
+	local rows = TicketRows.group(items)
+	local shown, hidden = TicketRows.fit(rows, 5)
+	eq(#shown, 4, "rows shown when folding (the last line is the +N)")
+	local total = hidden
+	for _, r in shown do
+		total += r.count
+	end
+	eq(total, 30, "no pizza lost when folding")
+	local same, none = TicketRows.fit(TicketRows.group({ { size = "Large", pizza = "Cheese" } }), 5)
+	eq(#same, 1, "short tickets keep every row")
+	eq(none, 0, "nothing folded")
 end)
 
 -------------------------------------------------------------------------- run

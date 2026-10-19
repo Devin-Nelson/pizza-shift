@@ -886,7 +886,7 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		brand.Size = UDim2.fromScale(1, 1)
 		brand.BackgroundColor3 = Color3.fromRGB(205, 168, 118)
 		brand.BorderSizePixel = 0
-		brand.Font = Enum.Font.GothamBlack
+		brand.FontFace = F.Heading
 		brand.TextScaled = true
 		brand.TextColor3 = Config.Brand.Red
 		brand.Text = (string.upper(Config.GameName):gsub(" ", "\n"))

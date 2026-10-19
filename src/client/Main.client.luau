@@ -15,6 +15,7 @@ local Ui = require(script.Parent.Ui)
 local Minigames = require(script.Parent.Minigames)
 local Driving = require(script.Parent.Driving)
 local Loading = require(script.Parent.Loading)
+local Prompts = require(script.Parent.Prompts)
 local StationMode = require(script.Parent.StationMode)
 local StationPicks = require(script.Parent.StationPicks)
 local WorkHud = require(script.Parent.WorkHud)
@@ -140,6 +141,8 @@ local function applyPrompt(pp: ProximityPrompt)
 	if not parent then
 		return
 	end
+	-- Drawn by Prompts in the store-systems look.
+	pp.Style = Enum.ProximityPromptStyle.Custom
 	local station = parent:GetAttribute("Station")
 	if pp.Name == "ClockPrompt" then
 		pp.Enabled = true -- clocking in/out is always available at the register
@@ -400,6 +403,7 @@ task.delay(3, function()
 end)
 
 Driving.Init()
+Prompts.Init()
 StationMode.Init(Minigames.IsOpen, function()
 	Minigames.Close()
 	Loading.Close()

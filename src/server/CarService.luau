@@ -7,6 +7,7 @@
 local Players = game:GetService("Players")
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local Style = require(game:GetService("ReplicatedStorage").Shared.Style)
 
 local CarService = {}
 
@@ -70,7 +71,7 @@ local function brandText(part: BasePart, face: Enum.NormalId, color: Color3, can
 	tl.Position = UDim2.fromScale(0.5, 0.5)
 	tl.Size = UDim2.fromScale(0.9, height)
 	tl.BackgroundTransparency = 1
-	tl.Font = Enum.Font.FredokaOne
+	tl.FontFace = Style.Font.Heading
 	tl.TextScaled = true
 	tl.TextColor3 = color
 	tl.Text = string.upper(Config.GameName)

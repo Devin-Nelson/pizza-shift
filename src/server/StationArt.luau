@@ -12,6 +12,7 @@
 local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local Style = require(game:GetService("ReplicatedStorage").Shared.Style)
 
 local StationArt = {}
 
@@ -68,7 +69,7 @@ local function surfaceText(part: BasePart, face: Enum.NormalId, text: string, co
 	tl.BackgroundColor3 = bg or Color3.new(0, 0, 0)
 	tl.BackgroundTransparency = if bg then 0 else 1
 	tl.BorderSizePixel = 0
-	tl.Font = font or Enum.Font.GothamBlack
+	tl.FontFace = if font == Enum.Font.Code then Style.Font.Mono else Style.Font.Heading
 	tl.TextScaled = true
 	tl.TextColor3 = color
 	tl.Text = text
@@ -119,12 +120,16 @@ end
 local function guiText(parent: Instance, text: string, props: { [string]: any }): TextLabel
 	local t = Instance.new("TextLabel")
 	t.BackgroundTransparency = 1
-	t.Font = Enum.Font.GothamBold
+	t.FontFace = Style.Font.LabelBold
 	t.TextScaled = true
-	t.TextColor3 = Color3.fromRGB(30, 30, 30)
+	t.TextColor3 = Style.Color.Ink
 	t.Text = text
 	for k, v in props do
-		(t :: any)[k] = v
+		if k == "Font" then
+			t.FontFace = if v == Enum.Font.Code then Style.Font.Mono else Style.Font.Heading
+		else
+			(t :: any)[k] = v
+		end
 	end
 	t.Parent = parent
 	return t
@@ -160,7 +165,7 @@ local function jobAid(parent: Instance, base: CFrame, offset: CFrame, size: Vect
 	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	gui.PixelsPerStud = AID_PPS
 	local px = size * AID_PPS
-	local bg = guiFrame(gui, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(250, 250, 245) })
+	local bg = guiFrame(gui, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Style.Color.Cream })
 	local band = guiFrame(bg, { Size = UDim2.new(1, 0, 0, px.Y * 0.18), BackgroundColor3 = Config.Brand.Red })
 	guiText(band, title, { Size = UDim2.fromScale(1, 1), TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBlack })
 	local body = guiFrame(bg, { Position = UDim2.fromOffset(0, px.Y * 0.18), Size = UDim2.new(1, 0, 1, -px.Y * 0.18), BackgroundTransparency = 1 })
@@ -209,29 +214,41 @@ local function drawPortions(body: Frame, px: Vector2)
 	local headH = px.Y * 0.12
 	local lineH = (px.Y - headH - px.Y * 0.1) / totalLines
 	local colW = { px.X * 0.28, px.X * 0.24, px.X * 0.24, px.X * 0.24 }
-	local function cell(col: number, y: number, h: number, text: string, color: Color3?)
+	-- One text size for the whole table (scaled-to-fit cells came out uneven).
+	local textSize = math.floor(lineH * 0.78)
+	local function cell(col: number, y: number, h: number, text: string, face: Font, size: number, color: Color3?)
 		local x = 0
 		for c = 1, col - 1 do
 			x += colW[c]
 		end
-		guiText(body, text, { Position = UDim2.fromOffset(x + 4, y), Size = UDim2.fromOffset(colW[col] - 8, h - 2), Font = Enum.Font.Code, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color or Color3.fromRGB(30, 30, 30) })
+		guiText(body, text, {
+			Position = UDim2.fromOffset(x + 6, y + 2),
+			Size = UDim2.fromOffset(colW[col] - 10, h - 2),
+			FontFace = face,
+			TextScaled = false,
+			TextSize = size,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			TextColor3 = color or Style.Color.Ink,
+		})
 	end
-	cell(1, 0, headH, "PIZZA", Config.Brand.Red)
+	local headSize = math.floor(headH * 0.62)
+	cell(1, 0, headH, "PIZZA", Style.Font.Heading, headSize, Config.Brand.Red)
 	for i, size in Config.Sizes do
-		cell(i + 1, 0, headH, string.upper(size), Config.Brand.Red)
+		cell(i + 1, 0, headH, string.upper(size), Style.Font.Heading, headSize, Config.Brand.Red)
 	end
 	local y = headH
 	for _, name in pizzas do
 		local recipe = Config.Recipes[name]
 		local h = lineH * #recipe
 		guiFrame(body, { Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = Color3.fromRGB(200, 200, 195) })
-		cell(1, y, math.min(h, lineH * 1.5), string.upper(name))
+		cell(1, y, h, string.upper(name), Style.Font.LabelBold, textSize)
 		for i, size in Config.Sizes do
 			local lines = {}
 			for _, topping in recipe do
 				table.insert(lines, string.format("%s %d", string.upper(string.sub(topping, 1, 4)), Config.PortionFor(topping, size, #recipe)))
 			end
-			cell(i + 1, y, h, table.concat(lines, "\n"))
+			cell(i + 1, y, h, table.concat(lines, "\n"), Style.Font.Mono, textSize)
 		end
 		y += h
 	end
@@ -323,14 +340,14 @@ Builders.Register = function(m, base)
 	gui.CanvasSize = Vector2.new(220, 150)
 	local bg = Instance.new("Frame")
 	bg.Size = UDim2.fromScale(1, 1)
-	bg.BackgroundColor3 = Color3.fromRGB(20, 30, 45)
+	bg.BackgroundColor3 = Style.Color.Panel
 	bg.BorderSizePixel = 0
 	bg.Parent = gui
 	local header = Instance.new("TextLabel")
 	header.Size = UDim2.new(1, 0, 0, 22)
-	header.BackgroundColor3 = Color3.fromRGB(200, 50, 40)
+	header.BackgroundColor3 = Style.Color.Red
 	header.BorderSizePixel = 0
-	header.Font = Enum.Font.GothamBold
+	header.FontFace = Style.Font.Heading
 	header.TextScaled = true
 	header.TextColor3 = Color3.new(1, 1, 1)
 	header.Text = "NEW ORDER"
@@ -344,12 +361,11 @@ Builders.Register = function(m, base)
 	layout.CellSize = UDim2.new(1 / 3, -4, 0.5, -4)
 	layout.CellPadding = UDim2.fromOffset(4, 4)
 	layout.Parent = grid
-	local tileColors = { Color3.fromRGB(240, 190, 60), Color3.fromRGB(200, 70, 60), Color3.fromRGB(240, 150, 150), Color3.fromRGB(80, 170, 80), Color3.fromRGB(140, 90, 200), Color3.fromRGB(60, 140, 220) }
-	for i, name in { "Cheese", "Pepp.", "Hawaii", "Veggie", "Supreme", "PAY" } do
+	for i, name in { "CHEESE", "PEPP", "HAWAII", "VEGGIE", "SUPREME", "SEND" } do
 		local tile = Instance.new("TextLabel")
-		tile.BackgroundColor3 = tileColors[i]
+		tile.BackgroundColor3 = if i == 6 then Style.Color.Red else Style.Color.Tile
 		tile.BorderSizePixel = 0
-		tile.Font = Enum.Font.GothamBold
+		tile.FontFace = Style.Font.LabelBold
 		tile.TextScaled = true
 		tile.TextColor3 = Color3.new(1, 1, 1)
 		tile.Text = name

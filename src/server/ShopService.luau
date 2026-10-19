@@ -16,10 +16,12 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local GameClock = require(ReplicatedStorage.Shared.GameClock)
 local Pizza3D = require(ReplicatedStorage.Shared.Pizza3D)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Style = require(ReplicatedStorage.Shared.Style)
 local CarService = require(script.Parent.CarService)
 local ClockService = require(script.Parent.ClockService)
 local DataService = require(script.Parent.DataService)
 local SalesPlan = require(script.Parent.SalesPlan)
+local Screens = require(script.Parent.Screens)
 
 type Item = SalesPlan.Item
 
@@ -411,110 +413,97 @@ local function trackerStep(o: Order): number
 	return 4
 end
 
-local function trackerLine(o: Order): string
-	local steps = { "Placed", "Prep", "Bake", "Quality Check", if o.delivery then "Out for Delivery" else "Ready" }
-	local current = trackerStep(o)
-	local parts = {}
-	for i, name in steps do
-		if i == current then
-			table.insert(parts, string.format('<font color="#FFBE3C"><b>%s</b></font>', string.upper(name)))
-		elseif i < current then
-			table.insert(parts, string.format('<font color="#FFFFFF">%s</font>', name))
-		else
-			table.insert(parts, string.format('<font color="#666C78">%s</font>', name))
-		end
-	end
-	return string.format("<b>#%d</b> (%d) %s  %s", o.id, #o.entered, formatMinutes(os.clock() - o.created), table.concat(parts, "  >  "))
-end
-
 local function updateBoards(shop: Shop)
 	if not shop.alive then
 		return
 	end
+	local now = os.clock()
+
+	-- Kitchen display: the dough racks and ready rack, then a ticket per order
+	-- still waiting on pizzas to go in the oven (loaded ones struck through).
 	local board = marker(shop, "TicketBoard")
-	local gui = board and board:FindFirstChild("Tickets")
-	local text = gui and gui:FindFirstChild("Text") :: TextLabel?
-	if text then
-		-- Header: dough skins on the rack, then the make-line queue: every order
-		-- still waiting on pizzas to go in the oven (loaded ones ticked off),
-		-- with how long it's been since it was placed (real minutes).
+	local kdsGui = board and board:FindFirstChild("Tickets")
+	if kdsGui and kdsGui:IsA("SurfaceGui") then
 		local counts, used = rackCounts(shop)
-		local lines = {
-			string.format("DOUGH  S:%d  M:%d  L:%d  (%d/%d)", counts.Small, counts.Medium, counts.Large, used, Config.RackCapacity()),
-		}
-		local now = os.clock()
+		local ready = 0
+		for _, p in shop.pies do
+			if p.stage == "Ready" then
+				ready += 1
+			end
+		end
+		local orders = {}
 		for _, o in shop.orders do
 			if o.stage ~= "Making" or o.cancelled or loadedCount(o) >= #o.tickets then
 				continue
 			end
-			if #lines >= 6 then
-				table.insert(lines, "...")
-				break
-			end
 			local items = {}
 			for _, t in o.tickets do
-				table.insert(items, string.format("%s%s %s", if t.pie or t.boxed then "+" else " ", string.sub(t.item.size, 1, 1), string.upper(t.item.pizza)))
+				table.insert(items, { size = t.item.size, pizza = t.item.pizza, loaded = t.pie ~= nil or t.boxed })
 			end
-			local tag = if o.delivery then string.format("DLV #%d", o.house or 0) else "CARRYOUT"
-			table.insert(lines, string.format("#%-3d %-9s %s  %s", o.id, tag, formatMinutes(now - o.created), table.concat(items, "  ")))
+			table.insert(orders, { id = o.id, delivery = o.delivery, age = now - o.created, items = items })
 		end
-		if #lines == 1 then
-			table.insert(lines, if isOpen() then "NO ORDERS - WAITING ON THE PHONES" elseif canWork() then "PREP TIME - STRETCH DOUGH" else "CLOSED")
-		end
-		text.Text = table.concat(lines, "\n")
+		Screens.kds(kdsGui, {
+			dough = counts,
+			used = used,
+			capacity = Config.RackCapacity(),
+			ready = ready,
+			readyCapacity = Config.ReadyRack.Slots,
+			orders = orders,
+			idle = if isOpen() then "No orders - waiting on the phones" elseif canWork() then "Prep time - stretch dough" else "Closed",
+		})
 	end
 
+	-- Lobby order tracker: each order's step, for the customers.
 	local tv = marker(shop, "TrackerScreen")
 	local tvGui = tv and tv:FindFirstChild("Tracker")
-	local tvText = tvGui and tvGui:FindFirstChild("Text") :: TextLabel?
-	if tvText then
-		local lines = { '<font size="30"><b>ORDER TRACKER</b></font>', "" }
+	if tvGui and tvGui:IsA("SurfaceGui") then
+		local tracked = {}
 		for _, o in shop.orders do
-			if #lines >= 10 then
-				break
-			end
-			table.insert(lines, trackerLine(o))
+			table.insert(tracked, { id = o.id, step = trackerStep(o), delivery = o.delivery })
 		end
-		if #lines == 2 then
-			local idle = if isOpen() then "No orders right now." else "Closed - " .. GameClock.hoursText() .. "."
-			table.insert(lines, '<font color="#666C78">' .. idle .. "</font>")
-		end
-		tvText.Text = table.concat(lines, "\n")
+		Screens.tracker(tvGui, tracked, if isOpen() then "No orders right now" else "Closed - " .. GameClock.hoursText())
 	end
 
+	-- Walk-in stock tablet.
 	local fridge = station(shop, "Fridge")
 	local stockGui = fridge and fridge:FindFirstChild("StockBoard", true)
-	local stockText = stockGui and stockGui:FindFirstChild("Text") :: TextLabel?
-	if stockText then
-		local lines = { " STOCK" }
+	if stockGui and stockGui:IsA("SurfaceGui") then
+		local lines = {}
 		for _, ing in Config.Ingredients do
 			local n = shop.stock[ing]
-			table.insert(lines, string.format(" %-10s %3d%s", ing, n, if n <= 3 then " LOW!" else ""))
+			table.insert(lines, { name = ing, n = n, color = Config.IngredientColors[ing] or Color3.new(1, 1, 1), low = n <= 3 })
 		end
-		stockText.Text = table.concat(lines, "\n")
+		Screens.stock(stockGui, lines)
 	end
 end
 
 local function updateSalesBoard(shop: Shop)
 	local board = marker(shop, "SalesBoard")
 	local gui = board and board:FindFirstChild("Sales")
-	local text = gui and gui:FindFirstChild("Text") :: TextLabel?
-	if not text then
+	if not gui or not gui:IsA("SurfaceGui") then
 		return
 	end
 	local day, hour = GameClock.split(ClockService.WeekHour())
 	local week = shop.week
 	local part = GameClock.daypart(hour)
-	text.Text = table.concat({
-		string.format("%s  %s  (week %d)", string.upper(GameClock.dayName(day)), GameClock.format(hour), ClockService.WeekNumber()),
-		string.format("Daypart: %s", if part then part.name .. string.format(" (%d%% of sales)", math.floor(part.share * 100)) else "CLOSED"),
-		"",
-		string.format("Today  %s / %s fcst", money(shop.sales.today), money(if week then week.days[day] else 0)),
-		string.format("Week   %s / %s fcst", money(shop.sales.week), money(if week then week.total else 0)),
-		string.format("Orders today %d   avg ticket ~%s", shop.sales.ordersToday, money(SalesPlan.expectedTicket(shop.mix))),
-		string.format("Avg load %s  total %s  (real min)", if shop.sales.loadCount > 0 then formatMinutes(shop.sales.loadSum / shop.sales.loadCount) else "--:--", if shop.sales.totalCount > 0 then formatMinutes(shop.sales.totalSum / shop.sales.totalCount) else "--:--"),
-		string.format("Crew-covered today %s", money(shop.sales.crewToday)),
-	}, "\n")
+	local dayForecast = if week then week.days[day] else 0
+	local weekForecast = if week then week.total else 0
+	Screens.sales(gui, {
+		clock = string.format("%s %s", string.upper(GameClock.dayName(day)), GameClock.format(hour)),
+		week = ClockService.WeekNumber(),
+		daypart = if part then string.format("%s - %d%% OF SALES", string.upper(part.name), math.floor(part.share * 100)) else "CLOSED",
+		today = money(shop.sales.today),
+		todayForecast = money(dayForecast),
+		todayShare = if dayForecast > 0 then shop.sales.today / dayForecast else 0,
+		weekSales = money(shop.sales.week),
+		weekForecast = money(weekForecast),
+		weekShare = if weekForecast > 0 then shop.sales.week / weekForecast else 0,
+		orders = shop.sales.ordersToday,
+		avgTicket = "~" .. money(SalesPlan.expectedTicket(shop.mix)),
+		avgLoad = if shop.sales.loadCount > 0 then formatMinutes(shop.sales.loadSum / shop.sales.loadCount) else "--:--",
+		avgTotal = if shop.sales.totalCount > 0 then formatMinutes(shop.sales.totalSum / shop.sales.totalCount) else "--:--",
+		crew = money(shop.sales.crewToday),
+	})
 end
 
 ---------------------------------------------------------------------------
@@ -684,7 +673,7 @@ local function makeBoxPart(size: string): Part
 	local tl = Instance.new("TextLabel")
 	tl.Size = UDim2.fromScale(1, 1)
 	tl.BackgroundTransparency = 1
-	tl.Font = Enum.Font.FredokaOne
+	tl.FontFace = Style.Font.Heading
 	tl.TextScaled = true
 	tl.TextColor3 = Config.Brand.Red
 	tl.Text = (string.upper(Config.GameName):gsub(" ", "\n"))

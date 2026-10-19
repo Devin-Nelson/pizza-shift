@@ -9,6 +9,7 @@
 -- parking lot out back for delivery cars.
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local Style = require(game:GetService("ReplicatedStorage").Shared.Style)
 local StationArt = require(script.Parent.StationArt)
 
 local MapBuilder = {}
@@ -46,7 +47,7 @@ local function label(adornee: BasePart, text: string, offsetY: number, size: UDi
 	tl.Name = "Text"
 	tl.Size = UDim2.fromScale(1, 1)
 	tl.BackgroundTransparency = 1
-	tl.Font = Enum.Font.FredokaOne
+	tl.FontFace = Style.Font.Heading
 	tl.TextScaled = true
 	tl.TextColor3 = Color3.new(1, 1, 1)
 	tl.TextStrokeTransparency = 0.3
@@ -97,7 +98,7 @@ local function screenText(target: BasePart, face: Enum.NormalId, text: string, c
 	tl.BackgroundColor3 = bg or Color3.new(0, 0, 0)
 	tl.BackgroundTransparency = if bg then 0 else 1
 	tl.BorderSizePixel = 0
-	tl.Font = font or Enum.Font.GothamBlack
+	tl.FontFace = if font == Enum.Font.Code then Style.Font.Mono else Style.Font.Heading
 	tl.TextScaled = true
 	tl.TextColor3 = color
 	tl.Text = text
@@ -212,7 +213,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 		local title = Instance.new("TextLabel")
 		title.Size = UDim2.new(1, 0, 0, 50)
 		title.BackgroundTransparency = 1
-		title.Font = Enum.Font.FredokaOne
+		title.FontFace = Style.Font.Heading
 		title.TextScaled = true
 		title.TextColor3 = BRAND.Gold
 		title.Text = item[1]
@@ -221,7 +222,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 		body.Position = UDim2.fromOffset(10, 55)
 		body.Size = UDim2.new(1, -20, 1, -65)
 		body.BackgroundTransparency = 1
-		body.Font = Enum.Font.GothamBold
+		body.FontFace = Style.Font.LabelBold
 		body.TextScaled = true
 		body.TextColor3 = Color3.new(1, 1, 1)
 		body.Text = item[2]
