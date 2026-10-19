@@ -32,10 +32,10 @@ Read `CLAUDE.md` first (architecture, conventions, every design decision). This 
 - Menu buttons clicked by hand (only the remotes were driven); the staff menu with a non-owner viewing; a long session (XP saved by autosave, levels after a rejoin).
 
 ## Known bugs / open findings
-- From this session: dough is the bottleneck with one NPC stretcher (10 s a skin at level 1 x1.5); NPCs walk straight through counters to the driver door; any staff change rebuilds every NPC (a short pop, jobs in hand go back); the Supreme job aid shows "PEPP" for both Pepperoni and Peppers; earlier Insider/Driver saves are dropped by `Staff.sanitize` (test data only).
+- From this session: dough is the bottleneck with one NPC stretcher (10 s a skin at level 1 x1.5); NPCs walk straight through counters to the driver door; any staff change rebuilds every NPC (a short pop, jobs in hand go back); earlier Insider/Driver saves are dropped by `Staff.sanitize` (test data only).
 - Old saves: the `Franchise` field was dropped (anyone who bought a franchise loses it, no refund); fine if the game has no real players yet.
 - From the 2026-10-19 audit (numbers match that report): 5 Auto-match can put a pizza on a different recipe (NPC loaders only load exact matches; players still can); 6 pay/scoring rules have no specs; 7 Register accepts up to 40 pizzas; 8 `ShopService.luau` is ~3,300 lines (now also holds the staff); 9 duplicate formatters; 10 dead code; 11 racks rebuild every part; 12 topping names only on hover.
-- Also: the Stations tab sits in the mobile thumbstick zone; the Follow chip disappears after 12 s; extras are paid as "Sloppy"; the 120 s bake is the whole belt.
+- Also: the Stations tab sits in the mobile thumbstick zone; extras are paid as "Sloppy"; the 120 s bake is the whole belt.
 
 - From the make-line overhaul: being moved back is immediate (even right after you finish a step, while Next points forward); topping prices, ToppingCount / ToppingPopularity and oz portions are placeholders; the cheese pans by the cheese spot are decoration only.
 - From the no-crew change: a solo store at dinner gets far more orders than it can make, so most are lost until it's staffed (intended pressure, but the numbers are untuned); lost walk-ins who were never rung in aren't announced, only counted.
