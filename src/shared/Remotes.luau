@@ -20,8 +20,9 @@ local NAMES = {
 	"ChooseStore", -- client -> server: (lotId | nil) open or join the store on that lot; nil = leave yours
 	"RequestStaff", -- client -> server: HUD "Staff" button
 	"OpenStaffMenu", -- server -> client: (info) your store's hired staff, what's for hire, the roll
-	"HireStaff", -- client -> server: (kind) owner buys a Config.Staff kind
-	"AssignStaff", -- client -> server: (index, stationId) owner moves an insider
+	"HireStaff", -- client -> server: (kind) owner hires a Config.Staff kind
+	"AssignStaff", -- client -> server: (memberId, stationId) owner moves a team member
+	"ScheduleStaff", -- client -> server: (memberId, shift, on) owner puts a team member on or off a shift
 	"DeliveryTarget", -- server -> client: (doorPart | nil, seconds for the timer)
 	"TipSeen", -- client -> server: (stationId) the player closed that station's first-visit tip
 }

@@ -1,4 +1,4 @@
--- Headless specs for pizza-shift's pure modules (Config, GameClock, SalesPlan).
+-- Headless specs for pizza-shift's pure modules (Config, GameClock, SalesPlan, Staff...).
 -- Loads the real files from disk with Roblox datatypes from @lune/roblox and
 -- tiny stubs for game/script/require/Random. Run from the repo root:
 --   lune run tests/specs
@@ -79,6 +79,7 @@ local GameClock = load("src/shared/GameClock.luau", { script = { Parent = { Conf
 local SalesPlan = load("src/server/SalesPlan.luau", { script = { Parent = {} }, game = game })
 local Style = load("src/shared/Style.luau", { script = { Parent = { Config = CONFIG } }, game = game })
 local TicketRows = load("src/shared/TicketRows.luau", { script = { Parent = {} }, game = game })
+local Staff = load("src/shared/Staff.luau", { script = { Parent = { Config = CONFIG } }, game = game })
 
 local specs: { { string | () -> () } } = {}
 local function spec(name: string, fn: () -> ())
@@ -189,31 +190,116 @@ spec("the order-matching setting offers Auto and Pick", function()
 end)
 
 ------------------------------------------------------------------ Sales config
-spec("every staff kind is defined; bought kinds have a price, insiders a station and a work time", function()
+spec("every staff kind is defined; bought kinds have a price; every staff station has a stat", function()
 	for _, kind in Config.StaffOrder do
 		local def = Config.Staff[kind]
 		assert(def, "StaffOrder lists unknown kind " .. kind)
-		assert(def.max >= 1, kind .. " max")
 		if def.hire == "buy" then
 			assert(def.cost > 0 and def.growth >= 1, kind .. " price")
-			assert(def.quality > 0 and def.quality < 1, kind .. " quality (players should be able to beat it)")
+			assert(Config.StaffGen.Buy, "no StaffGen.Buy pool")
 		else
 			eq(def.hire, "roll", kind .. " hire")
 		end
 	end
 	for _, id in Config.StaffStations do
 		assert(Config.StationInfo(id), "StaffStations has unknown station " .. id)
-		assert(Config.StaffWork.WorkTime[id], id .. " has no staff work time")
+		assert(Config.StaffStatNames[id], id .. " has no stat name")
+		assert(id == "DeliveryRack" or Config.StaffWork.WorkTime[id], id .. " has no staff work time")
+	end
+	assert(Config.StaffOnShift <= Config.StaffRoster, "more on a shift than the roster holds")
+end)
+
+spec("team members start at 200 coins and each next one costs more", function()
+	eq(Config.HireCost("TeamMember", 0), 200, "first")
+	eq(Config.HireCost("TeamMember", 1), 250, "second")
+	for n = 1, Config.StaffRoster - 1 do
+		assert(Config.HireCost("TeamMember", n) > Config.HireCost("TeamMember", n - 1), "price rises at " .. n)
 	end
 end)
 
-spec("each hire of a kind costs more than the last", function()
-	eq(Config.HireCost("Insider", 0), 250, "first insider")
-	eq(Config.HireCost("Insider", 1), 400, "second insider")
-	eq(Config.HireCost("Driver", 0), 400, "first driver")
-	for n = 1, Config.Staff.Insider.max do
-		assert(Config.HireCost("Insider", n) > Config.HireCost("Insider", n - 1), "insider price rises at " .. n)
+spec("shifts are the dayparts, with prep in the lunch shift", function()
+	eq(table.concat(Staff.Shifts, ","), "Lunch,Dinner,Late Night", "shift names")
+	eq(Staff.shiftAt(9.49), nil, "9:29 AM")
+	eq(Staff.shiftAt(9.5), "Lunch", "9:30 AM (prep)")
+	eq(Staff.shiftAt(15.99), "Lunch", "3:59 PM")
+	eq(Staff.shiftAt(16), "Dinner", "4 PM")
+	eq(Staff.shiftAt(21), "Late Night", "9 PM")
+	eq(Staff.shiftAt(23.99), "Late Night", "11:59 PM")
+	eq(Staff.shiftAt(0), nil, "midnight")
+end)
+
+spec("station levels: XP to level, capped, and each level makes them faster and better", function()
+	eq(Staff.xpToNext(1), 8, "level 1 -> 2")
+	local stat = { level = 1, xp = 0 }
+	eq(Staff.addXP(stat, 7), false, "not yet")
+	eq(Staff.addXP(stat, 1), true, "levels up")
+	eq(stat.level, 2, "level")
+	eq(stat.xp, 0, "xp carried")
+	local max = Config.StaffLevels.Max
+	Staff.addXP(stat, 1e6)
+	eq(stat.level, max, "capped")
+	eq(stat.xp, 0, "no XP past the cap")
+	eq(Staff.addXP(stat, 5), false, "maxed")
+	near(Staff.quality(1), 0.5, "quality at 1")
+	near(Staff.quality(max), 0.95, "quality at max")
+	near(Staff.speed(1), 1.5, "speed at 1")
+	near(Staff.speed(max), 0.6, "speed at max")
+	for l = 2, max do
+		assert(Staff.quality(l) > Staff.quality(l - 1) and Staff.speed(l) < Staff.speed(l - 1), "level " .. l .. " is better")
 	end
+end)
+
+spec("the less reliable, the likelier to call out", function()
+	eq(Staff.calloutChance(Config.Reliability.Max), 0, "fully reliable")
+	near(Staff.calloutChance(1), 0.27, "reliability 1")
+	for r = 2, Config.Reliability.Max do
+		assert(Staff.calloutChance(r) < Staff.calloutChance(r - 1), "reliability " .. r)
+	end
+end)
+
+spec("bought hires: low stats, middling reliability, open availability is rare", function()
+	local gen = Config.StaffGen.Buy
+	local rng, open = Random.new(11), 0
+	for i = 1, 2000 do
+		local m = Staff.newMember(rng, "Buy", i, "Test", "Sauce")
+		for _, s in Config.StaffStations do
+			local l = m.stats[s].level
+			assert(l >= gen.levels[1] and l <= gen.levels[2], "level " .. l)
+		end
+		assert(m.reliability >= gen.reliability[1] and m.reliability <= gen.reliability[2], "reliability")
+		local count = 0
+		for _, shift in Staff.Shifts do
+			if m.avail[shift] then
+				count += 1
+			end
+			eq(m.shifts[shift] == true, m.avail[shift] == true, "scheduled for what they can work")
+		end
+		assert(count >= 1, "available for at least one shift")
+		open += if Staff.isOpen(m.avail) then 1 else 0
+	end
+	assert(open > 140 and open < 260, "about 10% open availability, got " .. open)
+end)
+
+spec("saved staff are made safe: unknown kinds dropped, bad fields fixed, schedule inside availability", function()
+	local rng = Random.new(3)
+	eq(Staff.sanitize({ kind = "Insider", name = "Old" }, rng, 1), nil, "retired kind")
+	eq(Staff.sanitize("junk", rng, 1), nil, "not a table")
+	local m = Staff.sanitize({
+		kind = "TeamMember",
+		name = "Ava",
+		station = "Nowhere",
+		reliability = 42,
+		stats = { Sauce = { level = 99, xp = 3 } },
+		avail = { Lunch = true },
+		shifts = { Lunch = true, Dinner = true },
+	}, rng, 7) :: any
+	eq(m.id, 7, "id")
+	eq(m.station, Config.StaffStations[1], "station")
+	eq(m.reliability, Config.Reliability.Max, "reliability clamped")
+	eq(m.stats.Sauce.level, Config.StaffLevels.Max, "level clamped")
+	assert(m.stats.Dough and m.stats.Dough.level >= 1, "missing stat filled in")
+	eq(m.shifts.Lunch, true, "kept")
+	eq(m.shifts.Dinner, false, "not available, so not scheduled")
 end)
 
 spec("staff roll odds sum to 1 and only land on roll kinds", function()
@@ -223,12 +309,12 @@ spec("staff roll odds sum to 1 and only land on roll kinds", function()
 		eq(Config.Staff[o.kind].hire, "roll", o.kind .. " is a roll kind")
 	end
 	near(total, 1, "odds")
-	eq(Config.RollStaff(0), "AssistantManager", "u = 0")
-	eq(Config.RollStaff(0.95), "StoreManager", "u = 0.95")
-	eq(Config.RollStaff(0.999999), "StoreManager", "u just under 1")
+	eq(Staff.rollKind(0), "AssistantManager", "u = 0")
+	eq(Staff.rollKind(0.95), "StoreManager", "u = 0.95")
+	eq(Staff.rollKind(0.999999), "StoreManager", "u just under 1")
 	local rng, stores = Random.new(7), 0
 	for _ = 1, 10000 do
-		if Config.RollStaff(rng:NextNumber()) == "StoreManager" then
+		if Staff.rollKind(rng:NextNumber()) == "StoreManager" then
 			stores += 1
 		end
 	end

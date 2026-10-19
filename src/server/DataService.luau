@@ -15,7 +15,7 @@ export type Profile = {
 	PizzasMade: number,
 	Deliveries: number,
 	TipsSeen: { [string]: boolean }, -- stations whose first-visit tip the player has closed
-	Staff: { { kind: string, name: string, station: string? } }, -- hired for their store (Config.Staff)
+	Staff: { any }, -- hired for their store (Staff.Member; made safe by Staff.sanitize when it opens)
 }
 
 local DataService = {}

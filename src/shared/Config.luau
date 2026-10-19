@@ -315,7 +315,7 @@ Config.OrderSizes = {
 	SizeMix = { Small = 0.25, Medium = 0.35, Large = 0.40 }, -- how often each pizza size is ordered
 }
 
--- How much of the order flow a store's crew (its players and hired insiders)
+-- How much of the order flow a store's crew (its players and kitchen staff on shift)
 -- gets. Orders that would exceed this many open pizzas per worker are handled
 -- by the off-screen crew (they still count as store sales).
 Config.Crew = { PizzasPerWorker = 4 }
@@ -341,7 +341,7 @@ Config.Shop = {
 -- every other worker's pay (paid by the house, not deducted). When the owner
 -- leaves, the longest-serving worker takes over with their own store.
 -- Delivery orders only come in with DeliveryMinPlayers players at the store
--- or a hired driver; otherwise they arrive as carryout.
+-- or a team member on shift at the heat rack; otherwise they arrive as carryout.
 Config.Store = {
 	MaxPlayers = 4,
 	SaleCut = 0.5,
@@ -349,29 +349,55 @@ Config.Store = {
 	DeliveryMinPlayers = 2,
 }
 
--- Hired staff (NPCs). The store owner buys them in the Staff menu and they're
--- saved with the owner's store. Insiders work the station the owner assigns
--- (any of StaffStations), taking WorkTime seconds a job at `quality` (players
--- can beat it); they only sauce and top what open orders still need. Drivers
--- take delivery orders off the heat rack for a Trip of that many seconds. The
--- first hire of a kind costs `cost`, each next one `growth` times the last;
--- `max` per store. `hire = "roll"` kinds can't be bought: they come from the
--- staff roll (Config.StaffRoll), which isn't live yet.
+-- Hired staff (NPCs), saved with the owner's store. Team members work the
+-- station the owner assigns (any of StaffStations; the heat rack makes them a
+-- driver) on the shifts the owner schedules, within their availability. Each
+-- has a level per station (its stat, StaffStatNames) that rises with XP from
+-- jobs done there, a Reliability (chance to call out of a shift) and an
+-- Availability (which shifts they can work; all = "open"). The rules are in
+-- Staff.luau. Buying hires a random basic member (StaffGen.Buy); the first
+-- costs `cost`, each next one `growth` times the last. `hire = "roll"` kinds
+-- come from the staff roll (StaffRoll), which isn't live yet.
 Config.Staff = {
-	Insider = { display = "Insider", hire = "buy", cost = 250, growth = 1.6, max = 6, quality = 0.75 },
-	Driver = { display = "Delivery Driver", hire = "buy", cost = 400, growth = 1.6, max = 3, quality = 0.75 },
-	AssistantManager = { display = "Assistant Manager", hire = "roll", max = 1 },
-	StoreManager = { display = "Store Manager", hire = "roll", max = 1 },
+	TeamMember = { display = "Team Member", hire = "buy", cost = 200, growth = 1.25 },
+	AssistantManager = { display = "Assistant Manager", hire = "roll" },
+	StoreManager = { display = "Store Manager", hire = "roll" },
 }
-Config.StaffOrder = { "Insider", "Driver", "AssistantManager", "StoreManager" }
-Config.StaffStations = { "Register", "Dough", "Sauce", "Cheese", "Toppings", "Load", "CutTable" }
+Config.StaffOrder = { "TeamMember", "AssistantManager", "StoreManager" }
+Config.StaffRoster = 16 -- hires per store
+Config.StaffOnShift = 8 -- scheduled per shift
+Config.StaffStations = { "Register", "Dough", "Sauce", "Cheese", "Toppings", "Load", "CutTable", "DeliveryRack" }
+Config.StaffStatNames = {
+	Register = "Service",
+	Dough = "Stretching",
+	Sauce = "Saucing",
+	Cheese = "Cheese",
+	Toppings = "Topping",
+	Load = "Oven",
+	CutTable = "Cutting",
+	DeliveryRack = "Driving",
+}
+-- Station levels 1..Max. A level-1 member works at Quality[1] taking Speed[1]
+-- times the base time; a maxed one at Quality[2] and Speed[2] (in between,
+-- evenly). Jobs to go from level L to L+1: XPBase + XPPerLevel * L.
+Config.StaffLevels = { Max = 20, Quality = { 0.5, 0.95 }, Speed = { 1.5, 0.6 }, XPBase = 5, XPPerLevel = 3 }
+-- Base seconds per job at each station; a driver's round trip.
 Config.StaffWork = {
 	WorkTime = { Register = 8, Dough = 10, Sauce = 8, Cheese = 6, Toppings = 10, Load = 3, CutTable = 10 },
-	Trip = { 45, 75 }, -- a driver's round trip, real seconds
+	Trip = { 45, 75 },
 }
-Config.StaffNames = { "Maya", "Leo", "Priya", "Sam", "Ines", "Theo", "Rosa", "Kai", "Nadia", "Omar", "June", "Felix", "Ava", "Marco", "Zoe", "Eli" }
--- The staff roll (spin) for managers: odds per kind (summing to 1) and the
--- coins per roll. Not live until Enabled; what managers do is still to design.
+-- Reliability 1..Max; each point short of Max adds CalloutPerPoint to the
+-- chance of calling out of a scheduled shift (checked as the shift starts).
+Config.Reliability = { Max = 10, CalloutPerPoint = 0.03 }
+-- New hires. `levels`: each station's starting level (range); `reliability`
+-- (range); `shifts`: odds of being available for 1, 2 or all 3 shifts.
+Config.StaffGen = {
+	Buy = { levels = { 1, 3 }, reliability = { 3, 8 }, shifts = { 0.5, 0.4, 0.1 } },
+}
+Config.StaffNames = { "Maya", "Leo", "Priya", "Sam", "Ines", "Theo", "Rosa", "Kai", "Nadia", "Omar", "June", "Felix", "Ava", "Marco", "Zoe", "Eli", "Lena", "Ravi", "Tess", "Hugo" }
+-- The staff roll (spin): odds per kind (summing to 1) and the coins per roll.
+-- Not live until Enabled. Still to design: duplicates, what managers do,
+-- coins vs Robux, and better-stat team members (a StaffGen entry of their own).
 Config.StaffRoll = {
 	Enabled = false,
 	Cost = 2500,
@@ -382,18 +408,6 @@ Config.StaffRoll = {
 function Config.HireCost(kind: string, owned: number): number
 	local def = Config.Staff[kind]
 	return math.floor(def.cost * def.growth ^ owned + 0.5)
-end
-
--- The kind a roll lands on, from a uniform number 0 <= u < 1.
-function Config.RollStaff(u: number): string
-	local odds = Config.StaffRoll.Odds
-	for _, o in odds do
-		if u < o.weight then
-			return o.kind
-		end
-		u -= o.weight
-	end
-	return odds[#odds].kind
 end
 
 -- Set these after creating the products on the Creator Dashboard. 0 = disabled.

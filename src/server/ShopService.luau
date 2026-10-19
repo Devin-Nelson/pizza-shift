@@ -17,6 +17,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local GameClock = require(ReplicatedStorage.Shared.GameClock)
 local Pizza3D = require(ReplicatedStorage.Shared.Pizza3D)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Staff = require(ReplicatedStorage.Shared.Staff)
 local Style = require(ReplicatedStorage.Shared.Style)
 local CarService = require(script.Parent.CarService)
 local ClockService = require(script.Parent.ClockService)
@@ -107,18 +108,19 @@ type Pie = {
 	boxWrong: boolean,
 }
 
--- A hired staff member (an NPC) at work in a store. `station`: where it works
--- (drivers wait at the heat rack). `job`: what it's in the middle of, done at `busyUntil`.
+-- A hired team member (an NPC) in a store. `member`: their saved record in
+-- the owner's profile (XP goes straight into it). `present`: in for this
+-- shift (scheduled and didn't call out). `job`: what they're in the middle
+-- of, done at `busyUntil`.
 type Crew = {
-	kind: string, -- "Insider" | "Driver"
+	member: Staff.Member,
 	name: string,
-	station: string,
+	station: string, -- where they work (the heat rack: they drive)
+	present: boolean,
 	npc: Model?,
 	busyUntil: number,
 	job: any?,
 }
--- What StoreService hands over from the owner's save.
-export type CrewSpec = { kind: string, name: string, station: string? }
 
 export type Shop = {
 	id: number,
@@ -148,6 +150,8 @@ export type Shop = {
 	lastRestock: number,
 	spawning: number,
 	crew: { Crew },
+	shift: string?, -- the staff shift now on (Staff.shiftAt)
+	calledOut: { [number]: boolean }, -- member ids who called out of this shift
 	alive: boolean,
 }
 
@@ -230,19 +234,20 @@ local function membersOf(shop: Shop): { Player }
 	return list
 end
 
-local function crewCount(shop: Shop, kind: string): number
+-- Team members in for this shift: kitchen staff, and drivers (at the heat rack).
+local function crewOnShift(shop: Shop, driving: boolean): number
 	local n = 0
 	for _, c in shop.crew do
-		if c.kind == kind then
+		if c.present and (c.station == "DeliveryRack") == driving then
 			n += 1
 		end
 	end
 	return n
 end
 
--- Delivery orders need a second player or a hired driver.
+-- Delivery orders need a second player or a driver on shift.
 local function takesDeliveries(shop: Shop): boolean
-	return #membersOf(shop) >= Config.Store.DeliveryMinPlayers or crewCount(shop, "Driver") > 0
+	return #membersOf(shop) >= Config.Store.DeliveryMinPlayers or crewOnShift(shop, true) > 0
 end
 
 -- Who has hold of something: a player or a hired staff member.
@@ -1500,7 +1505,7 @@ local function newOrder(shop: Shop, items: { Item })
 	local S = Config.Sales
 	local delivery = shop.rng:NextNumber() < S.DeliveryShare and takesDeliveries(shop)
 	local online = shop.rng:NextNumber() < S.OnlineShare
-	local staff = #membersOf(shop) + crewCount(shop, "Insider")
+	local staff = #membersOf(shop) + crewOnShift(shop, false)
 	local capacity = staff * Config.Crew.PizzasPerWorker - openPizzas(shop)
 	local playable = staff > 0 and #items <= capacity
 	if not playable then
@@ -1795,10 +1800,12 @@ end
 ---------------------------------------------------------------------------
 -- Hired staff (NPCs)
 ---------------------------------------------------------------------------
--- The owner's hires (StoreService keeps them in the owner's save). Insiders
--- stand at their station and do its job on the real pizzas, at a set speed
--- and quality; they only sauce and top what open orders still need. Drivers
--- wait at the heat rack and take delivery orders out for a timed trip.
+-- The owner's team members (StoreService keeps them in the owner's save),
+-- in on the shifts they're scheduled for unless they call out (startShift).
+-- At a kitchen station they do its job on the real pizzas, at the speed and
+-- quality of their level there (Staff.luau), and only sauce and top what
+-- open orders still need. At the heat rack they drive: delivery orders go
+-- out for a timed trip. Every job earns XP at that station.
 
 local CREW_TAG = "CrewNPC" -- the client hides one standing where its player works
 
@@ -1917,7 +1924,7 @@ local function crewToPost(shop: Shop, c: Crew)
 	for _, other in shop.crew do
 		if other == c then
 			break
-		elseif other.station == c.station then
+		elseif other.present and other.station == c.station then
 			k += 1
 		end
 	end
@@ -1935,7 +1942,8 @@ local function spawnCrew(shop: Shop, c: Crew)
 		if not npc or not humanoid then
 			return
 		end
-		if not shop.alive or not table.find(shop.crew, c) then
+		-- Sent home (or already back in) while the avatar loaded.
+		if not shop.alive or not table.find(shop.crew, c) or not c.present or c.npc then
 			npc:Destroy()
 			return
 		end
@@ -2023,7 +2031,7 @@ end
 -- Starts the staff member's next job at its station, if there is one.
 local function crewStart(shop: Shop, c: Crew): any?
 	local s = c.station
-	if c.kind == "Driver" then
+	if s == "DeliveryRack" then
 		for _, o in shop.orders do
 			if o.stage == "Rack" and o.delivery and not o.claimedBy and houses[o.house or 0] then
 				o.claimedBy = c
@@ -2120,11 +2128,17 @@ local function crewStart(shop: Shop, c: Crew): any?
 	return nil
 end
 
--- Finishes the job the staff member started.
+-- The member's level at the station they work.
+local function crewLevel(c: Crew): number
+	local stat = c.member.stats[c.station]
+	return if stat then stat.level else 1
+end
+
+-- Finishes the job the staff member started, and they learn from it.
 local function crewFinish(shop: Shop, c: Crew)
 	local job = c.job
 	c.job = nil
-	local quality = Config.Staff[c.kind].quality
+	local quality = Staff.quality(crewLevel(c))
 	local what = job.what
 	if what == "Register" then
 		local e = job.entry
@@ -2166,13 +2180,59 @@ local function crewFinish(shop: Shop, c: Crew)
 		completeOrder(shop, job.order, quality, nil)
 		crewToPost(shop, c)
 	end
+	local stat = c.member.stats[c.station]
+	if stat and Staff.addXP(stat, 1) then
+		notify(shop.owner, string.format("%s's %s is now level %d!", c.name, Config.StaffStatNames[c.station] or c.station, stat.level), Color3.fromRGB(120, 255, 160))
+	end
+end
+
+-- Brings in whoever should be working now (scheduled for this shift, didn't
+-- call out) and sends home whoever shouldn't.
+local function crewRoster(shop: Shop)
+	for _, c in shop.crew do
+		local should = shop.shift ~= nil and c.member.shifts[shop.shift] == true and not shop.calledOut[c.member.id]
+		if should and not c.present then
+			c.present = true
+			c.busyUntil = 0
+			spawnCrew(shop, c)
+		elseif not should and c.present then
+			c.present = false
+			releaseCrew(shop, c)
+			if c.npc then
+				c.npc:Destroy()
+				c.npc = nil
+			end
+		end
+	end
+end
+
+-- A new shift: everyone scheduled for it might call out (Reliability).
+local function startShift(shop: Shop, shift: string?)
+	shop.shift = shift
+	table.clear(shop.calledOut)
+	if shift then
+		for _, c in shop.crew do
+			if c.member.shifts[shift] and shop.rng:NextNumber() < Staff.calloutChance(c.member.reliability) then
+				shop.calledOut[c.member.id] = true
+				notify(shop.owner, string.format("%s called out of the %s shift.", c.name, shift), Color3.fromRGB(255, 160, 100))
+			end
+		end
+	end
+	crewRoster(shop)
 end
 
 -- Once a second: staff finish what's done and pick up the next job.
 local function crewStep(shop: Shop)
+	local _, hour = GameClock.split(ClockService.WeekHour())
+	local shift = Staff.shiftAt(hour)
+	if shift ~= shop.shift then
+		startShift(shop, shift)
+	end
 	local now = os.clock()
 	for _, c in shop.crew do
-		if c.job and now >= c.busyUntil then
+		if not c.present then
+			continue
+		elseif c.job and now >= c.busyUntil then
 			local ok, err = pcall(crewFinish, shop, c)
 			if not ok then
 				warn("[ShopService] staff job failed:", err)
@@ -2181,12 +2241,13 @@ local function crewStep(shop: Shop)
 		elseif not c.job and now >= c.busyUntil and canWork() then
 			c.job = crewStart(shop, c)
 			if c.job then
+				local speed = Staff.speed(crewLevel(c))
 				if c.job.what == "Delivery" then
 					local trip = Config.StaffWork.Trip
-					c.busyUntil = now + shop.rng:NextNumber(trip[1], trip[2])
+					c.busyUntil = now + shop.rng:NextNumber(trip[1], trip[2]) * speed
 					crewDriveOff(shop, c)
 				else
-					c.busyUntil = now + (Config.StaffWork.WorkTime[c.station] or 8)
+					c.busyUntil = now + (Config.StaffWork.WorkTime[c.station] or 8) * speed
 				end
 				updateBoards(shop)
 			end
@@ -3123,6 +3184,8 @@ function ShopService.AddShop(model: Model, name: string, owner: Player?, volume:
 		lastRestock = os.clock(),
 		spawning = 0,
 		crew = {},
+		shift = nil,
+		calledOut = {},
 		alive = true,
 	}
 	for _, ing in Config.Ingredients do
@@ -3194,10 +3257,11 @@ function ShopService.RemoveShop(shop: Shop)
 	shop.model:Destroy()
 end
 
--- The owner's hired staff at `shop` (from their save), rebuilt whole: anyone
--- mid-job puts it back first. Only kinds that work a station are spawned
--- (managers from the staff roll don't do anything yet).
-function ShopService.SetCrew(shop: Shop, specs: { CrewSpec })
+-- The owner's hired staff at `shop`: their saved records (Staff.sanitize'd;
+-- XP is written straight into them). Rebuilt whole: anyone mid-job puts it
+-- back first. Only team members work (managers from the roll don't, yet);
+-- whoever's scheduled for the shift that's on comes in.
+function ShopService.SetCrew(shop: Shop, members: { Staff.Member })
 	for _, c in shop.crew do
 		releaseCrew(shop, c)
 		if c.npc then
@@ -3205,14 +3269,12 @@ function ShopService.SetCrew(shop: Shop, specs: { CrewSpec })
 		end
 	end
 	table.clear(shop.crew)
-	for _, spec in specs do
-		local post = if spec.kind == "Driver" then "DeliveryRack" else spec.station
-		if (spec.kind == "Insider" or spec.kind == "Driver") and type(post) == "string" and station(shop, post) then
-			local c: Crew = { kind = spec.kind, name = spec.name, station = post, npc = nil, busyUntil = 0, job = nil }
-			table.insert(shop.crew, c)
-			spawnCrew(shop, c)
+	for _, m in members do
+		if m.kind == "TeamMember" and station(shop, m.station) then
+			table.insert(shop.crew, { member = m, name = m.name, station = m.station, present = false, npc = nil, busyUntil = 0, job = nil })
 		end
 	end
+	crewRoster(shop)
 end
 
 -- Makes `player` one of `shop`'s workers (nil: of no store). Who works where

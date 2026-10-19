@@ -3,14 +3,17 @@
 -- own store on a free one or joins a store with room (Config.Store.MaxPlayers).
 -- A store is its owner's: when the owner leaves, the longest-serving worker
 -- takes over and the lot reopens as their store. The last one out frees it.
--- The owner hires staff (NPCs) for their store in the Staff menu; hires are
--- saved with the owner and come along to whatever lot their store opens on.
+-- The owner hires team members (NPCs) in the Staff menu, assigns their
+-- stations and schedules their shifts; staff are saved with the owner and
+-- come along to whatever lot their store opens on.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local GameClock = require(ReplicatedStorage.Shared.GameClock)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Staff = require(ReplicatedStorage.Shared.Staff)
 local DataService = require(script.Parent.DataService)
 local MapBuilder = require(script.Parent.MapBuilder)
 local ShopService = require(script.Parent.ShopService)
@@ -98,17 +101,40 @@ local function enlist(player: Player, plot: Plot, claim: Claim)
 	player:SetAttribute("StoreOwner", if claim.owner == player then true else nil)
 end
 
--- The owner's saved hires that are still valid (kinds and stations change).
-local function staffOf(owner: Player): { ShopService.CrewSpec }
+-- The owner's saved staff, made safe once as their store opens (unique ids,
+-- each shift within the cap). ShopService writes XP straight into these records.
+local function prepareStaff(owner: Player): { Staff.Member }
 	local profile = DataService.Get(owner)
-	local list = {}
-	for _, h in (if profile then profile.Staff else {}) do
-		if type(h) == "table" and Config.Staff[h.kind] and type(h.name) == "string" then
-			local station = if h.kind == "Insider" and table.find(Config.StaffStations, h.station) then h.station elseif h.kind == "Insider" then Config.StaffStations[1] else nil
-			table.insert(list, { kind = h.kind, name = h.name, station = station })
+	if not profile then
+		return {}
+	end
+	local list, seen, rng = {}, {}, Random.new()
+	for i, raw in profile.Staff do
+		local m = Staff.sanitize(raw, rng, i)
+		if m then
+			if seen[m.id] then
+				m.id = #profile.Staff + i
+			end
+			seen[m.id] = true
+			table.insert(list, m)
 		end
 	end
+	for _, shift in Staff.Shifts do
+		local n = 0
+		for _, m in list do
+			if m.shifts[shift] then
+				n += 1
+				m.shifts[shift] = n <= Config.StaffOnShift
+			end
+		end
+	end
+	profile.Staff = list
 	return list
+end
+
+local function staffOf(owner: Player): { Staff.Member }
+	local profile = DataService.Get(owner)
+	return if profile then profile.Staff :: any else {}
 end
 
 -- Builds the store on `plot` as `owner`'s, with `members` working there.
@@ -116,7 +142,7 @@ local function openStore(plot: Plot, owner: Player, members: { Player })
 	local model = MapBuilder.BuildShop(plot.cframe, Config.GameName, workspace:FindFirstChild("Shops") :: Folder)
 	model.Name = "Store" .. plot.id
 	local claim: Claim = { owner = owner, shop = ShopService.AddShop(model, Config.GameName, owner), members = members }
-	ShopService.SetCrew(claim.shop, staffOf(owner))
+	ShopService.SetCrew(claim.shop, prepareStaff(owner))
 	claims[plot.id] = claim
 	setLotVisible(plot, false)
 	for _, m in members do
@@ -200,19 +226,28 @@ end
 -- Staff menu
 ---------------------------------------------------------------------------
 
-local function countOf(staff: { any }, kind: string): number
+local function countOf(staff: { Staff.Member }, kind: string): number
 	local n = 0
-	for _, h in staff do
-		if h.kind == kind then
+	for _, m in staff do
+		if m.kind == kind then
 			n += 1
 		end
 	end
 	return n
 end
 
-local function stationLabel(id: string?): string?
-	local info = if id then Config.StationInfo(id) else nil
+local function stationLabel(id: string): string
+	local info = Config.StationInfo(id)
 	return if info then info.label else id
+end
+
+local function findMember(staff: { Staff.Member }, id: number): Staff.Member?
+	for _, m in staff do
+		if m.id == id then
+			return m
+		end
+	end
+	return nil
 end
 
 -- Everything the Staff menu shows; only the owner can change it.
@@ -224,17 +259,39 @@ local function sendStaff(player: Player)
 		return
 	end
 	local staff = staffOf(claim.owner)
-	local hired = {}
-	for _, h in staff do
-		table.insert(hired, { kind = h.kind, display = Config.Staff[h.kind].display, name = h.name, station = h.station, stationLabel = stationLabel(h.station) })
+	local list = {}
+	for _, m in staff do
+		local stats = {}
+		for _, s in Config.StaffStations do
+			table.insert(stats, { name = Config.StaffStatNames[s], level = m.stats[s].level })
+		end
+		local stat = m.stats[m.station]
+		table.insert(list, {
+			id = m.id,
+			name = m.name,
+			display = Config.Staff[m.kind].display,
+			works = m.kind == "TeamMember",
+			station = m.station,
+			stationLabel = stationLabel(m.station),
+			level = stat.level,
+			xp = stat.xp,
+			xpNext = Staff.xpToNext(stat.level),
+			stats = stats,
+			reliability = m.reliability,
+			avail = m.avail,
+			shifts = m.shifts,
+			open = Staff.isOpen(m.avail),
+		})
 	end
-	local hire = {}
-	local roll = {}
+	local shifts = {}
+	for _, shift in Staff.Shifts do
+		table.insert(shifts, { name = shift, count = Staff.scheduled(staff, shift), max = Config.StaffOnShift })
+	end
+	local hire, roll = {}, {}
 	for _, kind in Config.StaffOrder do
 		local def = Config.Staff[kind]
 		if def.hire == "buy" then
-			local count = countOf(staff, kind)
-			table.insert(hire, { kind = kind, display = def.display, cost = Config.HireCost(kind, count), count = count, max = def.max })
+			table.insert(hire, { kind = kind, display = def.display, cost = Config.HireCost(kind, countOf(staff, kind)) })
 		else
 			table.insert(roll, def.display)
 		end
@@ -243,12 +300,17 @@ local function sendStaff(player: Player)
 	for _, s in Config.StaffStations do
 		table.insert(stations, { id = s, label = stationLabel(s) })
 	end
+	local _, hour = GameClock.split(GameClock.weekHour())
 	local profile = DataService.Get(player)
 	Remotes.OpenStaffMenu:FireClient(player, {
 		owner = claim.owner.DisplayName,
 		canEdit = claim.owner == player,
 		coins = if profile then profile.Coins else 0,
-		staff = hired,
+		staff = list,
+		roster = { count = #staff, max = Config.StaffRoster },
+		shifts = shifts,
+		now = Staff.shiftAt(hour),
+		reliabilityMax = Config.Reliability.Max,
 		hire = hire,
 		stations = stations,
 		roll = { enabled = Config.StaffRoll.Enabled, cost = Config.StaffRoll.Cost, kinds = roll },
@@ -262,7 +324,7 @@ local function ownedClaim(player: Player): Claim?
 	return if claim and claim.owner == player then claim else nil
 end
 
--- Saves the owner's hires and puts them to work.
+-- Saves the owner's staff and puts the change to work.
 local function staffChanged(player: Player, claim: Claim)
 	ShopService.SetCrew(claim.shop, staffOf(player))
 	task.spawn(DataService.Save, player)
@@ -272,59 +334,86 @@ end
 local function hire(player: Player, kind: string)
 	local claim = ownedClaim(player)
 	local def = Config.Staff[kind]
-	local profile = DataService.Get(player)
-	if not claim or not def or def.hire ~= "buy" or not profile then
+	if not claim or not def or def.hire ~= "buy" then
 		return
 	end
-	local count = countOf(profile.Staff, kind)
-	if count >= def.max then
-		notify(player, string.format("You already have %d %ss (the most a store can have).", def.max, def.display), WARN)
+	local staff = staffOf(player)
+	if #staff >= Config.StaffRoster then
+		notify(player, string.format("Your store has a full roster (%d).", Config.StaffRoster), WARN)
 		return
 	end
-	local cost = Config.HireCost(kind, count)
+	local cost = Config.HireCost(kind, countOf(staff, kind))
 	if not DataService.SpendCoins(player, cost) then
 		notify(player, string.format("Hiring a %s costs %d coins.", def.display, cost), WARN)
 		return
 	end
-	-- A first name nobody on the crew has yet (if there's one left).
+	local nextId, taken = 1, {}
+	for _, m in staff do
+		nextId = math.max(nextId, m.id + 1)
+		taken[m.name] = true
+	end
 	local free = {}
 	for _, n in Config.StaffNames do
-		local taken = false
-		for _, h in profile.Staff do
-			taken = taken or h.name == n
-		end
-		if not taken then
+		if not taken[n] then
 			table.insert(free, n)
 		end
 	end
 	local name = if #free > 0 then free[math.random(#free)] else Config.StaffNames[math.random(#Config.StaffNames)]
-	-- Insiders start wherever the fewest insiders work (the owner can move them).
-	local station = nil
-	if kind == "Insider" then
-		local best = math.huge
-		for _, s in Config.StaffStations do
-			local n = 0
-			for _, h in profile.Staff do
-				n += if h.kind == "Insider" and h.station == s then 1 else 0
-			end
-			if n < best then
-				station, best = s, n
-			end
+	-- They start wherever the fewest work (the owner can move them).
+	local station, fewest = Config.StaffStations[1], math.huge
+	for _, s in Config.StaffStations do
+		local n = 0
+		for _, m in staff do
+			n += if m.station == s then 1 else 0
+		end
+		if n < fewest then
+			station, fewest = s, n
 		end
 	end
-	table.insert(profile.Staff, { kind = kind, name = name, station = station })
-	notify(player, string.format("%s joined your crew as %s %s!", name, if string.find(def.display, "^[AEIOU]") then "an" else "a", def.display), GOOD)
+	local m = Staff.newMember(Random.new(), "Buy", nextId, name, station)
+	-- Scheduled for every shift they can work that still has room.
+	for _, shift in Staff.Shifts do
+		if m.shifts[shift] and Staff.scheduled(staff, shift) >= Config.StaffOnShift then
+			m.shifts[shift] = false
+		end
+	end
+	table.insert(staff, m)
+	local can = {}
+	for _, shift in Staff.Shifts do
+		if m.avail[shift] then
+			table.insert(can, shift)
+		end
+	end
+	notify(player, string.format("%s joined your crew! Available: %s.", name, if Staff.isOpen(m.avail) then "open (any shift)" else table.concat(can, ", ")), GOOD)
 	staffChanged(player, claim)
 end
 
-local function assign(player: Player, index: number, stationId: string)
+local function assign(player: Player, id: number, stationId: string)
 	local claim = ownedClaim(player)
-	local profile = DataService.Get(player)
-	local h = if profile then profile.Staff[index] else nil
-	if not claim or not h or h.kind ~= "Insider" or not table.find(Config.StaffStations, stationId) then
+	local m = findMember(staffOf(player), id)
+	if not claim or not m or not table.find(Config.StaffStations, stationId) then
 		return
 	end
-	h.station = stationId
+	m.station = stationId
+	staffChanged(player, claim)
+end
+
+local function schedule(player: Player, id: number, shift: string, on: boolean)
+	local claim = ownedClaim(player)
+	local staff = staffOf(player)
+	local m = findMember(staff, id)
+	if not claim or not m or not table.find(Staff.Shifts, shift) or m.shifts[shift] == on then
+		return
+	end
+	if on and not m.avail[shift] then
+		notify(player, string.format("%s isn't available for %s.", m.name, shift), WARN)
+		return
+	end
+	if on and Staff.scheduled(staff, shift) >= Config.StaffOnShift then
+		notify(player, string.format("%s is full (%d on shift). Take someone off it first.", shift, Config.StaffOnShift), WARN)
+		return
+	end
+	m.shifts[shift] = on
 	staffChanged(player, claim)
 end
 
@@ -353,9 +442,14 @@ function StoreService.Init(worldPlots: { Plot })
 			hire(player, kind)
 		end
 	end)
-	Remotes.AssignStaff.OnServerEvent:Connect(function(player, index, stationId)
-		if type(index) == "number" and index == math.floor(index) and type(stationId) == "string" then
-			assign(player, index, stationId)
+	Remotes.AssignStaff.OnServerEvent:Connect(function(player, id, stationId)
+		if type(id) == "number" and type(stationId) == "string" then
+			assign(player, id, stationId)
+		end
+	end)
+	Remotes.ScheduleStaff.OnServerEvent:Connect(function(player, id, shift, on)
+		if type(id) == "number" and type(shift) == "string" and type(on) == "boolean" then
+			schedule(player, id, shift, on)
 		end
 	end)
 	Remotes.ChooseStore.OnServerEvent:Connect(function(player, lotId)
