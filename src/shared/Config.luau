@@ -52,7 +52,7 @@ Config.Stations = {
 	{ id = "Sauce", label = "Sauce", stay = true, queue = "make" },
 	{ id = "Cheese", label = "Cheese", stage = "Sauced", stay = true, queue = "make" },
 	{ id = "Toppings", label = "Toppings", stage = "Cheesed", stay = true, queue = "make" },
-	{ id = "Load", label = "Load Oven", stay = true, pick = true, queue = "make" },
+	{ id = "Load", label = "Load Oven", stage = "Ready", stay = true, pick = true, queue = "make" },
 	{ id = "CutTable", label = "Cut & Box", stage = "Exit", stay = true, pick = true, queue = "oven" },
 	{ id = "DeliveryRack", label = "Heat Rack", stay = true, pick = true, queue = "delivery" },
 	{ id = "SupplyTruck", label = "Truck" },
@@ -75,6 +75,21 @@ function Config.StationForStage(stage: string): string?
 		end
 	end
 	return nil
+end
+
+-- The make process (everything before the bake), in order. A player at one
+-- of these with nothing to work is moved back a step (unless someone's at
+-- that one: then they wait). After the last, a pizza's next step is the cut table.
+Config.MakeSteps = { "Dough", "Sauce", "Cheese", "Toppings", "Load" }
+
+function Config.StepBefore(id: string): string?
+	local i = table.find(Config.MakeSteps, id)
+	return if i and i > 1 then Config.MakeSteps[i - 1] else nil
+end
+
+function Config.StepAfter(id: string): string?
+	local i = table.find(Config.MakeSteps, id)
+	return if not i then nil elseif i < #Config.MakeSteps then Config.MakeSteps[i + 1] else "CutTable"
 end
 
 -- Real seconds between finishing a job at a station and the next one loading.

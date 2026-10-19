@@ -330,6 +330,17 @@ function Ui.strip(): (Frame, Frame)
 	return strip, row
 end
 
+-- A white outline that flashes, drawing the eye to `obj` (new players: this
+-- is what to do next). Stops with it.
+function Ui.flashOutline(obj: GuiObject, thickness: number?)
+	local stroke = Ui.new("UIStroke", { Color = C.White, Thickness = thickness or 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = obj })
+	local tween = TweenService:Create(stroke, TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.85 })
+	tween:Play()
+	obj.Destroying:Connect(function()
+		tween:Cancel()
+	end)
+end
+
 -- A thin vertical rule between groups of controls in a strip.
 function Ui.rule(parent: Instance, order: number): Frame
 	return Ui.box(C.Line, { Size = UDim2.fromOffset(1, 40), LayoutOrder = order, Parent = parent })

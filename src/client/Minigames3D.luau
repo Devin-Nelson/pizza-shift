@@ -225,8 +225,10 @@ local function actionButton(row: Frame, text: string, order: number, width: numb
 end
 
 -- A size picker: one tile per size with how many skins are on the racks.
--- `needSkin`: sizes with none on the racks can't be picked.
-local function sizeTiles(row: Frame, counts: { [string]: any }, needSkin: boolean, onPick: (string) -> ())
+-- `needSkin`: sizes with none on the racks can't be picked. `need`: the size
+-- the oldest ticket still needs, outlined and flashing white (so new players
+-- know what to make).
+local function sizeTiles(row: Frame, counts: { [string]: any }, needSkin: boolean, onPick: (string) -> (), need: string?)
 	for i, size in Config.Sizes do
 		local have = tonumber(counts[size]) or 0
 		local usable = not needSkin or have > 0
@@ -253,6 +255,9 @@ local function sizeTiles(row: Frame, counts: { [string]: any }, needSkin: boolea
 			b.Activated:Connect(function()
 				onPick(size)
 			end)
+		end
+		if size == need and usable then
+			Ui.flashOutline(b)
 		end
 	end
 end
@@ -472,7 +477,7 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 	end
 
 	-- Step 1: choose what size to prep (shows what's already on the racks).
-	sizeTiles(body, skins, false, stretch)
+	sizeTiles(body, skins, false, stretch, if type(data.need) == "string" then data.need else nil)
 end
 
 ---------------------------------------------------------------------------
@@ -558,7 +563,7 @@ local function sauce(data: any, finish: Finish, cancel: Cancel)
 	end
 
 	-- Step 1: which skin to sauce (go by the tickets).
-	sizeTiles(body, if type(data.skins) == "table" then data.skins else {}, true, spread)
+	sizeTiles(body, if type(data.skins) == "table" then data.skins else {}, true, spread, if type(data.need) == "string" then data.need else nil)
 end
 
 ---------------------------------------------------------------------------

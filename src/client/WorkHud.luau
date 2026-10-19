@@ -11,8 +11,10 @@
 --    waiting), then Help (the station's tip and portions), the order-matching
 --    switch, Exit and Stores.
 --    While it's open the work strip steps aside so nothing covers the pizza.
---  * Follow chip (above the tab) after a step: takes that pizza to its next
---    station.
+--  * Next button (bottom centre, over the work strip), after a step: takes
+--    that pizza to its next step as soon as that step's free (on the
+--    make-line straight away, after loading once it's out of the oven).
+--    Flashes white. The oldest make-line ticket flashes too.
 --  * Staff button (beside the tab): the store's hired staff (Staff menu).
 --  * Not at a store: a Stores button where the tab goes (open or join one).
 
@@ -38,7 +40,6 @@ local S = Style.Size
 
 local player = Players.LocalPlayer
 
-local FOLLOW_SECONDS = 12 -- how long the follow chip stays up
 local TICKET_W = 138
 local MAX_TICKETS = 6
 local MAX_ROWS = 8 -- lines per ticket; the rest fold into "+N more"
@@ -140,7 +141,7 @@ end
 function WorkHud.Init(_isBusy: () -> boolean)
 	local snapshot: any = nil
 	local snapshotAt = 0
-	local follow: any = nil -- the last step's pizza and where it goes next
+	local follow: any = nil -- the last step's pizza and where it goes next (Remotes.StepDone)
 	local followAt = 0
 	local expanded = false
 
@@ -205,7 +206,10 @@ function WorkHud.Init(_isBusy: () -> boolean)
 				local bg, fg = Style.ticketColor(o.age)
 				local kind: string = if o.delivery then "Delivery" else "Carryout"
 				local title = string.format("#%d %s", o.id, kind)
-				local _, timeLabel = ticket(rail, i, title, Style.clock(o.age), bg, fg, rows)
+				local t, timeLabel = ticket(rail, i, title, Style.clock(o.age), bg, fg, rows)
+				if i == 1 then
+					Ui.flashOutline(t, 2) -- the oldest: make this one first
+				end
 				table.insert(timers, { label = timeLabel, base = o.age, kind = "age" })
 			end
 		elseif mode == "oven" then
@@ -302,20 +306,21 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		Remotes.RequestStaff:FireServer()
 	end)
 
-	local followChip = Ui.flatButton("", "key", {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 10, 1, -56),
-		Size = UDim2.fromOffset(0, 34),
+	local nextButton = Ui.flatButton("", "primary", {
+		Name = "NextButton",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -(Ui.STRIP_H + 20)),
+		Size = UDim2.fromOffset(0, 46),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Visible = false,
 		Parent = Ui.Root,
 	})
-	Ui.edge(followChip, "left", 3, C.Gold)
-	list(followChip, Enum.FillDirection.Horizontal, 8, Enum.VerticalAlignment.Center)
-	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), Parent = followChip })
-	Icons.make("chevron", 10, followChip, { dir = "right", color = C.Gold }).LayoutOrder = 1
-	local followText = Ui.text("", F.LabelBold, S.Body, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 34), LayoutOrder = 2, Parent = followChip })
-	followChip.Activated:Connect(function()
+	list(nextButton, Enum.FillDirection.Horizontal, 10, Enum.VerticalAlignment.Center)
+	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18), Parent = nextButton })
+	local nextText = Ui.text("", F.Heading, S.Big, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 46), LayoutOrder = 1, Parent = nextButton })
+	local nextArrow = Icons.make("chevron", 14, nextButton, { dir = "right" })
+	nextArrow.LayoutOrder = 2
+	nextButton.Activated:Connect(function()
 		local f = follow
 		if f then
 			follow = nil
@@ -464,6 +469,24 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		follow = if type(info) == "table" and type(info.next) == "string" then info else nil
 		followAt = os.clock()
 	end)
+	-- The pizza's next step is free and it's waiting there (the step result says
+	-- so until a newer snapshot comes in).
+	local function nextReady(f: any, here: string?): boolean
+		if f.next == here or not table.find(myStations(), f.next) then
+			return false
+		end
+		if snapshotAt < followAt then
+			return f.ready == true
+		end
+		local occ = snapshot and snapshot.occupied and snapshot.occupied[f.next]
+		if occ and occ.user ~= player.UserId then
+			return false
+		end
+		if f.pieId then
+			return snapshot ~= nil and snapshot.pieAt ~= nil and snapshot.pieAt[tostring(f.pieId)] == f.next
+		end
+		return snapshot ~= nil and (snapshot.rack.used or 0) > 0 -- stretched: the skins are on the racks
+	end
 	player:GetAttributeChangedSignal("StoreId"):Connect(function()
 		follow = nil
 		setExpanded(false)
@@ -481,16 +504,23 @@ function WorkHud.Init(_isBusy: () -> boolean)
 			setExpanded(false)
 			rebuildRail()
 		end
-		-- Follow chip: only when the pizza's next station is one we can work.
+		-- Next: once the pizza's next step is free. Flashes white.
 		local f = follow
-		if f and os.clock() - followAt > FOLLOW_SECONDS then
-			follow = nil
-			f = nil
-		end
-		local showFollow = f ~= nil and onShift and not expanded and f.next ~= here and table.find(myStations(), f.next) ~= nil
-		followChip.Visible = showFollow
-		if showFollow and f then
-			followText.Text = string.upper(string.format("Follow to %s", stationLabel(f.next)))
+		local showNext = f ~= nil and onShift and not expanded and nextReady(f, here)
+		nextButton.Visible = showNext
+		if showNext and f then
+			nextText.Text = string.upper("Next: " .. stationLabel(f.next))
+			local lit = os.clock() % 0.9 < 0.45
+			if (nextButton:GetAttribute("Lit") == true) ~= lit then
+				nextButton:SetAttribute("Lit", lit)
+				Ui.setButtonColor(nextButton, if lit then C.White else C.Red)
+				nextText.TextColor3 = if lit then C.Ink else C.White
+				for _, d in nextArrow:GetDescendants() do
+					if d:IsA("Frame") then
+						d.BackgroundColor3 = if lit then C.Ink else C.White
+					end
+				end
+			end
 		end
 		-- Times tick between snapshots.
 		if os.clock() - lastTick > 0.2 then

@@ -1846,6 +1846,18 @@ local function neededSize(shop: Shop, spare: { [string]: number }?, have: { [str
 	return nil
 end
 
+-- The size to stretch next: one open orders need that no pizza in the works,
+-- skin on the racks or stretch in a staff member's hands covers yet.
+local function doughNeed(shop: Shop, skins: { [string]: number }): string?
+	local spare = table.clone(skins)
+	for _, other in shop.crew do
+		if other.job and other.job.what == "Dough" then
+			spare[other.job.size] = (spare[other.job.size] or 0) + 1
+		end
+	end
+	return neededSize(shop, spare, nil)
+end
+
 -- The toppings to put on a `size` pizza next: the oldest needed item of that
 -- size not already covered by a topped pizza (or one being topped).
 local function neededToppings(shop: Shop, size: string): { string }?
@@ -2047,13 +2059,7 @@ local function crewJobAt(shop: Shop, c: Crew, s: string): any?
 		end
 		-- A size open orders need and nothing covers yet; otherwise prep whichever
 		-- size is shortest on the racks for how often it's ordered.
-		local spare = table.clone(skins)
-		for _, other in shop.crew do
-			if other.job and other.job.what == "Dough" then
-				spare[other.job.size] = (spare[other.job.size] or 0) + 1
-			end
-		end
-		local size = neededSize(shop, spare, nil)
+		local size = doughNeed(shop, skins)
 		if not size then
 			local best = math.huge
 			for _, sz in Config.Sizes do
@@ -2328,6 +2334,7 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 			presses = Config.Dough.Presses,
 			sizes = Config.Sizes,
 			skins = counts,
+			need = doughNeed(shop, counts), -- highlighted: the size the oldest ticket still needs
 			rackUsed = used,
 			rackCapacity = Config.RackCapacity(),
 			station = station(shop, stationName),
@@ -2343,7 +2350,7 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 			return "Out of sauce! Unload the supply truck out back."
 		end
 		consume(shop, needs)
-		begin(player, shop, stationName, { skins = counts, sizes = Config.Sizes, station = station(shop, stationName) }, { consumed = needs })
+		begin(player, shop, stationName, { skins = counts, sizes = Config.Sizes, need = neededSize(shop, nil, counts), station = station(shop, stationName) }, { consumed = needs })
 	elseif kind == "Cheese" or kind == "Toppings" then
 		local stage = if kind == "Cheese" then "Sauced" else "Cheesed"
 		local pie = pickPie(shop, stage, pickId)
@@ -2512,8 +2519,43 @@ local function setStatus(player: Player, stay: Stay, status: string?)
 	end
 end
 
+-- Whether a make station has anything for a player to work on right now.
+local function hasWork(shop: Shop, stationName: string): boolean
+	if stationName == "Dough" then
+		return true -- prep: there's always dough to stretch
+	elseif stationName == "Sauce" then
+		local _, used = rackCounts(shop)
+		return used > 0
+	end
+	local info = Config.StationInfo(stationName)
+	for _, p in shop.pies do
+		if info and p.stage == info.stage and not p.claimedBy then
+			return true
+		end
+	end
+	return false
+end
+
+-- Who's at `stationName` besides `except` (a player, or staff on shift), if anyone.
+local function occupant(shop: Shop, stationName: string, except: Player?): string?
+	for player, stay in stationed do
+		if player ~= except and stay.shop == shop and stay.name == stationName and player.Parent then
+			return player.DisplayName
+		end
+	end
+	for _, c in shop.crew do
+		if c.present and c.station == stationName then
+			return c.name
+		end
+	end
+	return nil
+end
+
+local enterStation: (shop: Shop, player: Player, stationName: string, pickId: number?) -> ()
+
 -- Gives a player standing at a station their next job there (or the one they
--- picked, `pickId`), if there is one.
+-- picked, `pickId`), if there is one. In the make process, with nothing to
+-- work on they're moved back a step, unless someone's there (then they wait).
 local function assign(player: Player, pickId: number?)
 	local stay = stationed[player]
 	if not stay or sessions[player] or not stay.shop.alive or not canWork() then
@@ -2531,6 +2573,17 @@ local function assign(player: Player, pickId: number?)
 		stationed[player] = nil
 		Remotes.StationMode:FireClient(player, nil)
 		return
+	end
+	local back = if why and not session then Config.StepBefore(stay.name) else nil
+	if back and not hasWork(stay.shop, stay.name) then
+		local label = (Config.StationInfo(back) :: any).label
+		local who = occupant(stay.shop, back, player)
+		if not who then
+			notify(player, string.format("Nothing to work at %s - back to %s.", (Config.StationInfo(stay.name) :: any).label, label), Color3.fromRGB(180, 220, 255))
+			enterStation(stay.shop, player, back)
+			return
+		end
+		why = string.format("Nothing here yet - waiting on %s at %s.", who, label)
 	end
 	setStatus(player, stay, why)
 end
@@ -2553,7 +2606,7 @@ end
 
 -- Moves the player to a station (from wherever they are, including another
 -- station) and starts them on the job there, or the one they picked.
-local function enterStation(shop: Shop, player: Player, stationName: string, pickId: number?)
+function enterStation(shop: Shop, player: Player, stationName: string, pickId: number?)
 	local session = sessions[player]
 	if session then
 		if not holdsStation(session) then
@@ -2626,15 +2679,21 @@ end
 -- pizza to its next station), and if they're staying at the station, line up
 -- the next job there.
 local function stepDone(player: Player, stationName: string, pie: Pie?)
-	local info: any = { station = stationName }
+	local info: any = { station = stationName, next = Config.StepAfter(stationName) }
 	if pie then
 		info.pieId = pie.id
 		info.size = pie.size
-		local nextStation = Config.StationForStage(pie.stage)
-		if nextStation and nextStation ~= stationName then
-			info.next = nextStation
-			info.label = pie.size
-		end
+		-- Where the pizza goes now (loaded straight from the toppings: the cut table, once it's baked).
+		info.next = Config.StationForStage(pie.stage) or (if pie.stage == "Oven" then "CutTable" else nil)
+	end
+	if info.next == stationName then
+		info.next = nil
+	end
+	-- Ready right now: the next step's free and the pizza (or a skin) is waiting there.
+	local shop = playerShop[player]
+	if info.next and shop then
+		local waitingThere = if pie then Config.StationForStage(pie.stage) == info.next and not pie.claimedBy else hasWork(shop, info.next)
+		info.ready = waitingThere and occupant(shop, info.next, player) == nil
 	end
 	Remotes.StepDone:FireClient(player, info)
 	local stay = stationed[player]
@@ -3081,8 +3140,30 @@ local function queueSnapshot(shop: Shop): any
 			})
 		end
 	end
+	-- Who's at each station, and where each waiting pizza can be worked next
+	-- (the Next button shows once that station's free).
+	local occupied: { [string]: { name: string, user: number } } = {}
+	for player, stay in stationed do
+		if stay.shop == shop and player.Parent then
+			occupied[stay.name] = { name = player.DisplayName, user = player.UserId }
+		end
+	end
+	for _, c in shop.crew do
+		if c.present and not occupied[c.station] then
+			occupied[c.station] = { name = c.name, user = 0 }
+		end
+	end
+	local pieAt: { [string]: string } = {}
+	for _, p in shop.pies do
+		local at = Config.StationForStage(p.stage)
+		if at and not p.claimedBy then
+			pieAt[tostring(p.id)] = at
+		end
+	end
 	local counts, used = rackCounts(shop)
 	return {
+		occupied = occupied,
+		pieAt = pieAt,
 		waiting = waiting,
 		rack = { counts = counts, used = used, capacity = Config.RackCapacity() },
 		orders = makeQueue,
@@ -3361,6 +3442,8 @@ function ShopService.Init(houseDoors: { Part })
 		local why = if pie then loadPie(stay.shop, player, pie, orderId) else "That pizza isn't on the ready rack any more."
 		if why then
 			notify(player, why, Color3.fromRGB(255, 160, 100))
+		elseif pie then
+			stepDone(player, "Load", pie)
 		end
 	end)
 	-- The oven belts move ten times a second.
