@@ -10,7 +10,8 @@ Read `CLAUDE.md` first (architecture, conventions, every design decision). This 
 - **Hired NPC staff** (`014002d`): Staff menu (HUD button beside the Stations tab); owner buys insiders (assigned to a station, click to move) and drivers; saved in the owner's profile (`Staff`). Insiders do the real station work through shared step functions; drivers take delivery orders on a timed trip. Roll/spin prepared but off (`Config.StaffRoll.Enabled = false`).
 - **Team members: stats, levels, shifts** (this session's last commit): one hire kind (team member) for any station incl. the heat rack; per-station levels with XP, reliability (call-outs), availability (Lunch / Dinner / Late Night; open = all 3); the owner schedules shifts (8 per shift, roster 16); hires 200 coins rising x1.25; new `src/shared/Staff.luau` holds the rules. Insiders/Drivers as separate kinds are gone.
 - **No off-screen crew; managers; cap of 3** (latest commit): every forecast order is a real order with a patience timer; lost sales (timed out, wrong house, open at midnight) on the sales board instead of "crew-covered". Assistant/Store Managers work several stations, limited by Flexibility (overwhelmed = slower and sloppier); granted in Studio only until the roll exists. Team members capped at 3 (managers extra: 2 Assistant, 1 Store).
-- Tooling: `lune run tests/specs` (45 specs, incl. shifts, levels, call-outs, hire generation, save repair, roll odds), `selene src` (0/0), `rojo build`.
+- **Make-line overhaul** (`787b5b2`, `8884c9f`, `277e19e`): build-your-own pizzas (size + up to 3 toppings, priced per topping, one ticket line per topping; register POS toggles toppings); pepperoni/ham by the piece, other toppings by the ounce; no crust seasoning; no job aid cards (tip cards carry the charts); idle at a make station moves you back a step (or waits on whoever's there); flashing Next button; highlighted needed size and oldest ticket; scales on the make-line; toppings picked from the pans.
+- Tooling: `lune run tests/specs` (48 specs, incl. shifts, levels, call-outs, hire generation, save repair, roll odds), `selene src` (0/0), `rojo build`.
 
 ## Verified in Studio (scripted, 2026-10-19)
 - Picker opens on join; claiming lot 1 builds the store, sets `StoreId`/`StoreOwner`, uniform on, player placed at the entrance; leaving frees the lot; opening on lot 2 works; stations work with no clock-in.
@@ -21,10 +22,13 @@ Read `CLAUDE.md` first (architecture, conventions, every design decision). This 
 
 - Managers and lost sales (Studio Config patched: free hires, 4:54 PM start, 60 s patience; restored): the 4th team member and 3rd Assistant Manager were refused; granted managers got better stats and Flexibility; toggling stations works and over the limit shows OVERWHELMED (red) with a notice; managers moved between their stations for work; a manager with the heat rack turned deliveries on; lost sales counted on the board; no sales recorded off-screen.
 
+- Make-line overhaul (scripted): orders carry topping lists and party orders repeat favourites; tickets show one line per topping; the Toppings tip card shows the portion chart; Cheese with nothing cascaded back to Stretch with notices; stretch -> sauce -> cheese via the Next button (ready at once, "NEXT: SAUCE"...); Sauce highlighted the needed size; the oldest ticket has its outline; "waiting on Leo at Sauce" when a team member held Sauce; the scale read-outs exist and reset; all six pans and the scale are in view from the rebuilt Toppings camera (geometry check, Studio wasn't rendering).
+
 ## Not verified
 - The user has **not** hand-playtested any of this (or the earlier UI overhaul).
 - Owner handover and joining another player's store need 2 players; not run.
 - Saves (Studio has API access off): hires persisting across sessions, and the save lock.
+- Clicking a pan, the scale changing as you pour or top, the hover outline on pans, the Next button's flashing and the register POS toggles: nothing was clicked by hand or seen rendered this round (Studio didn't render; screenshots timed out).
 - Menu buttons clicked by hand (only the remotes were driven); the staff menu with a non-owner viewing; a long session (XP saved by autosave, levels after a rejoin).
 
 ## Known bugs / open findings
@@ -33,6 +37,7 @@ Read `CLAUDE.md` first (architecture, conventions, every design decision). This 
 - From the 2026-10-19 audit (numbers match that report): 5 Auto-match can put a pizza on a different recipe (NPC loaders only load exact matches; players still can); 6 pay/scoring rules have no specs; 7 Register accepts up to 40 pizzas; 8 `ShopService.luau` is ~3,300 lines (now also holds the staff); 9 duplicate formatters; 10 dead code; 11 racks rebuild every part; 12 topping names only on hover.
 - Also: the Stations tab sits in the mobile thumbstick zone; the Follow chip disappears after 12 s; extras are paid as "Sloppy"; the 120 s bake is the whole belt.
 
+- From the make-line overhaul: being moved back is immediate (even right after you finish a step, while Next points forward); topping prices, ToppingCount / ToppingPopularity and oz portions are placeholders; the cheese pans by the cheese spot are decoration only.
 - From the no-crew change: a solo store at dinner gets far more orders than it can make, so most are lost until it's staffed (intended pressure, but the numbers are untuned); lost walk-ins who were never rung in aren't announced, only counted.
 
 ## Exact next step
