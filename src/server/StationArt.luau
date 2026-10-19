@@ -385,12 +385,26 @@ Builders.MakeLine = function(m, base)
 		P(m, base, Vector3.new(0.05, 0.05, gd - 0.05), at(-w / 2 + 0.3 + i * (w - 0.6) / 10, top - 0.06, L.boardZ), STEEL_DARK, Enum.Material.Metal, { collide = false })
 	end
 	P(m, base, Vector3.new(w, 0.3, 0.08), at(0, top - 0.1, front - 0.04), STEEL, Enum.Material.Metal, { name = "FrontLip" })
-	-- Pan rail behind the grate: one long row of small black pans
+	-- Portion scales at the cheese and toppings spots: a flat plate the pizza
+	-- sits on and a read-out standing to the maker's right (the tip card is on
+	-- the left of the screen), tipped back toward
+	-- the maker (`Scale` = the station; the client writes the weight on it
+	-- while they work).
+	for _, spot in { { id = "Cheese", x = L.cheeseX }, { id = "Toppings", x = L.toppingsX } } do
+		P(m, base, Vector3.new(2.7, 0.03, 2.7), at(spot.x, top + 0.015, L.boardZ), STEEL, Enum.Material.Metal, { name = "ScalePlate", collide = false, reflect = 0.2 })
+		P(m, base, Vector3.new(0.06, 0.3, 0.06), at(spot.x - 1.75, top + 0.15, L.boardZ - 0.95), STEEL_DARK, Enum.Material.Metal, { collide = false })
+		local display = P(m, base, Vector3.new(1.0, 0.5, 0.1), at(spot.x - 1.75, top + 0.42, L.boardZ - 0.95) * CFrame.Angles(math.rad(40), 0, 0), BLACK, Enum.Material.SmoothPlastic, { name = "ScaleDisplay", collide = false })
+		display:SetAttribute("Scale", spot.id)
+		surfaceText(display, Enum.NormalId.Front, "0.00 OZ", Color3.fromRGB(120, 255, 140), Color3.fromRGB(12, 20, 14), Enum.Font.Code)
+	end
+	-- Pan rail behind the grate: one long row of small black pans. Cheese by
+	-- the cheese spot, the toppings in front of the toppings spot, where the
+	-- maker clicks one to pick it up (`Topping` attribute).
 	local railFront = L.boardZ + gd / 2 + 0.05
 	local railZ = railFront + 0.65
 	local railTop = top + 0.25
 	P(m, base, Vector3.new(w, railTop - 3.2, 1.3), at(0, (3.2 + railTop) / 2, railZ), STEEL, Enum.Material.Metal, { name = "Rail" })
-	local fills = { "Sauce", "Cheese", "Cheese", "Pepperoni", "Pepperoni", "Ham", "Pineapple", "Peppers", "Mushrooms", "Olives", "Pepperoni", "Cheese", "", "", "" }
+	local fills = { "", "", "Sauce", "", "Cheese", "Cheese", "Cheese", "", "", "Pepperoni", "Ham", "Pineapple", "Peppers", "Mushrooms", "Olives" }
 	local count = #fills
 	local pw = (w - 0.6) / count
 	for i, ing in fills do
@@ -398,7 +412,10 @@ Builders.MakeLine = function(m, base)
 		P(m, base, Vector3.new(pw - 0.08, 0.06, 0.95), at(x, railTop + 0.01, railZ), Color3.fromRGB(28, 28, 30), Enum.Material.SmoothPlastic, { collide = false })
 		local color = Config.IngredientColors[ing]
 		if color then
-			P(m, base, Vector3.new(pw - 0.2, 0.05, 0.8), at(x, railTop + 0.02, railZ), color, if ing == "Cheese" or ing == "Pineapple" then Enum.Material.Sand else Enum.Material.SmoothPlastic, { collide = false })
+			local fill = P(m, base, Vector3.new(pw - 0.2, 0.05, 0.8), at(x, railTop + 0.02, railZ), color, if ing == "Cheese" or ing == "Pineapple" then Enum.Material.Sand else Enum.Material.SmoothPlastic, { collide = false, name = "Pan_" .. ing })
+			if table.find(Config.Toppings, ing) then
+				fill:SetAttribute("Topping", ing)
+			end
 		end
 	end
 	-- Sloped stainless canopy over the pans, rising to the back ledge

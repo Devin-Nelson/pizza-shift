@@ -38,12 +38,13 @@ local TIPS: { [string]: { string } } = {
 	},
 	Cheese = {
 		"Hold to pour. It speeds up the longer you hold.",
-		"Portion it by the chart below, within 10%.",
+		"Watch the scale on the make-line. Portion it by the chart below, within 10%.",
 		"Press Done when it's right.",
 	},
 	Toppings = {
 		"Each topping is on its own line of the ticket.",
-		"Pick a topping, then hold on the pizza. Pepperoni and ham go by the piece, the rest by weight.",
+		"Click a pan on the rail to pick a topping up, then hold on the pizza.",
+		"The scale shows what's on: pepperoni and ham in pieces, the rest in ounces.",
 		"Portions are below, within 10%. -5 picks some back off.",
 		"Load sends it to the oven; To Rack puts it on the ready rack.",
 	},

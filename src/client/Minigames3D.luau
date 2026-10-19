@@ -16,7 +16,6 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
-local Icons = require(ReplicatedStorage.Shared.Icons)
 local Pizza3D = require(ReplicatedStorage.Shared.Pizza3D)
 local Style = require(ReplicatedStorage.Shared.Style)
 local Loading = require(script.Parent.Loading)
@@ -566,9 +565,34 @@ local function sauce(data: any, finish: Finish, cancel: Cancel)
 	sizeTiles(body, if type(data.skins) == "table" then data.skins else {}, true, spread, if type(data.need) == "string" then data.need else nil)
 end
 
+-- The make-line's portion scale read-out at this station (StationArt:
+-- `Scale` = the station), written on this screen only while the job's open.
+local function scaleDisplay(ctx: Ctx, station: any, kind: string): (string) -> ()
+	local shop = if typeof(station) == "Instance" and station.Parent then station.Parent.Parent else nil
+	local label: TextLabel? = nil
+	for _, d in (if shop then shop:GetDescendants() else {}) do
+		if d:IsA("BasePart") and d:GetAttribute("Scale") == kind then
+			local gui = d:FindFirstChildWhichIsA("SurfaceGui")
+			label = gui and gui:FindFirstChildWhichIsA("TextLabel")
+			break
+		end
+	end
+	local rest = if label then label.Text else ""
+	table.insert(ctx.cleanup, function()
+		if label then
+			label.Text = rest
+		end
+	end)
+	return function(text: string)
+		if label then
+			label.Text = text
+		end
+	end
+end
+
 ---------------------------------------------------------------------------
 -- Cheese (make-line): hold to pour; the pour speeds up the longer you hold.
--- The portion's in the tip card, not on the screen.
+-- The scale on the make-line shows the ounces; the portion's in the tip card.
 ---------------------------------------------------------------------------
 local function cheese(data: any, finish: Finish, cancel: Cancel)
 	local ctx = open(data, cancel)
@@ -584,9 +608,8 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 	local rng = Random.new()
 
 	sizeChip(body, tostring(spec.size), 1)
-	-- The scale's read-out (ounces poured; the portion is on the cheese card).
-	local readout = Ui.box(C.Ink, { Size = UDim2.fromOffset(140, 44), LayoutOrder = 2, Parent = body })
-	local scale = Ui.text("0.0 OZ", F.Mono, S.Huge, { TextColor3 = C.Cream, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = readout })
+	local setScale = scaleDisplay(ctx, data.station, "Cheese")
+	setScale("0.00 OZ")
 	local doneBtn = actionButton(body, "Done", 3, 130)
 	local spaceHeld = false
 	bindSpace(function()
@@ -606,7 +629,7 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 		local rate = math.min(Config.CheesePour.MaxRate, Config.CheesePour.StartRate + Config.CheesePour.Accel * held)
 		oz += rate * dt
 		pizza:setCheese(oz / target)
-		scale.Text = string.format("%.1f OZ", oz)
+		setScale(string.format("%.2f OZ", oz))
 		-- Shreds fall from a spot circling over the pizza.
 		lastShred += dt
 		if lastShred > 0.025 and shreds < 220 then
@@ -628,8 +651,10 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 end
 
 ---------------------------------------------------------------------------
--- Toppings (make-line): any toppings, no targets on screen (go by the order
--- screen and the portions card). Then put it on the ready rack, or load it straight away.
+-- Toppings (make-line): click a pan on the rail to pick a topping up, then
+-- hold on the pizza. No targets on screen (go by the ticket and the tip
+-- card's portions): the scale shows the topping in hand on the pizza, in
+-- pieces (pepperoni, ham) or ounces. Then put it on the ready rack, or load it straight away.
 ---------------------------------------------------------------------------
 local function toppings(data: any, finish: Finish, cancel: Cancel)
 	local ctx = open(data, cancel)
@@ -648,61 +673,20 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 
 	sizeChip(body, tostring(spec.size), 1)
 	local selected: string? = nil
-	for _, name in list do
-		if not out[name] then
-			selected = name
-			break
-		end
-	end
-	-- One tile per bin: its topping and how many are on the pizza (the name
-	-- shows while you hover it). Empty bins can't be picked.
-	local tiles: { [string]: { button: TextButton, count: TextLabel, stroke: UIStroke } } = {}
-	local hovered: string? = nil
+	local held = Ui.text("PICK A TOPPING FROM THE PANS", F.LabelBold, S.Label, { TextColor3 = C.Gold, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 54), LayoutOrder = 2, Parent = body })
+	local setScale = scaleDisplay(ctx, data.station, "Toppings")
 	local function refresh()
-		for name, tile in tiles do
-			local n = pizza:count(name)
-			counts[name] = n
-			tile.count.Text = if out[name] then "OUT" elseif hovered == name then string.upper(name) else tostring(n)
-			tile.count.FontFace = if hovered == name and not out[name] then F.Label else F.Mono
-			tile.count.TextSize = if hovered == name and not out[name] then S.Tiny else S.Label
-			tile.stroke.Enabled = name == selected
-			Ui.setButtonColor(tile.button, if name == selected then Color3.fromRGB(58, 53, 40) else C.Tile)
+		for _, name in list do
+			counts[name] = pizza:count(name)
 		end
-	end
-	for i, name in list do
-		local b = Ui.flatButton("", "dark", { Size = UDim2.fromOffset(56, 54), LayoutOrder = 1 + i, Parent = body })
-		if out[name] then
-			b.BackgroundTransparency = 0.6
+		if selected then
+			local n = counts[selected] or 0
+			held.Text = string.upper(selected)
+			held.TextColor3 = C.Cream
+			setScale(string.upper(selected) .. "\n" .. (if Config.CountedToppings[selected] then string.format("%d PCS", n) else string.format("%.2f OZ", Config.ToppingAmount(selected, n))))
+		else
+			setScale("0.00 OZ")
 		end
-		local ico = Icons.make(name, 20, b)
-		ico.AnchorPoint = Vector2.new(0.5, 0)
-		ico.Position = UDim2.new(0.5, 0, 0, 8)
-		local count = Ui.text("0", F.Mono, S.Label, {
-			TextColor3 = if out[name] then C.CreamDim else C.Cream,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			AnchorPoint = Vector2.new(0, 1),
-			Position = UDim2.new(0, 0, 1, -5),
-			Size = UDim2.new(1, 0, 0, 18),
-			Parent = b,
-		})
-		local stroke = Ui.new("UIStroke", { Color = C.Gold, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Enabled = false, Parent = b })
-		tiles[name] = { button = b, count = count, stroke = stroke }
-		b.MouseEnter:Connect(function()
-			hovered = name
-			refresh()
-		end)
-		b.MouseLeave:Connect(function()
-			if hovered == name then
-				hovered = nil
-				refresh()
-			end
-		end)
-		b.Activated:Connect(function()
-			if not out[name] then
-				selected = name
-				refresh()
-			end
-		end)
 	end
 	local pick = Ui.flatButton("", "ghost", { Size = UDim2.fromOffset(52, 54), LayoutOrder = 20, Parent = body })
 	Ui.text("-5", F.Mono, S.Label, { TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 20), Parent = pick })
@@ -713,6 +697,48 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 			refresh()
 		end
 	end)
+
+	-- The pans on the rail: hovering one outlines it, clicking picks it up.
+	local pans: { Instance } = {}
+	local shopModel = if typeof(data.station) == "Instance" and data.station.Parent then data.station.Parent.Parent else nil
+	for _, d in (if shopModel then shopModel:GetDescendants() else {}) do
+		if d:IsA("BasePart") and type(d:GetAttribute("Topping")) == "string" then
+			table.insert(pans, d)
+		end
+	end
+	local panParams = RaycastParams.new()
+	panParams.FilterType = Enum.RaycastFilterType.Include
+	panParams.FilterDescendantsInstances = pans
+	local function panUnderPointer(): BasePart?
+		local ray = Workstation.pointerRay()
+		local hit = workspace:Raycast(ray.Origin, ray.Direction * 50, panParams)
+		return if hit then hit.Instance :: BasePart else nil
+	end
+	local outline = Instance.new("Highlight")
+	outline.FillTransparency = 1
+	outline.OutlineColor = Color3.new(1, 1, 1)
+	outline.Enabled = false
+	outline.Parent = ctx.folder
+	ctx.track(UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or not isPointer(input) then
+			return
+		end
+		local pan = panUnderPointer()
+		local name = if pan then pan:GetAttribute("Topping") else nil
+		if type(name) == "string" then
+			if out[name] then
+				Ui.toast(string.format("Out of %s - unload the supply truck.", string.lower(name)), C.Red)
+			else
+				selected = name
+				refresh()
+			end
+		end
+	end))
+	ctx.track(RunService.RenderStepped:Connect(function()
+		local pan = panUnderPointer()
+		outline.Adornee = pan
+		outline.Enabled = pan ~= nil
+	end))
 	Ui.rule(body, 21)
 	local rackBtn = Ui.flatButton("To rack", "ghost", { Size = UDim2.fromOffset(92, 52), LayoutOrder = 22, Parent = body })
 	local loadBtn = actionButton(body, "Load", 23, 110)

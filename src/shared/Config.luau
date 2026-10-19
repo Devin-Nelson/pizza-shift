@@ -107,7 +107,9 @@ Config.StationView = {
 	-- Make-line spots: the grate is deep, so the work spot sits further back from
 	-- the front; stand back far enough to clear the cabinet.
 	Cheese = { height = 2.9, back = 1.75, focusBack = 0, fov = 70, stand = 2.6 },
-	Toppings = { height = 2.9, back = 1.75, focusBack = 0, fov = 70, stand = 2.6 },
+	-- Toppings: a little shallower, so the pans on the rail (picked by clicking)
+	-- sit below the tickets at the top of the screen.
+	Toppings = { height = 2.6, back = 2.2, focusBack = 0, fov = 70, stand = 2.6 },
 	-- Load: facing the ready rack, high enough to see down onto every slot.
 	Load = { height = 2.8, back = 5.0, focusUp = -0.3, fov = 70, stand = 2.6 },
 	-- Cut table: wide, from behind the oven tender: all six oven exits and the open boxes.
