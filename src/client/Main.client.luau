@@ -239,7 +239,7 @@ Remotes.OpenJobMenu.OnClientEvent:Connect(function(shopName: string)
 		local current = player:GetAttribute("Job") == jobName
 		local b = Ui.button(if current then "On shift" else "Clock In", if current then T.Good else def.color, {
 			AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.new(1, 0, 0.5, 0),
+			Position = UDim2.fromScale(1, 0.5),
 			Size = UDim2.fromOffset(120, 44),
 			Parent = row,
 		})

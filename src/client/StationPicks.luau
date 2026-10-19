@@ -32,7 +32,7 @@ highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 highlight.Enabled = false
 
 local reading: BasePart? = nil -- the job aid card being read up close
-local onPie: (station: string, pieId: number, size: string) -> () = function() end
+local onPie: (station: string, pieId: number, size: string) -> () = function(_station, _pieId, _size) end
 local busy: () -> boolean = function()
 	return false
 end

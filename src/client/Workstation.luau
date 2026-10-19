@@ -147,7 +147,7 @@ function Workstation.enter(station: BasePart): Workstation?
 	local spot = (art * CFrame.new(pizzaAt :: Vector3)).Position
 	local look = art.LookVector
 	local toWorker = Vector3.new(look.X, 0, look.Z).Unit
-	local right = Vector3.yAxis:Cross(toWorker).Unit -- worker faces -toWorker
+	local right = Vector3.new(0, 1, 0):Cross(toWorker).Unit -- worker faces -toWorker
 	local kind = station:GetAttribute("Station")
 	local view = Config.StationView[if type(kind) == "string" then kind else ""] or Config.StationView.Default
 
