@@ -92,13 +92,18 @@ Config.NextJobDelay = 0.8
 
 -- Fixed first-person camera at each station, relative to its work spot (studs):
 -- `height` above it, `back` toward the worker, `side` to the worker's right;
--- it aims at the spot, nudged by `focusBack` / `focusUp`. `stand`: how far
--- from the spot the character stands. Every visit looks the same, whatever
--- the character's size or where they walked up from.
+-- it aims at the spot, nudged by `focusBack` / `focusUp` / `focusSide`.
+-- `stand`: how far from the spot the character stands. `idle`: the view
+-- between jobs, if it differs; `pick`: the dough trays while choosing a ball.
+-- Every visit looks the same, whatever the character's size or where they
+-- walked up from.
 Config.StationView = {
 	-- Make stations aim straight at the work spot so the pizza sits dead centre
 	-- on screen (user: no UI may cover it, and it must be the centre of focus).
 	Default = { height = 2.9, back = 1.75, focusBack = 0, fov = 70, stand = 1.9 }, -- looking down ~59 degrees at the pizza
+	-- Stretch: the close-up for stretching; picking a ball, a higher view takes
+	-- in the trays (to the worker's right) and the cornmeal.
+	Dough = { height = 2.9, back = 1.75, focusBack = 0, fov = 70, stand = 1.9, pick = { height = 6.0, back = 4.0, side = 3.2, focusBack = -0.8, focusSide = 3.4, fov = 70 } },
 	-- Make-line spots: the grate is deep, so the work spot sits further back from
 	-- the front; stand back far enough to clear the cabinet.
 	Cheese = { height = 2.9, back = 1.75, focusBack = 0, fov = 70, stand = 2.6 },
@@ -107,8 +112,10 @@ Config.StationView = {
 	Toppings = { height = 2.6, back = 2.2, focusBack = 0, fov = 70, stand = 2.6 },
 	-- Load: facing the ready rack, high enough to see down onto every slot.
 	Load = { height = 2.8, back = 5.0, focusUp = -0.3, fov = 70, stand = 2.6 },
-	-- Cut table: wide, from behind the oven tender: all six oven exits and the open boxes.
-	CutTable = { height = 5.0, back = 7.0, side = -2.0, focusUp = 0.5, fov = 75, stand = 3.4 },
+	-- Cut table (user, plan v4.1): the tender faces the carryout counter. Between
+	-- jobs the camera looks left at the oven exits to pull a pizza; working, it
+	-- turns back to the table and its open boxes.
+	CutTable = { height = 4.0, back = 3.2, side = 0.8, focusBack = -0.4, focusSide = 0.8, fov = 72, stand = 2.6, idle = { height = 2.4, back = 2.2, side = 0, focusBack = 5.2, focusUp = 0.8, focusSide = -4.9, fov = 72 } },
 	Register = { height = 1.6, back = 2.2, side = 1.2, focusBack = -4, focusUp = 0.4, fov = 70, stand = 2.8 }, -- over the POS, out to the customers
 	DeliveryRack = { height = 1.2, back = 4.5, focusUp = 1.0, fov = 70, stand = 3.0 }, -- facing the heat rack shelves
 }
@@ -235,6 +242,7 @@ Config.Dough = {
 	Racks = 2,
 	SlotsPerRack = 15,
 	Presses = { Small = 3, Medium = 4, Large = 5 },
+	TrayBalls = { Small = 10, Medium = 8, Large = 6 }, -- dough balls in a full tray (it refills when emptied)
 	GreenWidth = { 0.07, 0.16 },
 	Yellow = 0.08,
 	YellowScore = 0.45,

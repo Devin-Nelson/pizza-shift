@@ -5,7 +5,7 @@
 -- mount point), with LookVector (-Z) pointing at where the worker stands.
 --
 -- To use a real model instead, put a Model named after the station kind in
--- ServerStorage/StationModels (e.g. "Oven", "DoughTable", "MakeLine"). Set its pivot to the bottom
+-- ServerStorage/StationModels (e.g. "Oven", "StretchTable", "MakeLine"). Set its pivot to the bottom
 -- center with the front facing the pivot's LookVector; it replaces the
 -- generated art everywhere, franchises included.
 
@@ -97,24 +97,35 @@ local Builders: { [string]: (Instance, CFrame) -> () } = {}
 -- Shared layout for the multi-station pieces, so MapBuilder can put each
 -- station's hitbox over the right spot. All values are art-local (worker at -Z).
 StationArt.Layout = {
-	DoughTable = {
-		width = 11,
-		depth = 4.8,
+	-- Stretch table along the dough show glass: the dough trays at the far end
+	-- (short side along the table), then the cornmeal where skins are stretched.
+	StretchTable = {
+		width = 12.7,
+		depth = 4.4,
 		height = 3.4,
-		workZ = -1.15, -- both work spots sit near the front edge
-		stretchX = -1.0,
-		sauceX = 2.7,
-		rackX = { -1.35, -4.1 }, -- rack 1 right behind the stretch spot
-		rackZ = 1.25,
+		workX = 3.8, -- the stretch spot, in the cornmeal
+		workZ = -0.6,
+		trayZ = 0.45,
+		trayWidth = 2.25, -- along the table
+		trayDepth = 3.25, -- across it
+		trays = { Small = { x = -5.0, ball = 0.6 }, Medium = { x = -2.6, ball = 0.74 }, Large = { x = -0.2, ball = 0.92 } },
+	},
+	-- Sauce station in the corner where the stretch table turns into the
+	-- makeline: the saucing spot at the front, the two skin racks behind it,
+	-- and a corner piece (`corner`, art-local x and z ranges) whose far edge
+	-- follows the angled lobby wall, where the sauce buckets stand.
+	SauceTable = {
+		width = 6.6,
+		depth = 6.7,
+		height = 3.4,
+		workX = -0.3,
+		workZ = -2.0,
+		rackX = { -1.7, 1.1 },
+		rackZ = 1.9,
 		rackWidth = 2.6,
 		rackDepth = 2.2,
 		slotSpacing = 0.2,
-		cornmealX = -4.1, -- the cornmeal pan, in front of rack 2
-		cornmealZ = -1.1,
-		tubsX = 3.0, -- sauce tubs against the back, behind the sauce spot
-		tubsZ = 1.5,
-		screensX = 1.2, -- spare screens, back middle
-		screensZ = 1.25,
+		corner = { x0 = -7.7, x1 = -3.3, z0 = -2.35, z1 = -0.99, z2 = 3.19 }, -- rectangle z0..z1, then a wedge rising to z2 at x1
 	},
 	MakeLine = {
 		width = 17,
@@ -133,14 +144,15 @@ StationArt.Layout = {
 	-- Three stacked conveyor ovens, running along Z: in at +Z (the make-line
 	-- end), out at -Z (LookVector: toward the oven tender at the cut table).
 	Oven = {
-		belt = 20, -- belt length, entrance extension + bake chamber + exit extension
-		chamber = 11,
+		belt = 13.6, -- belt length (about 9 ft), entrance extension + bake chamber + exit extension
+		chamber = 7.6,
 		width = 6.6,
 		lanes = { -1.4, 1.4 }, -- two pizzas side by side; the -X lane is each oven's first slot
 		decks = { 5.1, 3.2, 1.3 }, -- belt heights: top (slots 1-2), middle (3-4), bottom (5-6)
 	},
-	-- Cut table beside the oven exits (the ovens are off its +X end).
-	CutTable = { width = 11, depth = 5.6, height = 3.2 },
+	-- Cut table behind the oven exits (the ovens are off its +X end), the oven
+	-- tender on its long side facing the carryout counter.
+	CutTable = { width = 9, depth = 3.8, height = 3.2 },
 }
 
 -- POS terminal on a cash drawer, sitting on the counter. Worker is at -Z.
@@ -242,88 +254,126 @@ local function screenRack(m: Instance, base: CFrame, cx: number, cz: number, rw:
 	return first + slots
 end
 
--- The dough table, modeled on the user's photos of a real store's: a long
--- stainless table against a backsplash, two 15-slot pizza-screen racks
--- standing on it in the back corner with stretched skins on dark screens, a
--- big pan of cornmeal in front of them, the stretching spot dusted with
--- cornmeal, and the sauce tubs with the saucing spot at the make-line end.
--- (The photos run left to right toward their make-line; ours runs the other
--- way, so the same order reads mirrored: racks and cornmeal farthest from the
--- make-line, sauce nearest it.) SkinSlot_<n> markers sit where a screen rests
--- in the racks (rack 1 top to bottom, then rack 2); ShopService puts each
--- skin in its slot.
-Builders.DoughTable = function(m, base)
-	local L = StationArt.Layout.DoughTable
-	local w, d, h = L.width, L.depth, L.height
-	steelTable(m, base, w, d, h)
-	P(m, base, Vector3.new(w, 1.3, 0.08), at(0, h + 0.65, d / 2 - 0.04), STEEL, Enum.Material.Metal, { name = "Backsplash", reflect = 0.1 })
+local CORNMEAL = Color3.fromRGB(236, 196, 92)
 
-	-- Cornmeal: a big pan of it, and a messy dusting over the stretching spot
-	-- (and spilled around the pan) the way it ends up after a rush.
-	local CORNMEAL = Color3.fromRGB(236, 196, 92)
-	P(m, base, Vector3.new(0.36, 2.3, 2.3), up(L.cornmealX, h + 0.18, L.cornmealZ), Color3.fromRGB(120, 82, 48), Enum.Material.Metal, { shape = Enum.PartType.Cylinder, name = "CornmealPan", collide = true })
-	P(m, base, Vector3.new(0.04, 2.1, 2.1), up(L.cornmealX, h + 0.35, L.cornmealZ), CORNMEAL, Enum.Material.Sand, { shape = Enum.PartType.Cylinder, collide = false })
-	local rng = Random.new(3)
-	local function dust(cx: number, cz: number, spread: number, n: number, layer: number)
-		for i = 1, n do
-			local a = rng:NextNumber(0, math.pi * 2)
-			local r = spread * math.sqrt(rng:NextNumber())
-			local x, z = cx + math.cos(a) * r, cz + math.sin(a) * r
-			if math.abs(x) > w / 2 - 0.2 or math.abs(z) > d / 2 - 0.2 then
-				continue
-			end
-			local y = h + 0.005 + (layer + i) * 0.0015 -- each patch a hair higher, so none z-fight
-			local tint = CORNMEAL:Lerp(Color3.fromRGB(245, 215, 130), rng:NextNumber(0, 0.6))
-			if rng:NextNumber() < 0.6 then
-				local s = rng:NextNumber(0.25, 1.0)
-				P(m, base, Vector3.new(0.01, s, s * rng:NextNumber(0.5, 1)), up(x, y, z) * CFrame.Angles(rng:NextNumber(0, math.pi), 0, 0), tint, Enum.Material.Sand, { shape = Enum.PartType.Cylinder, collide = false })
-			else
-				-- A swirl where a skin was spun out
-				P(m, base, Vector3.new(rng:NextNumber(0.5, 1.4), 0.01, rng:NextNumber(0.1, 0.22)), at(x, y, z) * CFrame.Angles(0, rng:NextNumber(0, math.pi), 0), tint, Enum.Material.Sand, { collide = false })
-			end
+-- Cornmeal scattered around (cx, cz) the way it ends up after a rush: patches
+-- and swirls, each a hair higher than the last so none z-fight. Kept inside
+-- the w x d top.
+local function cornmealDust(m: Instance, base: CFrame, rng: Random, w: number, d: number, h: number, cx: number, cz: number, spread: number, n: number, layer: number)
+	for i = 1, n do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = spread * math.sqrt(rng:NextNumber())
+		local x, z = cx + math.cos(a) * r, cz + math.sin(a) * r
+		if math.abs(x) > w / 2 - 0.2 or math.abs(z) > d / 2 - 0.2 then
+			continue
+		end
+		local y = h + 0.005 + (layer + i) * 0.0015
+		local tint = CORNMEAL:Lerp(Color3.fromRGB(245, 215, 130), rng:NextNumber(0, 0.6))
+		if rng:NextNumber() < 0.6 then
+			local sz = rng:NextNumber(0.25, 1.0)
+			P(m, base, Vector3.new(0.01, sz, sz * rng:NextNumber(0.5, 1)), up(x, y, z) * CFrame.Angles(rng:NextNumber(0, math.pi), 0, 0), tint, Enum.Material.Sand, { shape = Enum.PartType.Cylinder, collide = false })
+		else
+			P(m, base, Vector3.new(rng:NextNumber(0.5, 1.4), 0.01, rng:NextNumber(0.1, 0.22)), at(x, y, z) * CFrame.Angles(0, rng:NextNumber(0, math.pi), 0), tint, Enum.Material.Sand, { collide = false })
 		end
 	end
-	dust(L.stretchX, L.workZ, 1.5, 22, 0)
-	dust(L.cornmealX, L.cornmealZ, 1.6, 8, 30)
-	-- A few drips at the sauce spot
-	for _, drip in { { 1.3, -0.5, 0.3 }, { -1.1, 0.7, 0.18 } } do
-		P(m, base, Vector3.new(0.02, drip[3], drip[3]), up(L.sauceX + drip[1], h + 0.01, L.workZ + drip[2]), Config.IngredientColors.Sauce, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, collide = false })
-	end
+end
 
-	-- Two chrome pizza-screen racks standing on the table (rack 1 top to bottom, then rack 2).
+-- The stretch table along the dough show glass, after the user's store map:
+-- a tray of proofed dough balls per size at the far end (Config.Dough.TrayBalls
+-- each, in rows across the tray), more trays on dollies underneath, and the
+-- cornmeal where a ball is pressed out and stretched. Each ball is a
+-- `DoughBall` part with Size + Index: ShopService hides the ones used up (the
+-- highest numbers first) and the Stretch minigame picks one by clicking.
+Builders.StretchTable = function(m, base)
+	local L = StationArt.Layout.StretchTable
+	local w, d, h = L.width, L.depth, L.height
+	steelTable(m, base, w, d, h)
+	local TRAY = Color3.fromRGB(45, 125, 215)
+	local tw, td = L.trayWidth, L.trayDepth
+	for _, size in Config.Sizes do
+		local t = L.trays[size]
+		P(m, base, Vector3.new(tw, 0.06, td), at(t.x, h + 0.03, L.trayZ), TRAY, Enum.Material.Plastic, { name = "DoughTray_" .. size })
+		for _, sx in { -1, 1 } do
+			P(m, base, Vector3.new(0.06, 0.32, td), at(t.x + sx * (tw / 2 - 0.03), h + 0.16, L.trayZ), TRAY, Enum.Material.Plastic, { collide = false })
+		end
+		for _, sz in { -1, 1 } do
+			P(m, base, Vector3.new(tw, 0.32, 0.06), at(t.x, h + 0.16, L.trayZ + sz * (td / 2 - 0.03)), TRAY, Enum.Material.Plastic, { collide = false })
+		end
+		local rows = (Config.Dough.TrayBalls[size] or 6) // 2
+		local n = 0
+		for r = 1, rows do
+			for c = 1, 2 do
+				n += 1
+				local bx = t.x + (c - 1.5) * (tw / 2)
+				local bz = L.trayZ + (r - (rows + 1) / 2) * (td / rows)
+				-- A proofed ball is a soft dome: a sphere mesh squashed to 60% height.
+				local ball = P(m, base, Vector3.new(t.ball, t.ball * 0.6, t.ball), at(bx, h + 0.06 + t.ball * 0.3, bz), DOUGH, Enum.Material.SmoothPlastic, { name = "DoughBall", collide = false })
+				local mesh = Instance.new("SpecialMesh")
+				mesh.MeshType = Enum.MeshType.Sphere
+				mesh.Parent = ball
+				ball:SetAttribute("Size", size)
+				ball:SetAttribute("Index", n)
+			end
+		end
+		-- The size on the tray's front wall, facing the stretcher
+		local sizeTag = P(m, base, Vector3.new(0.5, 0.2, 0.03), at(t.x, h + 0.2, L.trayZ - td / 2 - 0.02), Color3.new(1, 1, 1), nil, { collide = false })
+		surfaceText(sizeTag, Enum.NormalId.Front, string.sub(size, 1, 1), Config.Brand.Red)
+	end
+	-- Dollies of full trays under the table
+	for k = 0, 2 do
+		for i = 0, 3 do
+			P(m, base, Vector3.new(tw, 0.32, td), at(-5.0 + k * 2.4, 0.5 + i * 0.34, L.trayZ - 0.2), TRAY, Enum.Material.Plastic, { collide = i == 0 })
+		end
+	end
+	-- Cornmeal over the stretch spot and the far end, a bin of it below
+	local rng = Random.new(3)
+	cornmealDust(m, base, rng, w, d, h, L.workX, L.workZ, 1.9, 26, 0)
+	cornmealDust(m, base, rng, w, d, h, L.workX + 1.2, L.workZ + 1.2, 1.2, 8, 40)
+	P(m, base, Vector3.new(2.6, 1.6, 2.6), at(L.workX, 1.0 + 0.8, 0.3), Color3.fromRGB(235, 232, 225), Enum.Material.Plastic, { name = "CornmealBin" })
+	P(m, base, Vector3.new(2.4, 0.05, 2.4), at(L.workX, 2.61, 0.3), CORNMEAL, Enum.Material.Sand, { collide = false })
+end
+
+-- The sauce station in the corner where the stretch table turns into the
+-- makeline (the user's store map): the saucing spot at the front, two
+-- pizza-screen racks of stretched skins behind it (SkinSlot_<n>, rack 1 top to
+-- bottom, then rack 2; ShopService puts each skin in its slot), and a corner
+-- piece whose far edge follows the angled lobby wall, where the sauce buckets
+-- stand with the spoodles.
+Builders.SauceTable = function(m, base)
+	local L = StationArt.Layout.SauceTable
+	local w, d, h = L.width, L.depth, L.height
+	steelTable(m, base, w, d, h)
+	-- Corner piece: a rectangle, then a wedge out to the angled wall (a
+	-- WedgePart laid flat: its right angle sits at (x1, z1)).
+	local c = L.corner
+	P(m, base, Vector3.new(c.x1 - c.x0, h, c.z1 - c.z0), at((c.x0 + c.x1) / 2, h / 2, (c.z0 + c.z1) / 2), STEEL, Enum.Material.Metal, { name = "CornerCabinet", collide = true })
+	local wedge = Instance.new("WedgePart")
+	wedge.Name = "CornerTop"
+	wedge.Anchored = true
+	wedge.Size = Vector3.new(h, c.x1 - c.x0, c.z2 - c.z1)
+	wedge.CFrame = base * at((c.x0 + c.x1) / 2, h / 2, (c.z1 + c.z2) / 2) * CFrame.Angles(0, math.pi, 0) * CFrame.Angles(0, 0, -math.pi / 2)
+	wedge.Color = STEEL
+	wedge.Material = Enum.Material.Metal
+	wedge.TopSurface = Enum.SurfaceType.Smooth
+	wedge.BottomSurface = Enum.SurfaceType.Smooth
+	wedge.CanTouch = false
+	wedge.Parent = m
+	-- Sauce buckets in the corner, spoodles standing in them (green handles up)
+	local BUCKET = Color3.fromRGB(235, 232, 225)
+	for _, b in { { -4.4, 0.4 }, { -5.8, -0.5 } } do
+		P(m, base, Vector3.new(0.9, 1.15, 1.15), up(b[1], h + 0.45, b[2]), BUCKET, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, transparency = 0.25, name = "SauceBucket" })
+		P(m, base, Vector3.new(0.05, 1.05, 1.05), up(b[1], h + 0.82, b[2]), Config.IngredientColors.Sauce, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, collide = false })
+		P(m, base, Vector3.new(0.08, 1.3, 0.08), at(b[1] + 0.15, h + 1.35, b[2]) * CFrame.Angles(0, 0, math.rad(-14)), STEEL, Enum.Material.Metal, { collide = false })
+		P(m, base, Vector3.new(0.11, 0.45, 0.11), at(b[1] + 0.32, h + 2.0, b[2]) * CFrame.Angles(0, 0, math.rad(-14)), Color3.fromRGB(60, 150, 70), Enum.Material.Plastic, { collide = false })
+	end
+	-- A few drips at the saucing spot
+	for _, drip in { { 1.3, -0.5, 0.3 }, { -1.1, 0.7, 0.18 } } do
+		P(m, base, Vector3.new(0.02, drip[3], drip[3]), up(L.workX + drip[1], h + 0.01, L.workZ + drip[2]), Config.IngredientColors.Sauce, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, collide = false })
+	end
+	-- The skin racks behind the spot
 	local slot = 1
 	for r = 1, Config.Dough.Racks do
 		slot = screenRack(m, base, L.rackX[r], L.rackZ, L.rackWidth, L.rackDepth, h, Config.Dough.SlotsPerRack, L.slotSpacing, "SkinSlot_", slot)
-	end
-
-	-- Sauce tubs against the backsplash: two square tubs stacked, the top one
-	-- open, a small deli cup in front, and the spoodle lying ready.
-	local TUB = Color3.fromRGB(235, 232, 225)
-	local tx, tz = L.tubsX, L.tubsZ
-	P(m, base, Vector3.new(1.2, 0.9, 1.2), at(tx, h + 0.45, tz), TUB, Enum.Material.SmoothPlastic, { transparency = 0.35, name = "SauceTub" })
-	P(m, base, Vector3.new(1.08, 0.8, 1.08), at(tx, h + 0.42, tz), Config.IngredientColors.Sauce, Enum.Material.SmoothPlastic, { collide = false })
-	P(m, base, Vector3.new(1.2, 0.85, 1.2), at(tx, h + 1.33, tz), TUB, Enum.Material.SmoothPlastic, { transparency = 0.35, name = "SauceTub" })
-	P(m, base, Vector3.new(1.08, 0.7, 1.08), at(tx, h + 1.27, tz), Config.IngredientColors.Sauce, Enum.Material.SmoothPlastic, { collide = false })
-	P(m, base, Vector3.new(0.4, 0.5, 0.5), up(tx + 1.0, h + 0.2, tz - 0.9), TUB, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, transparency = 0.3, collide = false })
-	P(m, base, Vector3.new(0.3, 0.44, 0.44), up(tx + 1.0, h + 0.17, tz - 0.9), Color3.fromRGB(215, 90, 50), Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, collide = false })
-	P(m, base, Vector3.new(0.1, 0.5, 0.5), up(tx - 0.4, h + 0.05, tz - 1.15), STEEL, Enum.Material.Metal, { shape = Enum.PartType.Cylinder, collide = false })
-	P(m, base, Vector3.new(0.9, 0.05, 0.07), at(tx + 0.3, h + 0.06, tz - 1.15), STEEL, Enum.Material.Metal, { collide = false })
-	P(m, base, Vector3.new(0.5, 0.1, 0.12), at(tx + 0.95, h + 0.07, tz - 1.15), Color3.fromRGB(60, 150, 70), Enum.Material.Plastic, { collide = false })
-	-- A second spoodle standing in the open tub, green handle up
-	P(m, base, Vector3.new(0.08, 1.3, 0.08), at(tx - 0.3, h + 1.6, tz + 0.1) * CFrame.Angles(math.rad(-20), 0, math.rad(15)), STEEL, Enum.Material.Metal, { collide = false })
-	P(m, base, Vector3.new(0.11, 0.45, 0.11), at(tx - 0.45, h + 2.25, tz + 0.32) * CFrame.Angles(math.rad(-20), 0, math.rad(15)), Color3.fromRGB(60, 150, 70), Enum.Material.Plastic, { collide = false })
-
-	-- Spare (dark, well-seasoned) screens stacked at the back, and a tray of dough balls at the far end
-	for i = 0, 9 do
-		P(m, base, Vector3.new(0.025, 2.4, 2.4), up(L.screensX, h + 0.03 + i * 0.04, L.screensZ), SCREEN, Enum.Material.DiamondPlate, { shape = Enum.PartType.Cylinder, collide = false })
-	end
-	P(m, base, Vector3.new(1.1, 0.3, 1.8), at(w / 2 - 0.65, h + 0.15, 1.3), Color3.fromRGB(45, 125, 215), Enum.Material.Plastic, { name = "DoughTray" }) -- blue dough box
-	for j = 0, 1 do
-		P(m, base, Vector3.new(0.55, 0.55, 0.55), at(w / 2 - 0.65, h + 0.45, 0.85 + j * 0.9), DOUGH, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Ball, collide = false })
-	end
-	-- Cart of proofed dough trays under the table
-	for i = 0, 3 do
-		P(m, base, Vector3.new(4.2, 0.35, 2.8), at(L.stretchX, 1.15 + i * 0.38, 0), Color3.fromRGB(225, 225, 220), Enum.Material.Plastic, { collide = i == 0 })
 	end
 end
 
@@ -466,7 +516,7 @@ Builders.Oven = function(m, base)
 		P(m, base, Vector3.new(W, 0.125, C), at(0, y1 - 0.0625, 0), STEEL, Enum.Material.Metal, { name = "DeckRoof", reflect = 0.08, collide = true })
 		P(m, base, Vector3.new(0.1, hgt, C), at(W / 2 - 0.05, (y0 + y1) / 2, 0), STEEL, Enum.Material.Metal, { name = "DeckBack", collide = true })
 		for row = 0, 1 do
-			for k = 0, 8 do
+			for k = 0, math.floor((C - 2.4) / 1.1) do
 				P(m, base, Vector3.new(0.02, 0.05, 0.7), at(W / 2 + 0.01, y0 + 0.45 + row * 0.55, -C / 2 + 1.2 + k * 1.1), BLACK, Enum.Material.SmoothPlastic, { collide = false })
 			end
 		end
@@ -532,10 +582,14 @@ Builders.Oven = function(m, base)
 	P(m, base, Vector3.new(2.2, 14 - top, 2.2), at(0, top + 1.4 + (14 - top) / 2, 0), STEEL, Enum.Material.Metal, { name = "Duct" })
 end
 
--- Cut table beside the oven exits, modeled on a real chain's cut station: a
--- long stainless table with pizza boxes folded open flat (tray in front, lid
--- lying open behind it), seasoning shakers, a rocker blade in its holder, a
--- label printer, and the cut guide. The ovens are off its +X end.
+-- Cut table behind the oven exits, modeled on a real chain's cut station: a
+-- stainless table with pizza boxes folded open flat (tray in front, lid lying
+-- open behind it), seasoning shakers, a rocker blade in its holder, a label
+-- printer. The ovens are off its +X end; the oven tender stands on its long
+-- side (-Z) facing the carryout counter. Around it, after the user's cut-table
+-- guide: the Ready & Set shelf with the dispatch screens past its far end, the
+-- caddie at the rear corner beside the tender, a pan organizer by the oven
+-- exits, a trash can, and a metrics screen hanging above.
 -- Box_<Size> parts carry BoxSize + WallHeight; Lid_<Size> carries OpenAngle so
 -- the cut minigame can swing the same lid shut. CutLanding: where a pizza
 -- pulled off the belt sits while someone works it.
@@ -578,7 +632,7 @@ Builders.CutTable = function(m, base)
 		surfaceText(sizeTag, Enum.NormalId.Front, string.sub(size, 1, 1), Config.Brand.Red)
 	end
 	-- Where a pulled pizza waits on the table (by the oven end, behind the boxes)
-	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(w / 2 - 1.6, h + 0.08, 1.4), BLACK, nil, { name = "CutLanding", transparency = 1, collide = false })
+	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(w / 2 - 1.4, h + 0.08, 1.25), BLACK, nil, { name = "CutLanding", transparency = 1, collide = false })
 
 	-- Far end: rocker blade standing in a stainless holder, seasoning shakers, label printer.
 	P(m, base, Vector3.new(1.0, 0.9, 0.5), at(-w / 2 + 0.9, h + 0.45, 1.6), STEEL, Enum.Material.Metal, { name = "BladeHolder", reflect = 0.15 })
@@ -590,10 +644,10 @@ Builders.CutTable = function(m, base)
 		P(m, base, Vector3.new(0.75, 0.32, 0.32), up(-w / 2 + 0.6 + i * 0.4, h + 0.375, zOff), Color3.fromRGB(230, 215, 170), Enum.Material.Plastic, { shape = Enum.PartType.Cylinder, collide = false })
 		P(m, base, Vector3.new(0.12, 0.34, 0.34), up(-w / 2 + 0.6 + i * 0.4, h + 0.78, zOff), Color3.fromRGB(200, 40, 40), Enum.Material.Plastic, { shape = Enum.PartType.Cylinder, collide = false })
 	end
-	P(m, base, Vector3.new(0.9, 0.55, 0.9), at(-0.6, h + 0.275, 1.9), Color3.fromRGB(28, 28, 32), Enum.Material.SmoothPlastic, { name = "LabelPrinter" })
+	P(m, base, Vector3.new(0.9, 0.55, 0.9), at(-0.6, h + 0.275, 1.4), Color3.fromRGB(28, 28, 32), Enum.Material.SmoothPlastic, { name = "LabelPrinter" })
 	-- A few flat boxes ready to fold, behind the box line
 	for j = 0, 3 do
-		P(m, base, Vector3.new(1.2, 0.05, 1.2), at(0.9, h + 0.03 + j * 0.055, 1.9), cardboard, Enum.Material.Cardboard, { collide = false })
+		P(m, base, Vector3.new(1.2, 0.05, 1.2), at(0.9, h + 0.03 + j * 0.055, 1.35), cardboard, Enum.Material.Cardboard, { collide = false })
 	end
 
 	-- Under the table: white storage bins and a tall stack of flat boxes
@@ -603,6 +657,47 @@ Builders.CutTable = function(m, base)
 	for j = 0, 9 do
 		P(m, base, Vector3.new(2.4, 0.05, 2.4), at(2.6, 1.03 + j * 0.055, 0), cardboard, Enum.Material.Cardboard, { collide = false })
 	end
+
+	-- Ready & Set: a stainless shelf past the far end, its two screens (the
+	-- dispatch board and the cut-table screen) facing the tender.
+	local rx = -w / 2 - 0.85
+	P(m, base, Vector3.new(1.5, h, d), at(rx, h / 2, 0), STEEL, Enum.Material.Metal, { name = "ReadySet" })
+	P(m, base, Vector3.new(1.5, 0.1, d), at(rx, h + 1.9, 0), STEEL, Enum.Material.Metal, { collide = false })
+	for _, sz in { -1, 1 } do
+		P(m, base, Vector3.new(0.12, 1.9, 0.12), at(rx, h + 0.95, sz * (d / 2 - 0.1)), STEEL_DARK, Enum.Material.Metal, { collide = false })
+	end
+	for i, sz in { -0.95, 0.95 } do
+		local screen = P(m, base, Vector3.new(1.6, 1.0, 0.1), at(rx + 0.1, h + 2.55, sz) * CFrame.Angles(0, math.rad(if i == 1 then 30 else 10), 0), BLACK, Enum.Material.Glass, { collide = false })
+		surfaceText(screen, Enum.NormalId.Front, if i == 1 then "DISPATCH\nREADY 0" else "CUT TABLE\n0 IN OVEN", Color3.fromRGB(120, 230, 255), Color3.fromRGB(15, 22, 32), Enum.Font.Code)
+	end
+	-- Caddie: a small wire cart of side boxes, tools and sauce bottles, beside the tender
+	local cx, cz = -w / 2 + 0.6, -d / 2 - 1.3
+	for _, y in { 0.4, 1.6, 2.8 } do
+		P(m, base, Vector3.new(2.2, 0.08, 1.7), at(cx, y, cz), Color3.fromRGB(215, 218, 222), Enum.Material.DiamondPlate, { collide = y == 0.4 })
+	end
+	for _, sx in { -1, 1 } do
+		for _, sz in { -1, 1 } do
+			P(m, base, Vector3.new(3.2, 0.1, 0.1), up(cx + sx * 1.05, 1.6, cz + sz * 0.8), Color3.fromRGB(215, 218, 222), Enum.Material.Metal, { shape = Enum.PartType.Cylinder, collide = false })
+		end
+	end
+	for k = 0, 3 do
+		P(m, base, Vector3.new(0.22, 0.6, 0.22), up(cx - 0.75 + k * 0.5, 3.15, cz), ({ Color3.fromRGB(240, 240, 235), Color3.fromRGB(200, 40, 40), Color3.fromRGB(60, 150, 70), Color3.fromRGB(110, 60, 160) })[k + 1], Enum.Material.Plastic, { shape = Enum.PartType.Cylinder, collide = false })
+	end
+	for j = 0, 5 do
+		P(m, base, Vector3.new(1.6, 0.05, 1.4), at(cx, 1.68 + j * 0.06, cz), cardboard, Enum.Material.Cardboard, { collide = false })
+	end
+	-- Pan organizer by the oven exits: screens and pans standing in slots
+	local ox, oz = w / 2 + 0.9, 0.6
+	P(m, base, Vector3.new(1.2, 0.2, 2.4), at(ox, 0.1, oz), STEEL_DARK, Enum.Material.Metal, { name = "PanOrganizer" })
+	for k = 0, 6 do
+		P(m, base, Vector3.new(0.025, 2.4, 2.4), at(ox - 0.45 + k * 0.15, 1.4, oz), SCREEN, Enum.Material.DiamondPlate, { shape = Enum.PartType.Cylinder, collide = false })
+	end
+	-- Trash can on the counter side
+	P(m, base, Vector3.new(2.2, 1.3, 1.3), up(0, 1.1, d / 2 + 0.9), Color3.fromRGB(70, 72, 78), Enum.Material.Plastic, { shape = Enum.PartType.Cylinder, name = "Trash" })
+	-- Metrics screen hanging over the table, facing the tender
+	local tv = P(m, base, Vector3.new(4.2, 2.2, 0.15), at(0, h + 6.2, d / 2), BLACK, Enum.Material.Glass, { collide = false, name = "MetricsScreen" })
+	surfaceText(tv, Enum.NormalId.Front, "LOAD 0:00   OVEN 0   OUT 0", Color3.fromRGB(120, 255, 140), Color3.fromRGB(12, 16, 22), Enum.Font.Code)
+	P(m, base, Vector3.new(0.12, 14 - h - 7.3, 0.12), at(0, (h + 7.3 + 14) / 2, d / 2), STEEL_DARK, Enum.Material.Metal, { collide = false })
 end
 
 -- Chrome wire shelving stacked with pizza boxes and insulated delivery bags.

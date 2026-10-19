@@ -180,7 +180,7 @@ function Workstation.enter(station: BasePart): Workstation?
 		_hidden = {},
 		_others = {},
 	}, Workstation)
-	self:resetView()
+	self:idleView()
 
 	-- Stand on the floor in front of the work spot, facing it.
 	local standXZ = spot + toWorker * (view.stand or 1.9)
@@ -246,12 +246,25 @@ local function setView(self: Workstation, eye: Vector3, focus: Vector3, fov: num
 	self.eye, self.focus, self.fov = eye, focus, fov
 end
 
--- Back to this station's own view (Config.StationView).
-function Workstation.resetView(self: Workstation)
-	local v = self._view
+-- A view of this station's work spot: `height` above it, `back` toward the
+-- worker, `side` to their right, aimed at `focusBack` / `focusUp` /
+-- `focusSide` (same as `side` if not given).
+function Workstation.useView(self: Workstation, v: any)
 	local spot = self.frame.Position
 	local side = self.right * (v.side or 0)
-	setView(self, spot + self.toWorker * v.back + Vector3.yAxis * v.height + side, spot + self.toWorker * (v.focusBack or 0) + Vector3.yAxis * (v.focusUp or 0) + side, v.fov)
+	local focusSide = self.right * (v.focusSide or v.side or 0)
+	setView(self, spot + self.toWorker * v.back + Vector3.yAxis * v.height + side, spot + self.toWorker * (v.focusBack or 0) + Vector3.yAxis * (v.focusUp or 0) + focusSide, v.fov)
+end
+
+-- Back to this station's own view (Config.StationView): the working view.
+function Workstation.resetView(self: Workstation)
+	self:useView(self._view)
+end
+
+-- The view between jobs: the station's `idle` view if it has one (the cut
+-- table looks at the oven exits), else its working view.
+function Workstation.idleView(self: Workstation)
+	self:useView(self._view.idle or self._view)
 end
 
 -- The standard close-up working angle (Config.StationView.Default) over `point`.

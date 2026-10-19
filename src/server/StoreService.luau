@@ -92,7 +92,7 @@ local function moveTo(player: Player, plot: Plot)
 	if not character or not root or (humanoid and humanoid.SeatPart) then
 		return
 	end
-	local from = (plot.cframe * CFrame.new(0, 3, 34)).Position
+	local from = (plot.cframe * CFrame.new(0, 3, 50)).Position
 	character:PivotTo(CFrame.lookAt(from, (plot.cframe * CFrame.new(0, 3, 0)).Position))
 end
 

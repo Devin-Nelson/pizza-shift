@@ -173,6 +173,14 @@ spec("bigger pizzas take more dough presses (3 / 4 / 5)", function()
 	eq(P.Small, 3, "Small")
 	eq(P.Medium, 4, "Medium")
 	eq(P.Large, 5, "Large")
+	-- Full dough trays (the user's numbers); balls sit in two columns per tray.
+	local T = Config.Dough.TrayBalls
+	eq(T.Small, 10, "Small tray")
+	eq(T.Medium, 8, "Medium tray")
+	eq(T.Large, 6, "Large tray")
+	for _, size in Config.Sizes do
+		eq(T[size] % 2, 0, size .. " tray fills both columns")
+	end
 end)
 
 spec("the dough timing zone is a sane fraction of the bar", function()

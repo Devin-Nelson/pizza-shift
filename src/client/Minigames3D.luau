@@ -334,9 +334,10 @@ local function doughVisual(folder: Instance, at: CFrame): (number, number, numbe
 end
 
 ---------------------------------------------------------------------------
--- Stretch (dough table): pick a size, then hit the green zone as a marker
--- sweeps the timing bar. The zone jumps somewhere new (and changes width)
--- after every hit; yellow and misses cost score and stretch less.
+-- Stretch (stretch table): take a dough ball from a tray (its size is the
+-- skin's size); it drops into the cornmeal. Then hit the green zone as a
+-- marker sweeps the timing bar. The zone jumps somewhere new (and changes
+-- width) after every hit; yellow and misses cost score and stretch less.
 ---------------------------------------------------------------------------
 local function dough(data: any, finish: Finish, cancel: Cancel)
 	local ctx = open(data, cancel)
@@ -346,22 +347,25 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 	local ws, body = ctx.ws, ctx.body
 	local D = Config.Dough
 	local skins = if type(data.skins) == "table" then data.skins else {}
-	-- The dough ball (about 6" across) eases toward its new shape after every press.
+	-- The dough ball (its tray's ball size) eases toward its new shape after every press.
 	local BALL = 1.0
-	local setShape = doughVisual(ctx.folder, ws.frame)
 	local diameter, progress, sloppy = BALL, 0, 0
-	local shownD, shownT = BALL, 0
-	setShape(BALL, 0, 0.06)
-	ctx.track(RunService.RenderStepped:Connect(function(dt)
-		local k = math.min(1, dt * 10)
-		shownD += (diameter - shownD) * k
-		shownT += (progress - shownT) * k
-		-- Lopsided while it's being worked; the sloppier the presses, the more it stays that way.
-		setShape(shownD, shownT, 0.06 * (1 - shownT) + 0.05 * sloppy)
-	end))
 
-	local function stretch(size: string)
+	local function stretch(size: string, ball: number?)
 		clearBody(body)
+		ws:resetView()
+		BALL = ball or 1.0
+		diameter = BALL
+		local setShape = doughVisual(ctx.folder, ws.frame)
+		local shownD, shownT = BALL, 0
+		setShape(BALL, 0, 0.06)
+		ctx.track(RunService.RenderStepped:Connect(function(dt)
+			local k = math.min(1, dt * 10)
+			shownD += (diameter - shownD) * k
+			shownT += (progress - shownT) * k
+			-- Lopsided while it's being worked; the sloppier the presses, the more it stays that way.
+			setShape(shownD, shownT, 0.06 * (1 - shownT) + 0.05 * sloppy)
+		end))
 		local presses = D.Presses[size] or 8
 		local targetD = Config.PizzaDiameter[size] or 2.4
 		sizeChip(body, size, 1)
@@ -475,13 +479,100 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 		bindPress(ctx, press)
 	end
 
-	-- Following, the size is the top pizza's; otherwise choose what to prep
-	-- (the tiles show what's already on the racks).
-	if type(data.size) == "string" then
-		stretch(data.size)
-	else
-		sizeTiles(body, skins, false, stretch, if type(data.need) == "string" then data.need else nil)
+	-- Step 1: take a ball from a tray on the stretch table. Following, only the
+	-- top pizza's tray is lit and pickable; prepping ahead, any tray is (the
+	-- one the oldest ticket needs is lit).
+	local forced = if type(data.size) == "string" then data.size else nil
+	local lit = forced or (if type(data.need) == "string" then data.need else nil)
+	local station = data.station
+	local shop = if typeof(station) == "Instance" and station.Parent then station.Parent.Parent else nil
+	local balls: { BasePart } = {}
+	local trays: { [string]: BasePart } = {}
+	for _, d in (if shop then shop:GetDescendants() else {}) do
+		if d:IsA("BasePart") then
+			if d.Name == "DoughBall" and d.Transparency < 1 and (forced == nil or d:GetAttribute("Size") == forced) then
+				table.insert(balls, d)
+			elseif string.sub(d.Name, 1, 10) == "DoughTray_" then
+				trays[string.sub(d.Name, 11)] = d
+			end
+		end
 	end
+	if #balls == 0 then
+		-- No trays in this store's art (a custom model): choose from tiles instead.
+		if forced then
+			stretch(forced)
+		else
+			sizeTiles(body, skins, false, stretch, lit)
+		end
+		return
+	end
+	ws:useView(Config.StationView.Dough.pick)
+	if forced then
+		sizeChip(body, forced, 1)
+	end
+	Ui.text("PICK A DOUGH BALL", F.Label, S.Body, { TextColor3 = C.CreamDim, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 28), LayoutOrder = 2, Parent = body })
+	local trayBox = Instance.new("SelectionBox")
+	trayBox.Color3 = C.Gold
+	trayBox.LineThickness = 0.06
+	trayBox.Adornee = if lit then trays[lit] else nil
+	trayBox.Parent = ctx.folder
+	local hover = Instance.new("Highlight")
+	hover.FillTransparency = 1
+	hover.OutlineColor = Color3.new(1, 1, 1)
+	hover.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	hover.Enabled = false
+	hover.Parent = ctx.folder
+	local function ballUnderPointer(): BasePart?
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Include
+		params.FilterDescendantsInstances = balls
+		local ray = Workstation.pointerRay()
+		local hit = workspace:Raycast(ray.Origin, ray.Direction * 60, params)
+		return if hit then hit.Instance :: BasePart else nil
+	end
+	local picked = false
+	ctx.track(RunService.RenderStepped:Connect(function()
+		local b = if picked then nil else ballUnderPointer()
+		hover.Adornee = b
+		hover.Enabled = b ~= nil
+	end))
+	ctx.track(UserInputService.InputBegan:Connect(function(input, processed)
+		if picked or not isPlayClick(input, processed) then
+			return
+		end
+		local b = ballUnderPointer()
+		if not b then
+			return
+		end
+		picked = true
+		trayBox.Adornee = nil
+		-- The tray's next ball goes (its highest-numbered one, as the server
+		-- counts them) and drops into the cornmeal.
+		local size = b:GetAttribute("Size") :: string
+		local take = b
+		for _, other in balls do
+			if other:GetAttribute("Size") == size and (other:GetAttribute("Index") :: number) > (take:GetAttribute("Index") :: number) then
+				take = other
+			end
+		end
+		take.LocalTransparencyModifier = 1
+		table.insert(ctx.cleanup, function()
+			take.LocalTransparencyModifier = 0
+		end)
+		local copy = localPart(ctx.folder, "Ball", take.Size, take.Color)
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = copy
+		copy.CFrame = take.CFrame
+		local drop = TweenService:Create(copy, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = ws.frame * CFrame.new(0, take.Size.Y / 2, 0) })
+		drop.Completed:Once(function()
+			if copy.Parent then
+				copy:Destroy()
+				stretch(size, take.Size.X)
+			end
+		end)
+		drop:Play()
+	end))
 end
 
 ---------------------------------------------------------------------------
@@ -811,10 +902,11 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 	end
 	local ws, body, cleanup = ctx.ws, ctx.body, ctx.cleanup
 	hideShared(data.visual, cleanup)
-	-- The wide view takes in the oven exits and every box; putting it in a box closes in on it.
+	-- Pulled: the camera turns from the oven exits to the table and its boxes
+	-- (putting it in a box closes in on it), and back to the exits when done.
 	ws:resetView()
 	table.insert(cleanup, function()
-		ws:resetView()
+		ws:idleView()
 	end)
 	local cuts = tonumber(data.cuts) or 4
 	local spec = if type(data.spec) == "table" then data.spec else { size = data.size, baked = true }
