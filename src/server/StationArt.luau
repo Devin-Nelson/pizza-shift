@@ -171,18 +171,6 @@ local function jobAid(parent: Instance, base: CFrame, offset: CFrame, size: Vect
 	return card
 end
 
--- Dough sizes, drawn to scale.
-local function drawSizes(body: Frame, px: Vector2)
-	local maxD = px.Y * 0.62
-	local sizes = Config.Sizes
-	for i, size in sizes do
-		local inches = Config.PizzaInches[size]
-		local x = px.X * (i - 0.5) / #sizes
-		guiCircle(body, x, px.Y * 0.4, maxD * inches / Config.PizzaInches.Large, Config.IngredientColors.Dough, CRUST)
-		guiText(body, string.format("%s\n%d\"", string.upper(size), inches), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(x, px.Y * 0.74), Size = UDim2.fromOffset(px.X / #sizes - 10, px.Y * 0.24) })
-	end
-end
-
 -- The sauce line: 3/4" in from the edge on every size.
 local function drawSauce(body: Frame, px: Vector2)
 	local d = px.Y * 0.8
@@ -499,8 +487,8 @@ Builders.DoughTable = function(m, base)
 	for j = 0, 1 do
 		P(m, base, Vector3.new(0.55, 0.55, 0.55), at(w / 2 - 0.65, h + 0.45, 0.85 + j * 0.9), DOUGH, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Ball, collide = false })
 	end
-	-- Job aids: dough sizes between the two spots, the sauce line past the sauce spot.
-	jobAid(m, base, at((L.stretchX + L.sauceX) / 2, h, L.workZ - 0.5), Vector2.new(1.1, 0.95), "Dough", "DOUGH SIZES", drawSizes)
+	-- Job aid: the sauce line, past the sauce spot. (No dough sizes card: the user
+	-- had it removed; the size buttons show the inches.)
 	jobAid(m, base, at(w / 2 - 0.7, h, L.workZ - 0.5), Vector2.new(1.1, 0.95), "Sauce", "SAUCE", drawSauce)
 	-- Cart of proofed dough trays under the table
 	for i = 0, 3 do
