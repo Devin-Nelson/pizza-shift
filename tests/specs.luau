@@ -44,6 +44,7 @@ local function load(path: string, extra: { [string]: any })
 		Enum = roblox.Enum,
 		NumberRange = roblox.NumberRange,
 		BrickColor = roblox.BrickColor,
+		Font = roblox.Font,
 		Random = Random,
 		require = function(target)
 			if target == CONFIG then
@@ -76,6 +77,7 @@ local game = {
 Config = load("src/shared/Config.luau", { script = { Parent = {} }, game = game })
 local GameClock = load("src/shared/GameClock.luau", { script = { Parent = { Config = CONFIG } }, game = game })
 local SalesPlan = load("src/server/SalesPlan.luau", { script = { Parent = {} }, game = game })
+local Style = load("src/shared/Style.luau", { script = { Parent = { Config = CONFIG } }, game = game })
 
 local specs: { { string | () -> () } } = {}
 local function spec(name: string, fn: () -> ())
@@ -354,6 +356,39 @@ spec("price, share-by-hour and describe", function()
 		"describe"
 	)
 	assert(SalesPlan.expectedTicket(SalesPlan.dayMix(Random.new(3))) > 0, "expected ticket")
+end)
+
+----------------------------------------------------------------------- Style
+spec("order tickets go green, then gold, then red as they wait", function()
+	local A = Config.TicketAge
+	assert(A.Fresh < A.Aging, "Fresh must come before Aging")
+	eq(Style.ticketColor(0), Style.Color.Green, "a new ticket")
+	eq(Style.ticketColor(A.Fresh - 1), Style.Color.Green, "just before Fresh")
+	eq(Style.ticketColor(A.Fresh), Style.Color.Gold, "at Fresh")
+	eq(Style.ticketColor(A.Aging - 1), Style.Color.Gold, "just before Aging")
+	eq(Style.ticketColor(A.Aging), Style.Color.Red, "at Aging")
+end)
+
+spec("text on a gold ticket header is dark, on green and red it is white", function()
+	local _, fg = Style.ticketColor(0)
+	eq(fg, Style.Color.White, "green header text")
+	_, fg = Style.ticketColor(Config.TicketAge.Fresh)
+	eq(fg, Style.Color.Ink, "gold header text")
+	_, fg = Style.ticketColor(Config.TicketAge.Aging)
+	eq(fg, Style.Color.White, "red header text")
+end)
+
+spec("timers read m:ss and never go negative", function()
+	eq(Style.clock(0), "0:00", "zero")
+	eq(Style.clock(65), "1:05", "65 s")
+	eq(Style.clock(599.9), "9:59", "just under 10 min")
+	eq(Style.clock(-3), "0:00", "negative")
+end)
+
+spec("the UI scale range keeps text readable and never inverts", function()
+	local r = Config.UiScaleRange
+	assert(r[1] > 0 and r[1] < 1 and r[2] > 1, "range should straddle 1")
+	eq(Config.UiReference.X / Config.UiReference.Y > 1.7, true, "reference is widescreen")
 end)
 
 -------------------------------------------------------------------------- run

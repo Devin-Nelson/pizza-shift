@@ -10,12 +10,26 @@ local Config = {}
 Config.GameName = "Dominus Pizza"
 
 -- Our own brand identity (deliberately not any real chain's trade dress).
+-- The UI's "store systems" palette builds on it (see Style.luau).
 Config.Brand = {
 	Red = Color3.fromRGB(214, 48, 39),
 	Charcoal = Color3.fromRGB(38, 40, 46),
 	Cream = Color3.fromRGB(250, 240, 225),
 	Gold = Color3.fromRGB(255, 190, 60),
+	RedDark = Color3.fromRGB(168, 35, 28), -- the lip under a red button
+	Charcoal2 = Color3.fromRGB(48, 51, 58), -- tiles and keys on a charcoal panel
+	Line = Color3.fromRGB(67, 71, 79), -- hairlines between keys and rows
+	CreamDim = Color3.fromRGB(201, 191, 176), -- secondary text on charcoal
+	Green = Color3.fromRGB(51, 163, 92), -- fresh tickets, good grades, open
+	Ink = Color3.fromRGB(29, 30, 34), -- text on cream and gold
+	Rule = Color3.fromRGB(227, 214, 194), -- rules between lines on a cream ticket
 }
+
+-- UI scale: screens are laid out for this resolution and scaled to fit.
+Config.UiReference = Vector2.new(1280, 720)
+Config.UiScaleRange = { 0.7, 1.6 }
+-- Order tickets turn from green to gold to red as they wait (real seconds).
+Config.TicketAge = { Fresh = 120, Aging = 300 }
 
 ---------------------------------------------------------------------------
 -- Jobs
