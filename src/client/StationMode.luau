@@ -1,18 +1,19 @@
 --!strict
 -- Staying at a station between jobs. The server puts you at a station
 -- (Remotes.StationMode) and hands you each job there as soon as one is waiting
--- (StartMinigame). In between, a strip at the bottom shows what the station is
--- waiting for (Remotes.StationStatus). You leave with Exit / X, or hop to
--- another station from the HUD rail (WorkHud) without walking.
+-- (StartMinigame). In between, a slim strip at the bottom shows what the
+-- station is waiting for (Remotes.StationStatus). You leave with Exit on the
+-- Stations bar, or hop to another station from it (WorkHud) without walking.
+-- The first visit to a station shows its tip card (StationTips).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Style = require(ReplicatedStorage.Shared.Style)
+local StationTips = require(script.Parent.StationTips)
 local Ui = require(script.Parent.Ui)
 local Workstation = require(script.Parent.Workstation)
-local T = Ui.Theme
 
 local StationMode = {}
 
@@ -24,19 +25,6 @@ local isMinigameOpen: () -> boolean = function()
 end
 local closeMinigame: () -> () = function() end
 
--- What to do while a station waits, where it isn't just "the next one loads by itself".
-local HINTS: { [string]: string } = {
-	Toppings = "The next pizza loads by itself. Load It sends a finished pizza straight to the oven; To Rack puts it on the ready rack.",
-	Load = "Click a pizza on the ready rack to load it into the next free oven slot.",
-	CutTable = "Click a pizza at an oven exit to pull it before it falls off. Click a card to read it.",
-	DeliveryRack = "Pick an order from the tickets (top left) to take it out.",
-}
-
-local function label(id: string): string
-	local info = Config.StationInfo(id)
-	return if info then info.label else id
-end
-
 local function hideIdle()
 	if idle then
 		idle.dock:Destroy()
@@ -47,6 +35,7 @@ end
 -- Leaves locally (the server has already taken us off, or is about to).
 function StationMode.Leave()
 	hideIdle()
+	StationTips.Hide()
 	local c = current
 	if c then
 		current = nil
@@ -63,27 +52,23 @@ function StationMode.Exit()
 	StationMode.Leave()
 end
 
+-- The idle strip: just what the station is waiting for, in one line.
 local function showIdle()
 	local c = current
 	if idle or not c then
 		return
 	end
-	local dock, body, close = Ui.dock(label(c.name), 150)
-	close.Activated:Connect(StationMode.Exit)
-	local text = Ui.label(status, { Size = UDim2.new(1, -170, 0, 44), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, MaxText = 22, Parent = body })
-	local hint = HINTS[c.name] or "The next one loads by itself. Switch with Stations (bottom left)."
-	Ui.label(hint, {
-		Position = UDim2.fromOffset(0, 50),
-		Size = UDim2.new(1, -170, 0, 34),
-		TextColor3 = T.Muted,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextWrapped = true,
-		MaxText = 15,
-		Parent = body,
+	local strip, row = Ui.strip()
+	strip.Size = UDim2.fromOffset(0, 40)
+	row.Size = UDim2.fromOffset(0, 37)
+	local text = Ui.text(status, Style.Font.Label, Style.Size.Body, {
+		TextColor3 = Style.Color.CreamDim,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 37),
+		Parent = row,
 	})
-	local exit = Ui.button("Exit Station", Color3.fromRGB(90, 70, 70), { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 56), Parent = body })
-	exit.Activated:Connect(StationMode.Exit)
-	idle = { dock = dock, text = text }
+	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = text })
+	idle = { dock = strip, text = text }
 end
 
 -- The id of the station we're at, if any.
@@ -108,6 +93,7 @@ function StationMode.Enter(name: string, part: BasePart): Workstation.Workstatio
 		c.ws:leave(true)
 	end
 	status = "..."
+	StationTips.Hide()
 	local ws = Workstation.enter(part)
 	if not ws then
 		Workstation.restore()
@@ -115,6 +101,7 @@ function StationMode.Enter(name: string, part: BasePart): Workstation.Workstatio
 		return nil
 	end
 	current = { name = name, part = part, ws = ws }
+	StationTips.Show(name)
 	return ws
 end
 

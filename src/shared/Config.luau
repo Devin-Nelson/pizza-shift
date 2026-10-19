@@ -132,11 +132,13 @@ Config.NextJobDelay = 0.8
 -- from the spot the character stands. Every visit looks the same, whatever
 -- the character's size or where they walked up from.
 Config.StationView = {
-	Default = { height = 2.9, back = 1.75, focusBack = 0.3, fov = 70, stand = 1.9 }, -- looking down ~59 degrees at the pizza
+	-- Make stations aim straight at the work spot so the pizza sits dead centre
+	-- on screen (user: no UI may cover it, and it must be the centre of focus).
+	Default = { height = 2.9, back = 1.75, focusBack = 0, fov = 70, stand = 1.9 }, -- looking down ~59 degrees at the pizza
 	-- Make-line spots: the grate is deep, so the work spot sits further back from
 	-- the front; stand back far enough to clear the cabinet.
-	Cheese = { height = 2.9, back = 1.75, focusBack = 0.3, fov = 70, stand = 2.6 },
-	Toppings = { height = 2.9, back = 1.75, focusBack = 0.3, fov = 70, stand = 2.6 },
+	Cheese = { height = 2.9, back = 1.75, focusBack = 0, fov = 70, stand = 2.6 },
+	Toppings = { height = 2.9, back = 1.75, focusBack = 0, fov = 70, stand = 2.6 },
 	-- Load: facing the ready rack, high enough to see down onto every slot.
 	Load = { height = 2.8, back = 5.0, focusUp = -0.3, fov = 70, stand = 2.6 },
 	-- Cut table: wide, from behind the oven tender: all six oven exits and the open boxes.

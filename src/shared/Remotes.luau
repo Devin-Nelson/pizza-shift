@@ -21,6 +21,7 @@ local NAMES = {
 	"BuyFranchise", -- client -> server: (requested shop name)
 	"OpenFranchiseMenu", -- server -> client: (info)
 	"DeliveryTarget", -- server -> client: (doorPart | nil, seconds for the timer)
+	"TipSeen", -- client -> server: (stationId) the player closed that station's first-visit tip
 }
 
 local folder: Folder

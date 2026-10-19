@@ -1,8 +1,9 @@
 --!strict
 -- In-world pizza minigames, one per make step. You're already standing at the
 -- station in first person (StationMode); each job adds a real 3D pizza at the
--- work spot, the station's tool (your own hands are hidden), and a slim
--- control strip at the bottom with the buttons. Each step starts from the
+-- work spot, the station's tool (your own hands are hidden), and a work strip
+-- at the bottom with just the controls (short labels; the station's tip card
+-- explains it on a first visit). Each step starts from the
 -- pizza exactly as the last step left it. Space, a mouse click and a tap on
 -- the screen all work as the action button. The make-line is free-form:
 -- nothing tells you the portions (the job aids do), and pizzas only meet an
@@ -15,13 +16,18 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Icons = require(ReplicatedStorage.Shared.Icons)
 local Pizza3D = require(ReplicatedStorage.Shared.Pizza3D)
+local Style = require(ReplicatedStorage.Shared.Style)
 local Loading = require(script.Parent.Loading)
 local StationMode = require(script.Parent.StationMode)
 local StationPicks = require(script.Parent.StationPicks)
 local Ui = require(script.Parent.Ui)
 local Workstation = require(script.Parent.Workstation)
-local T = Ui.Theme
+
+local C = Style.Color
+local F = Style.Font
+local S = Style.Size
 
 local Minigames3D = {}
 
@@ -40,9 +46,8 @@ type Ctx = {
 
 local ACTION = "PizzaMinigameInput"
 local STEEL = Color3.fromRGB(200, 204, 210)
--- What to call the action button on this device.
-local PRESS = if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then "Tap" else "Space / Click"
-local HOLD = if PRESS == "Tap" then "Hold your finger" else "Hold the mouse"
+-- The key hint on action buttons (none on touch-only devices).
+local KEY_HINT: string? = if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then nil else "SPACE"
 -- A closed box's printed lid is built standing on edge and laid flat with this,
 -- so the print is the part's Front face, whose "up" points away from the
 -- worker (a Top-face print reads upside down from the front).
@@ -81,8 +86,9 @@ local function isPlayClick(input: InputObject, processed: boolean): boolean
 	return not processed and isPointer(input) and not StationPicks.IsPointerOverPick()
 end
 
--- Common setup at the station the job was started at.
-local function open(title: string, height: number, data: any, cancel: Cancel): Ctx?
+-- Common setup at the station the job was started at: its folder of local
+-- parts and an empty work strip (leaving is on the Stations bar).
+local function open(data: any, cancel: Cancel): Ctx?
 	Minigames3D.Close()
 	local ws = StationMode.Ensure(data.station)
 	if not ws then
@@ -92,13 +98,9 @@ local function open(title: string, height: number, data: any, cancel: Cancel): C
 	local folder = Instance.new("Folder")
 	folder.Name = "Minigame"
 	folder.Parent = ws.folder
-	local dock, body, close = Ui.dock(title, height)
-	local a = { dock = dock, folder = folder, cleanup = {}, conns = {} }
+	local strip, body = Ui.strip()
+	local a = { dock = strip, folder = folder, cleanup = {}, conns = {} }
 	active = a
-	close.Activated:Connect(function()
-		Minigames3D.Close()
-		cancel()
-	end)
 	local function track(conn: RBXScriptConnection)
 		table.insert(a.conns, conn)
 	end
@@ -188,27 +190,65 @@ local function hideShared(visual: any, cleanup: { () -> () })
 	end)
 end
 
-local function header(body: Frame, text: string)
-	Ui.label(text, { Size = UDim2.new(1, 0, 0, 20), TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, MaxText = 15, Parent = body })
-end
-
+-- Empties the work strip for the next phase (keeps its layout).
 local function clearBody(body: Frame)
 	for _, c in body:GetChildren() do
-		c:Destroy()
+		if c:IsA("GuiObject") then
+			c:Destroy()
+		end
 	end
 end
 
--- A size picker: one button per size with how many skins are on the racks.
+-- The size being worked, at the start of the strip ("LARGE 14\"").
+local function sizeChip(row: Frame, size: string, order: number): TextLabel
+	local chip = Ui.chip(string.format("%s %d\"", size, Config.PizzaInches[size] or 0), C.Cream, C.Ink, { Size = UDim2.fromOffset(0, 28), LayoutOrder = order, Parent = row })
+	chip.TextSize = S.Body
+	return chip
+end
+
+-- The strip's main action, with its key hint when there is a keyboard.
+local function actionButton(row: Frame, text: string, order: number, width: number?, hint: string?): TextButton
+	local b = Ui.flatButton(text, "primary", { Size = UDim2.fromOffset(width or 150, 52), TextSize = S.Big, LayoutOrder = order, Parent = row })
+	if hint then
+		Ui.new("UIPadding", { PaddingRight = UDim.new(0, 40), Parent = b })
+		Ui.text(hint, F.Mono, S.Tiny, {
+			TextColor3 = C.White,
+			TextTransparency = 0.3,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, 34, 0.5, 0),
+			Size = UDim2.fromOffset(40, 14),
+			Parent = b,
+		})
+	end
+	return b
+end
+
+-- A size picker: one tile per size with how many skins are on the racks.
 -- `needSkin`: sizes with none on the racks can't be picked.
-local function sizeButtons(body: Frame, y: number, counts: { [string]: any }, needSkin: boolean, onPick: (string) -> ())
-	local row = Ui.new("Frame", { Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, 60), BackgroundTransparency = 1, Parent = body }, {
-		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 3, -8, 1, 0), CellPadding = UDim2.fromOffset(8, 0) }),
-	})
-	for _, size in Config.Sizes do
+local function sizeTiles(row: Frame, counts: { [string]: any }, needSkin: boolean, onPick: (string) -> ())
+	for i, size in Config.Sizes do
 		local have = tonumber(counts[size]) or 0
 		local usable = not needSkin or have > 0
-		local text = string.format("%s %d\"  (%d on rack)", size, Config.PizzaInches[size] or 0, have)
-		local b = Ui.button(text, if usable then Color3.fromRGB(200, 160, 100) else T.Card, { Parent = row, MaxText = 18, AutoButtonColor = usable })
+		local b = Ui.flatButton("", "dark", { Size = UDim2.fromOffset(110, 54), LayoutOrder = i, Parent = row })
+		if not usable then
+			b.BackgroundTransparency = 0.6
+			b.Active = false
+		end
+		Ui.text(string.format("%s %d\"", string.upper(size), Config.PizzaInches[size] or 0), F.LabelBold, S.Label, {
+			TextColor3 = if usable then C.Cream else C.CreamDim,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.fromOffset(0, 7),
+			Size = UDim2.new(1, 0, 0, 20),
+			Parent = b,
+		})
+		Ui.text(string.format("%d ON RACK", have), F.Label, S.Tiny, {
+			TextColor3 = if have > 0 then C.Gold else C.CreamDim,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.fromOffset(0, 30),
+			Size = UDim2.new(1, 0, 0, 16),
+			Parent = b,
+		})
 		if usable then
 			b.Activated:Connect(function()
 				onPick(size)
@@ -295,15 +335,13 @@ end
 -- after every hit; yellow and misses cost score and stretch less.
 ---------------------------------------------------------------------------
 local function dough(data: any, finish: Finish, cancel: Cancel)
-	local ctx = open("Stretch Dough", 120, data, cancel)
+	local ctx = open(data, cancel)
 	if not ctx then
 		return
 	end
 	local ws, body = ctx.ws, ctx.body
 	local D = Config.Dough
 	local skins = if type(data.skins) == "table" then data.skins else {}
-	local rackUsed = tonumber(data.rackUsed) or 0
-	local rackCapacity = tonumber(data.rackCapacity) or Config.RackCapacity()
 	-- The dough ball (about 6" across) eases toward its new shape after every press.
 	local BALL = 1.0
 	local setShape = doughVisual(ctx.folder, ws.frame)
@@ -322,24 +360,36 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 		clearBody(body)
 		local presses = D.Presses[size] or 8
 		local targetD = Config.PizzaDiameter[size] or 2.4
-		header(body, string.format("%s skin (%d\"): %s when the marker is in the green. Yellow and misses cost you.", string.upper(size), Config.PizzaInches[size] or 0, string.lower(PRESS)))
-		local status = Ui.label(string.format("%d to go", presses), { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, -170, 0, 36), Font = T.Title, TextXAlignment = Enum.TextXAlignment.Left, Parent = body })
-		local button = Ui.button("STRETCH!  [" .. PRESS .. "]", T.Accent, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 22), Size = UDim2.fromOffset(160, 48), MaxText = 18, Parent = body })
-
-		-- The timing bar sits on its own near the middle of the screen.
-		local qte = Ui.new("Frame", { Name = "StretchBar", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.68), Size = UDim2.fromOffset(560, 70), BackgroundTransparency = 1, Parent = Ui.Screen })
-		Ui.new("UISizeConstraint", { MaxSize = Vector2.new(560, 70), Parent = qte })
-		table.insert(ctx.cleanup, function()
-			qte:Destroy()
-		end)
-		local feedback = Ui.label("", { Size = UDim2.new(1, 0, 0, 30), Font = T.Title, MaxText = 26, Parent = qte })
-		local bar = Ui.new("Frame", { Position = UDim2.fromOffset(0, 36), Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(110, 40, 38), Parent = qte }, { Ui.corner(8) })
-		local barStroke = Ui.stroke(Color3.new(0, 0, 0), 3)
-		barStroke.Transparency = 0
-		barStroke.Parent = bar
-		local yellow = Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = Color3.fromRGB(230, 185, 60), Parent = bar }, { Ui.corner(6) })
-		local green = Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = T.Good, ZIndex = 2, Parent = bar }, { Ui.corner(6) })
-		local marker = Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0, 6, 1, 14), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3, Parent = bar })
+		sizeChip(body, size, 1)
+		-- What the last press scored (blank until the first one).
+		local feedback = Ui.chip("", C.Tile, C.White, {
+			AutomaticSize = Enum.AutomaticSize.None,
+			Size = UDim2.fromOffset(104, 30),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			BackgroundTransparency = 1,
+			LayoutOrder = 2,
+			Parent = body,
+		})
+		feedback.TextSize = S.Body
+		-- The timing gauge lives in the strip, below the dough (nothing covers the work).
+		local gauge = Ui.box(C.Tile, { Size = UDim2.fromOffset(360, 30), LayoutOrder = 3, Parent = body })
+		local gaugeStroke = Ui.new("UIStroke", { Color = C.Ink, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = gauge })
+		for i = 1, 9 do
+			Ui.box(C.Line, { Position = UDim2.fromScale(i / 10, 0), Size = UDim2.new(0, 1, 1, 0), Parent = gauge })
+		end
+		local yellow = Ui.box(C.Gold, { AnchorPoint = Vector2.new(0.5, 0), ZIndex = 2, Parent = gauge })
+		local green = Ui.box(C.Green, { AnchorPoint = Vector2.new(0.5, 0), ZIndex = 3, Parent = gauge })
+		local marker = Ui.box(C.White, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0, 5, 1, 12), ZIndex = 4, Parent = gauge })
+		Ui.new("UIStroke", { Color = C.Ink, Thickness = 1, Parent = marker })
+		-- One square per press, coloured by how it went.
+		local record = Ui.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 14), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 4, Parent = body }, {
+			Ui.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }),
+		})
+		local squares: { Frame } = {}
+		for i = 1, presses do
+			squares[i] = Ui.box(C.Tile, { Size = UDim2.fromOffset(12, 12), LayoutOrder = i, Parent = record }, { Ui.new("UIStroke", { Color = C.Line, Thickness = 1 }) })
+		end
+		local button = actionButton(body, "Stretch", 5, 150, KEY_HINT)
 
 		local rng = Random.new()
 		local center, width = 0.5, 0.1
@@ -380,28 +430,31 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 				cooldown = false
 			end)
 			local off = math.abs(pos - center)
-			local q, color
+			local q, color, text
 			if off <= width / 2 then
-				q, color = 1, T.Good
-				feedback.Text = "PERFECT!"
+				q, color, text = 1, C.Green, "PERFECT"
 			elseif off <= width / 2 + D.Yellow then
-				q, color = D.YellowScore, T.Accent2
-				feedback.Text = string.format("Yellow  -%d%%", math.floor((1 - D.YellowScore) * 100 + 0.5))
+				q, color, text = D.YellowScore, C.Gold, string.format("YELLOW -%d%%", math.floor((1 - D.YellowScore) * 100 + 0.5))
 			else
-				q, color = D.MissScore, T.Accent
-				feedback.Text = "MISS!  -100%"
+				q, color, text = D.MissScore, C.Red, "MISS -100%"
 			end
-			feedback.TextColor3 = color
-			barStroke.Color = color
-			TweenService:Create(barStroke, TweenInfo.new(0.4), { Color = Color3.new(0, 0, 0) }):Play()
+			feedback.Text = text
+			feedback.BackgroundColor3 = color
+			feedback.BackgroundTransparency = 0
+			feedback.TextColor3 = if color == C.Gold then C.Ink else C.White
+			gaugeStroke.Color = color
+			TweenService:Create(gaugeStroke, TweenInfo.new(0.4), { Color = C.Ink }):Play()
 			table.insert(hits, q)
+			local square = squares[#hits]
+			if square then
+				square.BackgroundColor3 = color
+			end
 			-- Press it out toward the chosen size; sloppy presses leave it undersized and lopsided.
 			local growth = math.max(q, D.MissGrowth)
 			diameter = math.min(targetD, diameter + (targetD - BALL) / presses * growth)
 			progress = #hits / presses
 			sloppy += (1 - q) / presses
 			speed += 0.25
-			status.Text = if #hits >= presses then "Done!" else string.format("%d to go", presses - #hits)
 			if #hits >= presses then
 				done = true
 				task.delay(0.6, function()
@@ -419,8 +472,7 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 	end
 
 	-- Step 1: choose what size to prep (shows what's already on the racks).
-	header(body, string.format("Prep dough for the rush: pick a size to stretch. Racks: %d/%d slots used.", rackUsed, rackCapacity))
-	sizeButtons(body, 28, skins, false, stretch)
+	sizeTiles(body, skins, false, stretch)
 end
 
 ---------------------------------------------------------------------------
@@ -429,12 +481,12 @@ end
 -- keeping the rim clean.
 ---------------------------------------------------------------------------
 local function sauce(data: any, finish: Finish, cancel: Cancel)
-	local ctx = open("Sauce", 150, data, cancel)
+	local ctx = open(data, cancel)
 	if not ctx then
 		return
 	end
 	local ws, body, holding = ctx.ws, ctx.body, ctx.holding
-	local S = Config.Sauce
+	local SC = Config.Sauce
 
 	local function spread(size: string)
 		clearBody(body)
@@ -442,26 +494,26 @@ local function sauce(data: any, finish: Finish, cancel: Cancel)
 		local R = d / 2
 		local sauceR = Config.SauceRadius(size)
 		local pizza = Pizza3D.new(ws.frame * CFrame.new(0, 0.06, 0), d, ctx.folder)
-		header(body, string.format("%s skin  |  %s down and spread with the spoodle: cover out to the sauce line, keep the rim clean.", string.upper(size), HOLD))
-		local doneBtn = Ui.button("Sauce Done", T.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), Parent = body })
+		sizeChip(body, size, 1)
+		local doneBtn = actionButton(body, "Done", 2, 130)
 		-- The spoodle: a flat-bottomed ladle, its handle angled up toward you
-		local bowl = localPart(ctx.folder, "Spoodle", Vector3.new(0.08, S.SpoodleRadius * 2, S.SpoodleRadius * 2), STEEL, Enum.Material.Metal, Enum.PartType.Cylinder)
+		local bowl = localPart(ctx.folder, "Spoodle", Vector3.new(0.08, SC.SpoodleRadius * 2, SC.SpoodleRadius * 2), STEEL, Enum.Material.Metal, Enum.PartType.Cylinder)
 		local handle = localPart(ctx.folder, "SpoodleHandle", Vector3.new(0.06, 0.06, 1.3), STEEL, Enum.Material.Metal)
 		local grip = localPart(ctx.folder, "SpoodleGrip", Vector3.new(0.09, 0.09, 0.45), Color3.fromRGB(200, 30, 30), Enum.Material.Plastic)
 
-		local cells = table.create(S.Rings * S.Sectors, 0)
+		local cells = table.create(SC.Rings * SC.Sectors, 0)
 		local cellPos = {}
-		for ring = 1, S.Rings do
-			for sector = 1, S.Sectors do
-				local rr = (ring - 0.5) / S.Rings * sauceR
-				local a = (sector - 0.5) / S.Sectors * math.pi * 2
+		for ring = 1, SC.Rings do
+			for sector = 1, SC.Sectors do
+				local rr = (ring - 0.5) / SC.Rings * sauceR
+				local a = (sector - 0.5) / SC.Sectors * math.pi * 2
 				table.insert(cellPos, Vector2.new(math.cos(a) * rr, math.sin(a) * rr))
 			end
 		end
 		local rim = 0
 		local splats = 0
 		local lastSplat = Vector2.new(1e9, 0)
-		local sr = S.SpoodleRadius
+		local sr = SC.SpoodleRadius
 		ctx.track(RunService.RenderStepped:Connect(function(dt)
 			local hit, x, z = ws:pointer(0.15)
 			if not hit then
@@ -480,7 +532,7 @@ local function sauce(data: any, finish: Finish, cancel: Cancel)
 			if not holding() then
 				return
 			end
-			local amount = S.PourRate * dt
+			local amount = SC.PourRate * dt
 			-- Whatever part of the spoodle hangs past the sauce line puts sauce on the rim.
 			local over = if r > R + sr then 1 else math.clamp((r + sr - sauceR) / (2 * sr), 0, 1)
 			rim += amount * over
@@ -505,9 +557,8 @@ local function sauce(data: any, finish: Finish, cancel: Cancel)
 		end)
 	end
 
-	-- Step 1: which skin to sauce.
-	header(body, "Pick a skin off the racks to sauce. Go by the orders on the screen.")
-	sizeButtons(body, 28, if type(data.skins) == "table" then data.skins else {}, true, spread)
+	-- Step 1: which skin to sauce (go by the tickets).
+	sizeTiles(body, if type(data.skins) == "table" then data.skins else {}, true, spread)
 end
 
 ---------------------------------------------------------------------------
@@ -515,7 +566,7 @@ end
 -- The portion's on the job aid card, not the screen.
 ---------------------------------------------------------------------------
 local function cheese(data: any, finish: Finish, cancel: Cancel)
-	local ctx = open("Cheese", 150, data, cancel)
+	local ctx = open(data, cancel)
 	if not ctx then
 		return
 	end
@@ -527,10 +578,11 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 	local target = Config.CheesePortion[spec.size] or 6
 	local rng = Random.new()
 
-	local how = if PRESS == "Tap" then "Hold your finger on the pizza" else "Hold Space, or hold the mouse on the pizza"
-	header(body, string.format("%s PIZZA  |  %s to pour - faster the longer you hold. Portion it by the cheese card.", string.upper(tostring(spec.size)), how))
-	local scale = Ui.label("0.0 oz", { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, -170, 0, 44), Font = Enum.Font.Code, TextColor3 = Color3.fromRGB(230, 240, 235), MaxText = 34, Parent = body })
-	local doneBtn = Ui.button("Cheese Done", T.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), Parent = body })
+	sizeChip(body, tostring(spec.size), 1)
+	-- The scale's read-out (ounces poured; the portion is on the cheese card).
+	local readout = Ui.box(C.Ink, { Size = UDim2.fromOffset(140, 44), LayoutOrder = 2, Parent = body })
+	local scale = Ui.text("0.0 OZ", F.Mono, S.Huge, { TextColor3 = C.Cream, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = readout })
+	local doneBtn = actionButton(body, "Done", 3, 130)
 	local spaceHeld = false
 	bindSpace(function()
 		spaceHeld = true
@@ -549,7 +601,7 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 		local rate = math.min(Config.CheesePour.MaxRate, Config.CheesePour.StartRate + Config.CheesePour.Accel * held)
 		oz += rate * dt
 		pizza:setCheese(oz / target)
-		scale.Text = string.format("%.1f oz", oz)
+		scale.Text = string.format("%.1f OZ", oz)
 		-- Shreds fall from a spot circling over the pizza.
 		lastShred += dt
 		if lastShred > 0.025 and shreds < 220 then
@@ -575,7 +627,7 @@ end
 -- screen and the portions card). Then put it on the ready rack, or load it straight away.
 ---------------------------------------------------------------------------
 local function toppings(data: any, finish: Finish, cancel: Cancel)
-	local ctx = open("Toppings", 150, data, cancel)
+	local ctx = open(data, cancel)
 	if not ctx then
 		return
 	end
@@ -589,7 +641,7 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 	local rng = Random.new()
 	local counts: { [string]: number } = {}
 
-	header(body, string.format("%s PIZZA  |  Pick a topping and %s on the pizza to drop it. Portions are on the card.", string.upper(tostring(spec.size)), string.lower(HOLD)))
+	sizeChip(body, tostring(spec.size), 1)
 	local selected: string? = nil
 	for _, name in list do
 		if not out[name] then
@@ -597,22 +649,49 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 			break
 		end
 	end
-	local buttons: { [string]: TextButton } = {}
-	local row = Ui.new("Frame", { Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, -170, 0, 40), BackgroundTransparency = 1, Parent = body }, {
-		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / math.max(#list, 1), -6, 1, 0), CellPadding = UDim2.fromOffset(6, 0) }),
-	})
+	-- One tile per bin: its topping and how many are on the pizza (the name
+	-- shows while you hover it). Empty bins can't be picked.
+	local tiles: { [string]: { button: TextButton, count: TextLabel, stroke: UIStroke } } = {}
+	local hovered: string? = nil
 	local function refresh()
-		for name, b in buttons do
+		for name, tile in tiles do
 			local n = pizza:count(name)
 			counts[name] = n
-			b.Text = if out[name] then name .. " OUT" else string.format("%s %d", name, n)
-			b.BackgroundColor3 = if out[name] then Color3.fromRGB(50, 45, 52) elseif name == selected then T.Accent2 else T.Card
-			b.TextColor3 = if name == selected then Color3.fromRGB(30, 30, 30) else T.Text
+			tile.count.Text = if out[name] then "OUT" elseif hovered == name then string.upper(name) else tostring(n)
+			tile.count.FontFace = if hovered == name and not out[name] then F.Label else F.Mono
+			tile.count.TextSize = if hovered == name and not out[name] then S.Tiny else S.Label
+			tile.stroke.Enabled = name == selected
+			Ui.setButtonColor(tile.button, if name == selected then Color3.fromRGB(58, 53, 40) else C.Tile)
 		end
 	end
-	for _, name in list do
-		local b = Ui.button(name, T.Card, { Parent = row, MaxText = 15, AutoButtonColor = not out[name] })
-		buttons[name] = b
+	for i, name in list do
+		local b = Ui.flatButton("", "dark", { Size = UDim2.fromOffset(56, 54), LayoutOrder = 1 + i, Parent = body })
+		if out[name] then
+			b.BackgroundTransparency = 0.6
+		end
+		local ico = Icons.make(name, 20, b)
+		ico.AnchorPoint = Vector2.new(0.5, 0)
+		ico.Position = UDim2.new(0.5, 0, 0, 8)
+		local count = Ui.text("0", F.Mono, S.Label, {
+			TextColor3 = if out[name] then C.CreamDim else C.Cream,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 0, 1, -5),
+			Size = UDim2.new(1, 0, 0, 18),
+			Parent = b,
+		})
+		local stroke = Ui.new("UIStroke", { Color = C.Gold, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Enabled = false, Parent = b })
+		tiles[name] = { button = b, count = count, stroke = stroke }
+		b.MouseEnter:Connect(function()
+			hovered = name
+			refresh()
+		end)
+		b.MouseLeave:Connect(function()
+			if hovered == name then
+				hovered = nil
+				refresh()
+			end
+		end)
 		b.Activated:Connect(function()
 			if not out[name] then
 				selected = name
@@ -620,15 +699,18 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 			end
 		end)
 	end
-	local pick = Ui.button("Pick off 5", Color3.fromRGB(90, 70, 70), { Position = UDim2.fromOffset(0, 72), Size = UDim2.fromOffset(130, 34), Parent = body })
+	local pick = Ui.flatButton("", "ghost", { Size = UDim2.fromOffset(52, 54), LayoutOrder = 20, Parent = body })
+	Ui.text("-5", F.Mono, S.Label, { TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 20), Parent = pick })
+	Ui.text("PICK OFF", F.Label, S.Tiny, { TextColor3 = C.CreamDim, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 0, 14), Parent = pick })
 	pick.Activated:Connect(function()
 		if selected then
 			pizza:removeTopping(selected, 5)
 			refresh()
 		end
 	end)
-	local loadBtn = Ui.button(if Loading.mode == "Pick" then "Load It (pick order)" else "Load It", T.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 40), MaxText = 18, Parent = body })
-	local rackBtn = Ui.button("To Rack", T.Card, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 70), Size = UDim2.fromOffset(160, 34), MaxText = 16, Parent = body })
+	Ui.rule(body, 21)
+	local rackBtn = Ui.flatButton("To rack", "ghost", { Size = UDim2.fromOffset(92, 52), LayoutOrder = 22, Parent = body })
+	local loadBtn = actionButton(body, "Load", 23, 110)
 	loadBtn.Activated:Connect(function()
 		Minigames3D.Close()
 		if Loading.mode == "Pick" then
@@ -681,7 +763,7 @@ end
 -- blade through even cuts, season the crust by tracing it, close the lid.
 ---------------------------------------------------------------------------
 local function cut(data: any, finish: Finish, cancel: Cancel)
-	local ctx = open("Cut Table", 150, data, cancel)
+	local ctx = open(data, cancel)
 	if not ctx then
 		return
 	end
@@ -698,7 +780,15 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 	local R = d / 2
 	local top = 0.12
 	local station = data.station :: BasePart
-	local title = if data.ticket then string.format("#%s %s %s", tostring(data.ticket), string.upper(tostring(data.size)), string.upper(tostring(data.pizza))) else string.upper(tostring(data.size)) .. " (EXTRA - no order)"
+	-- Which pizza this is, at the start of the strip: "#4 LARGE PEPPERONI" or "LARGE EXTRA".
+	local title = if data.ticket then string.format("#%s %s %s", tostring(data.ticket), tostring(data.size), tostring(data.pizza)) else tostring(data.size) .. " extra"
+	local function titleChip(order: number)
+		local chip = Ui.chip(title, C.Cream, C.Ink, { Size = UDim2.fromOffset(0, 28), LayoutOrder = order, Parent = body })
+		chip.TextSize = S.Body
+	end
+	local function note(text: string, order: number)
+		Ui.text(string.upper(text), F.Label, S.Body, { TextColor3 = C.CreamDim, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 28), LayoutOrder = order, Parent = body })
+	end
 
 	-- The open boxes on the table (from the station art).
 	local boxes: { [string]: BasePart } = {}
@@ -776,7 +866,7 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 	local function closeLid(season: any)
 		newPhase()
 		stage = "close"
-		header(body, "Closing it up...")
+		note("Closing", 1)
 		local box = boxes[chosenBox]
 		local bs = Config.BoxSize[chosenBox] or (d + 0.15)
 		-- Hide the table's open lid locally and swing our own copy shut from the same spot.
@@ -833,9 +923,10 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 	local function seasonPhase()
 		newPhase()
 		stage = "season"
-		header(body, string.format("Season the crust: %s down and trace around the edge with the shaker.", string.lower(HOLD)))
-		local status = Ui.label("Crust seasoned: 0%", { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, -170, 0, 30), Font = T.Title, TextXAlignment = Enum.TextXAlignment.Left, Parent = body })
-		local closeBtn = Ui.button("Close Box", T.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), Parent = body })
+		note("Crust", 1)
+		local status = Ui.text("0%", F.Mono, S.Title, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 28), LayoutOrder = 2, Parent = body })
+		Ui.new("UIPadding", { PaddingRight = UDim.new(0, 8), Parent = status })
+		local closeBtn = actionButton(body, "Close box", 3, 150)
 		local shaker = localPart(ctx.folder, "Shaker", Vector3.new(0.6, 0.3, 0.3), Color3.fromRGB(235, 225, 190), Enum.Material.Plastic, Enum.PartType.Cylinder)
 		local capPart = localPart(ctx.folder, "ShakerCap", Vector3.new(0.12, 0.32, 0.32), Color3.fromRGB(200, 40, 40), Enum.Material.Plastic, Enum.PartType.Cylinder)
 		local n = Config.Cut.SeasonSectors
@@ -876,7 +967,7 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 					covered += 1
 				end
 			end
-			status.Text = string.format("Crust seasoned: %d%%", math.floor(covered / n * 100 + 0.5))
+			status.Text = string.format("%d%%", math.floor(covered / n * 100 + 0.5))
 		end)
 		closeBtn.Activated:Connect(function()
 			if stage ~= "season" then
@@ -897,9 +988,16 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 			b:Destroy()
 		end
 		table.clear(bubbleParts)
-		header(body, string.format("Rock the blade through %d even cuts (%d slices) - %s as it lines up", cuts, cuts * 2, string.lower(PRESS)))
-		local status = Ui.label(string.format("Cuts left: %d", cuts), { Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, -170, 0, 30), Font = T.Title, Parent = body })
-		local button = Ui.button("CUT!  [" .. PRESS .. "]", T.Accent, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(160, 64), MaxText = 18, Parent = body })
+		titleChip(1)
+		-- One square per cut, filled as they're made.
+		local record = Ui.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 16), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 2, Parent = body }, {
+			Ui.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+		})
+		local squares: { Frame } = {}
+		for i = 1, cuts do
+			squares[i] = Ui.box(C.Tile, { Size = UDim2.fromOffset(14, 14), LayoutOrder = i, Parent = record }, { Ui.new("UIStroke", { Color = C.Line, Thickness = 1 }) })
+		end
+		local button = actionButton(body, "Cut", 3, 130, KEY_HINT)
 		local bladeLen = d * 1.12
 		local blade = localPart(ctx.folder, "Rocker", Vector3.new(bladeLen, 0.24, 0.035), STEEL, Enum.Material.Metal)
 		blade.Reflectance = 0.25
@@ -942,7 +1040,10 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 					pizza:addCut(cutYaw)
 				end
 			end)
-			status.Text = string.format("Cuts left: %d", cuts - #angles)
+			local square = squares[#angles]
+			if square then
+				square.BackgroundColor3 = C.Cream
+			end
 			if #angles >= cuts then
 				task.delay(Config.Cut.CutTime + 0.25, function()
 					if active then
@@ -974,9 +1075,12 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		placeBubbles()
 		if first then
 			newPhase()
-			local bubbleNote = if #bubbleData > 0 then " Pop the cheese bubbles (click them)." else ""
-			header(body, title .. " is in the " .. size .. " box. Wrong box? Click another one to move it." .. bubbleNote)
-			local start = Ui.button("Start Cutting  [Space]", T.Accent, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 24), Size = UDim2.fromOffset(200, 64), MaxText = 18, Parent = body })
+			-- Wrong box? Clicking another one moves it (the tip says so).
+			titleChip(1)
+			if #bubbleData > 0 then
+				note("Pop the bubbles", 2)
+			end
+			local start = actionButton(body, "Cut", 3, 130, KEY_HINT)
 			start.Activated:Connect(cutPhase)
 			bindSpace(cutPhase)
 		end
@@ -1014,7 +1118,8 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 			putIn(size)
 		end
 	end))
-	header(body, title .. " is off the belt - click the right box to put it in.")
+	titleChip(1)
+	note("Click a box", 2)
 end
 
 local HANDLERS: { [string]: (any, Finish, Cancel) -> () } = {

@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local Remotes = require(game:GetService("ReplicatedStorage").Shared.Remotes)
 
 export type Profile = {
 	Coins: number,
@@ -14,6 +15,7 @@ export type Profile = {
 	PizzasMade: number,
 	Deliveries: number,
 	Franchise: { owned: boolean, name: string },
+	TipsSeen: { [string]: boolean }, -- stations whose first-visit tip the player has closed
 }
 
 local DataService = {}
@@ -43,7 +45,20 @@ local function defaultProfile(): Profile
 		PizzasMade = 0,
 		Deliveries = 0,
 		Franchise = { owned = false, name = "" },
+		TipsSeen = {},
 	}
+end
+
+-- The first-visit tips already seen, as a comma list the client can read.
+local function tipsAttribute(profile: Profile): string
+	local seen = {}
+	for id, on in profile.TipsSeen do
+		if on == true and type(id) == "string" then
+			table.insert(seen, id)
+		end
+	end
+	table.sort(seen)
+	return table.concat(seen, ",")
 end
 
 local function reconcile(data: any): Profile
@@ -89,6 +104,7 @@ local function makeLeaderstats(player: Player, profile: Profile)
 
 	-- XP replicates as an attribute for the HUD (leaderstats only shows Level).
 	player:SetAttribute("XP", profile.XP)
+	player:SetAttribute("TipsSeen", tipsAttribute(profile))
 end
 
 local function syncStats(player: Player)
@@ -210,7 +226,23 @@ function DataService.Sync(player: Player)
 	syncStats(player)
 end
 
+-- The player closed a station's first-visit tip: don't show it again.
+function DataService.MarkTipSeen(player: Player, stationId: string)
+	local profile = profiles[player]
+	if not profile or profile.TipsSeen[stationId] then
+		return
+	end
+	profile.TipsSeen[stationId] = true
+	player:SetAttribute("TipsSeen", tipsAttribute(profile))
+end
+
 function DataService.Init()
+	Remotes.TipSeen.OnServerEvent:Connect(function(player, stationId)
+		if type(stationId) == "string" and Config.StationInfo(stationId) then
+			DataService.MarkTipSeen(player, stationId)
+		end
+	end)
+
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
 		if purchased and passId == Config.GamePasses.DoublePay then
 			doublePay[player] = true

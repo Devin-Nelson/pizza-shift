@@ -31,16 +31,18 @@ end)
 -- progress along its bottom edge). Clock In and the Stations tab are WorkHud's.
 ---------------------------------------------------------------------------
 local C = Style.Color
+-- The wrapper is sized from its contents by hand: its XP line spans the full
+-- width, and auto-sizing it would feed back into itself.
 local pillWrap = Ui.box(C.Panel, {
 	Name = "StatusPill",
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(1, -10, 0, 10),
-	Size = UDim2.fromOffset(0, 28),
-	AutomaticSize = Enum.AutomaticSize.X,
+	Size = UDim2.fromOffset(200, 28),
 	Parent = Ui.Root,
 })
 Ui.edge(pillWrap, "left", 3, C.Red)
 local pill = Ui.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 28), AutomaticSize = Enum.AutomaticSize.X, Parent = pillWrap })
+Ui.fitWidth(pillWrap, pill)
 Ui.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = pill })
 Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 10), Parent = pill })
 local function pillText(font: Font, size: number, color: Color3, order: number): TextLabel

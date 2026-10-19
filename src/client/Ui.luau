@@ -405,6 +405,53 @@ function Ui.dock(_title: string, height: number): (Frame, Frame, TextButton)
 	return strip, body, close
 end
 
+-- The work strip: controls for the job at hand, docked bottom centre on Root
+-- and only as wide as its controls. It's named "Dock" so the Stations bar
+-- can step it aside. Returns (strip, row); put controls in `row`, a
+-- horizontal list centred vertically.
+Ui.STRIP_H = 68
+
+-- Keeps `wrapper` exactly as wide as `inner` (an auto-sized row), in Root
+-- units. Wrappers that carry full-width edge bars can't auto-size themselves:
+-- the bar's width would feed back into the wrapper's.
+function Ui.fitWidth(wrapper: GuiObject, inner: GuiObject)
+	local function sync()
+		local h = wrapper.Size.Y.Offset
+		wrapper.Size = UDim2.fromOffset(math.ceil(inner.AbsoluteSize.X / rootScale.Scale), h)
+	end
+	inner:GetPropertyChangedSignal("AbsoluteSize"):Connect(sync)
+	task.defer(sync)
+end
+
+function Ui.strip(): (Frame, Frame)
+	local strip = Ui.box(C.Panel, {
+		Name = "Dock",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -8),
+		Size = UDim2.fromOffset(200, Ui.STRIP_H),
+		Parent = root,
+	})
+	Ui.edge(strip, "top", 3, C.Red)
+	local row = Ui.new("Frame", {
+		Name = "Row",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(0, 3),
+		Size = UDim2.fromOffset(0, Ui.STRIP_H - 3),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Parent = strip,
+	}, {
+		Ui.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+		Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }),
+	})
+	Ui.fitWidth(strip, row)
+	return strip, row
+end
+
+-- A thin vertical rule between groups of controls in a strip.
+function Ui.rule(parent: Instance, order: number): Frame
+	return Ui.box(C.Line, { Size = UDim2.fromOffset(1, 40), LayoutOrder = order, Parent = parent })
+end
+
 ---------------------------------------------------------------------------
 -- Toasts: slips that slide in under the clock (top right), clear of the work
 ---------------------------------------------------------------------------
@@ -487,7 +534,7 @@ end
 -- A plain message. `color` marks the slip's edge (gold by default).
 function Ui.toast(text: string, color: Color3?)
 	local frame = slip()
-	Ui.new("Frame", { BackgroundColor3 = color or C.Gold, Size = UDim2.new(0, 5, 1, 0), LayoutOrder = 0, Parent = frame })
+	Ui.new("Frame", { BackgroundColor3 = color or C.Gold, Size = UDim2.fromOffset(5, 26), LayoutOrder = 0, Parent = frame })
 	slipText(frame, text, Style.Font.Label, C.Ink, 1)
 	keepFew()
 	fadeOut(frame, 3.5)

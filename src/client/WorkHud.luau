@@ -8,7 +8,8 @@
 --    and the ones on the road.
 --  * Stations tab (bottom left, on shift): collapsed by default. It opens
 --    sideways along the bottom into a key per station (gold badge = jobs
---    waiting), then Job Aid, the order-matching switch, Exit and Positions.
+--    waiting), then Help (the station's tip), Job Aid, the order-matching
+--    switch, Exit and Positions.
 --    While it's open the work strip steps aside so nothing covers the pizza.
 --  * Follow chip (above the tab) after a step: takes that pizza to its next
 --    station.
@@ -25,6 +26,7 @@ local Icons = require(ReplicatedStorage.Shared.Icons)
 local Loading = require(script.Parent.Loading)
 local StationMode = require(script.Parent.StationMode)
 local StationPicks = require(script.Parent.StationPicks)
+local StationTips = require(script.Parent.StationTips)
 local Ui = require(script.Parent.Ui)
 
 local WorkHud = {}
@@ -347,6 +349,13 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		end
 		-- Utility keys first (fixed width), so the station keys can share what's left.
 		local utils: { { text: string, icon: string?, fn: () -> (), opts: any? } } = {}
+		local tipFor = here
+		if tipFor and StationTips.Has(tipFor) then
+			table.insert(utils, { text = "Help", icon = "help", fn = function()
+				setExpanded(false)
+				StationTips.Show(tipFor, true)
+			end })
+		end
 		if here and StationPicks.HasAid() then
 			table.insert(utils, { text = "Job Aid", icon = "aid", fn = function()
 				setExpanded(false)
@@ -474,10 +483,13 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		if expanded and not onShift then
 			setExpanded(false)
 		end
-		-- The work strip (and the dough timing bar) step aside while the bar is open.
-		for _, c in Ui.Screen:GetChildren() do
-			if c:IsA("GuiObject") and (c.Name == "Dock" or c.Name == "StretchBar") then
-				c.Visible = not expanded
+		-- Work strips step aside while the bar is open (new ones live on Root,
+		-- older 2D ones on the screen itself).
+		for _, holder in { Ui.Root, Ui.Screen } do
+			for _, c in holder:GetChildren() do
+				if c:IsA("GuiObject") and c.Name == "Dock" then
+					c.Visible = not expanded
+				end
 			end
 		end
 	end)
