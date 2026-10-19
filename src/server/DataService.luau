@@ -118,23 +118,60 @@ local function syncStats(player: Player)
 	player:SetAttribute("XP", profile.XP)
 end
 
+-- Session lock: a save carries Lock = { job, at } while a server holds it, so
+-- two servers never hold one player's save at once.
+local function heldBy(save: any, job: string): boolean
+	local lock = if type(save) == "table" then save.Lock else nil
+	return type(lock) == "table" and lock.job == job
+end
+
+-- Reads a player's save and locks it to this server. If another live server
+-- holds it (the player just hopped), wait for it to save and let go; a lock
+-- older than LockTTL, or still there after the last try, is taken over (that
+-- server is gone or stuck, and its own saves are refused from then on).
+local function claim(player: Player, tries: number): (boolean, any)
+	for attempt = 1, tries do
+		local busy, data = false, nil
+		local ok, err = pcall(function()
+			(store :: DataStore):UpdateAsync(key(player), function(old)
+				local lock = if type(old) == "table" then old.Lock else nil
+				local live = type(lock) == "table" and lock.job ~= game.JobId and os.time() - (tonumber(lock.at) or 0) < Config.Save.LockTTL
+				busy = live and attempt < tries
+				if busy then
+					return nil
+				end
+				data = old
+				local new = if type(old) == "table" then old else {}
+				new.Lock = { job = game.JobId, at = os.time() }
+				return new
+			end)
+		end)
+		if ok and not busy then
+			return true, data
+		end
+		if not ok then
+			warn("[DataService] load attempt", attempt, "failed:", err)
+		end
+		if attempt < tries then
+			task.wait(attempt)
+		end
+	end
+	return false, nil
+end
+
 function DataService.Load(player: Player): Profile?
 	local data = nil
 	if store and RunService:IsStudio() then
 		-- One quick try in Studio; if API access is off, play unsaved instead of retrying.
-		local ok, result = pcall(function()
-			return (store :: DataStore):GetAsync(key(player))
-		end)
+		local ok, result = claim(player, 1)
 		if ok then
 			data = result
 		else
-			warn("[DataService] Saving disabled for this Studio session:", result)
+			warn("[DataService] Saving disabled for this Studio session")
 			store = nil
 		end
 	elseif store then
-		local ok, result = retry(function()
-			return (store :: DataStore):GetAsync(key(player))
-		end)
+		local ok, result = claim(player, Config.Save.LoadTries)
 		if not ok then
 			player:Kick("Couldn't load your save data. Please rejoin.")
 			return nil
@@ -158,19 +195,33 @@ function DataService.Load(player: Player): Profile?
 	return profile
 end
 
-function DataService.Save(player: Player)
+-- Writes the profile, but only while this server still holds the save's lock
+-- (never over another server's newer data). `release`: let go of the lock.
+function DataService.Save(player: Player, release: boolean?)
 	local profile = profiles[player]
 	if not store or not profile or not loaded[player] then
 		return
 	end
+	local refused = false
 	retry(function()
-		(store :: DataStore):SetAsync(key(player), profile)
+		(store :: DataStore):UpdateAsync(key(player), function(old)
+			refused = not heldBy(old, game.JobId)
+			if refused then
+				return nil
+			end
+			local data: any = table.clone(profile)
+			data.Lock = if release then nil else { job = game.JobId, at = os.time() }
+			return data
+		end)
 		return true
 	end)
+	if refused and not release then
+		warn("[DataService] another server holds", player.Name, "'s save; not overwriting it")
+	end
 end
 
 function DataService.Release(player: Player)
-	DataService.Save(player)
+	DataService.Save(player, true)
 	profiles[player] = nil
 	loaded[player] = nil
 	doublePay[player] = nil
@@ -264,7 +315,7 @@ function DataService.Init()
 		for _, player in Players:GetPlayers() do
 			pending += 1
 			task.spawn(function()
-				DataService.Save(player)
+				DataService.Save(player, true)
 				pending -= 1
 			end)
 		end

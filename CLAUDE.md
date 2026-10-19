@@ -33,6 +33,7 @@ Roblox job/roleplay game: "Work at a Pizza Place but better". Every station is a
 - Printed box lids are Front faces on parts laid flat with `BOX_FLAT` (Top-face SurfaceGuis read upside down from the front).
 - Minigame input: Space / gamepad A, left click, or tap all count as the action button (`bindPress`); holds use mouse/finger on the 3D view.
 - The DataStore key is still `PizzaShift_v1` (pre-rename); changing it orphans saves.
+- Saves are session-locked (`DataService`: `claim` on load, `Save` only while this server holds `Lock`, `Release` lets go; `Config.Save`); never write player data with `SetAsync`. Specced in `tests/specs.luau`. The truck job refuses when every shelf is full and pays only for cases actually stored; carryout patience is 300 s (fixes from the 2026-10-19 audit, user-approved).
 
 ## Game design decisions (from the user)
 - Roles: **CSR** takes orders and makes pizzas; **Delivery Driver** does everything a CSR does plus deliveries (less XP, gets delivery tips); **Shift Manager** (4 slots) and **General Manager** (1 slot) run every station and unload the truck (Inventory was folded in). Management slots go to highest XP; anyone may step up while the store has no management, otherwise minLevel applies and a higher-XP player bumps the lowest. Manager duties beyond that are still to be designed. There is no supply-chain role.

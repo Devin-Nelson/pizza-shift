@@ -374,7 +374,7 @@ Config.Shop = {
 	StartingStock = 20,
 	MaxStock = 60,
 	MaxCustomers = 6, -- NPCs in the lobby at once
-	CustomerPatience = 170, -- real seconds for a 1-pizza order...
+	CustomerPatience = 300, -- real seconds for a 1-pizza order (the bake alone is ~90 s)...
 	PatiencePerPizza = 75, -- ...plus this much per extra pizza (big orders take a while)
 	AutoRegisterDelay = 12, -- online kiosk takes an order if no one answers (x3 while staff are on shift)
 	AutoRestockInterval = 20, -- trickle restock when no manager is on shift
@@ -392,5 +392,10 @@ Config.Franchise = {
 Config.GamePasses = {
 	DoublePay = 0,
 }
+
+-- Saves: a server holds a player's save while they're in it (session lock).
+-- LockTTL: seconds after which a lock counts as left behind by a dead server;
+-- LoadTries: tries (waiting 1, 2, 3... s) before taking over a held save.
+Config.Save = { LockTTL = 300, LoadTries = 5 }
 
 return Config

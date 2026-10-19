@@ -173,6 +173,10 @@ function FranchiseService.Init(worldPlots: { Plot })
 			return
 		end
 		local name = filterName(player, rawName)
+		-- The name filter yields: a second click may have bought it meanwhile.
+		if profile.Franchise.owned then
+			return
+		end
 		if not name then
 			Remotes.Notify:FireClient(player, "That name isn't allowed (3-24 characters, family friendly).", Color3.fromRGB(255, 160, 100))
 			return

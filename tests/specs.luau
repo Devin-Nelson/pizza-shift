@@ -438,6 +438,98 @@ spec("a 30-pizza party order fits a ticket", function()
 	eq(none, 0, "nothing folded")
 end)
 
+------------------------------------------------------------------ Save lock
+-- Two fake servers ("A", "B") load DataService against one in-memory store.
+-- `onWait` runs whenever a server waits between load tries.
+local REMOTES = newproxy()
+local function deepCopy(v: any): any
+	if type(v) ~= "table" then
+		return v
+	end
+	local t = {}
+	for k, x in v do
+		t[k] = deepCopy(x)
+	end
+	return t
+end
+local function server(job: string, db: { [string]: any }, onWait: (() -> ())?)
+	local fakeStore = {
+		UpdateAsync = function(_, k, fn)
+			local new = fn(deepCopy(db[k]))
+			if new ~= nil then
+				db[k] = deepCopy(new)
+			end
+			return new
+		end,
+	}
+	local services = {
+		DataStoreService = { GetDataStore = function() return fakeStore end },
+		MarketplaceService = { UserOwnsGamePassAsync = function() return false end },
+		Players = {},
+		RunService = { IsStudio = function() return false end },
+		ReplicatedStorage = { Shared = { Config = CONFIG, Remotes = REMOTES } },
+	}
+	local fakeGame = { JobId = job, GetService = function(_, name) return services[name] end }
+	return load("src/server/DataService.luau", {
+		game = fakeGame,
+		script = { Parent = {} },
+		Instance = { new = function() return {} end },
+		warn = function() end,
+		task = { wait = function() if onWait then onWait() end end, spawn = function() end },
+		require = function(target)
+			if target == CONFIG then
+				return Config
+			elseif target == REMOTES then
+				return {}
+			end
+			error("unexpected require")
+		end,
+	})
+end
+local function player()
+	return { UserId = 7, Name = "Tester", Parent = true, SetAttribute = function() end, Kick = function() end }
+end
+
+spec("a player who hops servers keeps their coins", function()
+	local db = {}
+	local A, B
+	A = server("A", db)
+	local pa = player()
+	A.Load(pa)
+	A.Get(pa).Coins = 100
+	-- B starts loading while A still holds the save; A saves and lets go while B waits.
+	B = server("B", db, function()
+		A.Release(pa)
+	end)
+	local pb = player()
+	B.Load(pb)
+	eq(B.Get(pb).Coins, 100, "coins B loaded")
+	eq(db.u_7.Lock.job, "B", "B now holds the save")
+end)
+
+spec("a server that lost the save never overwrites it", function()
+	local db = {}
+	local A = server("A", db)
+	local pa = player()
+	A.Load(pa)
+	A.Get(pa).Coins = 100
+	A.Save(pa)
+	-- A is stuck and never lets go: B takes over after its last try.
+	local B = server("B", db)
+	local pb = player()
+	B.Load(pb)
+	eq(db.u_7.Lock.job, "B", "B took the save over")
+	B.Get(pb).Coins = 150
+	B.Save(pb)
+	A.Get(pa).Coins = 999
+	A.Save(pa)
+	eq(db.u_7.Coins, 150, "A's late save was refused")
+	B.Release(pb)
+	A.Save(pa)
+	eq(db.u_7.Coins, 150, "still refused after B let go")
+	eq(db.u_7.Lock, nil, "released")
+end)
+
 -------------------------------------------------------------------------- run
 local failed = 0
 for _, s in specs do

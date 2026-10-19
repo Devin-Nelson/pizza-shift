@@ -1824,6 +1824,13 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 			exitPos = exitPos,
 		}, { pie = pie })
 	elseif kind == "Supply" then
+		local room = false
+		for _, ing in Config.Ingredients do
+			room = room or shop.stock[ing] < Config.Shop.MaxStock
+		end
+		if not room then
+			return "The shelves are full - nothing to unload."
+		end
 		local sorted = table.clone(Config.Ingredients)
 		table.sort(sorted, function(a, b)
 			return shop.stock[a] < shop.stock[b]
@@ -2330,15 +2337,16 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 			return tooFast(player)
 		end
 		endSession(player, session, false)
-		local correct = 0
+		-- Paid only for cases that actually went on a shelf, so the truck can't be farmed.
+		local stored = 0
 		for i, crate in crates do
-			if answers[i] == crate then
-				correct += 1
+			if answers[i] == crate and shop.stock[crate] < Config.Shop.MaxStock then
+				stored += 1
 				shop.stock[crate] = math.min(Config.Shop.MaxStock, shop.stock[crate] + Config.Supply.RestockPerCrate)
 			end
 		end
 		updateBoards(shop)
-		pay(shop, player, Config.Pay.Supply, correct / #crates, string.format("Put away %d/%d cases", correct, #crates))
+		pay(shop, player, Config.Pay.Supply, stored / #crates, string.format("Put away %d/%d cases", stored, #crates))
 		stepDone(player, "SupplyTruck")
 	end
 end
