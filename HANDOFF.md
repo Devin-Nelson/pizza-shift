@@ -4,29 +4,28 @@ Read `CLAUDE.md` first (architecture, conventions, every design decision). This 
 
 ## Done (all pushed to `main`)
 - **Gameplay rounds 1-3** (2026-10-17): stay-at-station mode, free-form make-line with load-time order matching (Auto/Pick), ready rack + Load Oven, three stacked real-time ovens (6 slots), oven tender flow (pull at exit, box in world, rocker cuts, seasoning), dough QTE, endless-spoodle sauce, job aid cards, heat rack + delivery, load/total times.
-- **UI overhaul** (2026-10-19, 5 batches, user-approved mockups): "store systems" look (`Style`, `Icons`, `Ui`); status pill; order tickets top-left; collapsible Stations tab/bar; controls-only work strips with the dough gauge inside; first-visit tip cards (saved per player); make-station cameras centred on the pizza; restyled menus, Register (POS), Supply; in-world screens (`Screens.luau`: kitchen display, order tracker, stock tablet, sales board); custom prompts (`Prompts.luau`); brand fonts on printed text. Dough sizes job aid removed (user).
-- **Audit fixes 1-4** (`b1e2053`): truck job can't be farmed; franchise purchase can't double-charge; DataStore session lock (specced); carryout patience 300 s.
-- Tooling: `lune run tests/specs` (36 specs), `selene src` (0/0), `rojo build`.
+- **UI overhaul** (2026-10-19, 5 batches): "store systems" look, tickets, Stations tab/bar, work strips, first-visit tips, restyled menus and in-world screens.
+- **Audit fixes 1-4** (`b1e2053`): truck farming, franchise double charge, DataStore session lock, carryout patience.
+- **Store lots, no clock-in or roles** (`9b15521`): 5 lots per server (lot 1 = old HQ site); a store picker on join (open your own, join one with room up to 4, leave); owner handover to the longest-serving member; every player works every station; deliveries need 2+ players or a hired driver, otherwise they arrive as carryout. FranchiseService, the time clock, roles and management slots are gone.
+- **Hired NPC staff** (`014002d`): Staff menu (HUD button beside the Stations tab); owner buys insiders (assigned to a station, click to move) and drivers; saved in the owner's profile (`Staff`). Insiders do the real station work through shared step functions; drivers take delivery orders on a timed trip. Roll/spin prepared but off (`Config.StaffRoll.Enabled = false`).
+- Tooling: `lune run tests/specs` (38 specs, incl. hire prices and roll odds), `selene src` (0/0), `rojo build`.
 
-## In progress
-- Nothing mid-edit. The working tree is clean.
-- The user said this session would include **mechanics changes, new mechanics and a visual overhaul**; only the UI part is done. The mechanics list hasn't been given yet.
+## Verified in Studio (scripted, 2026-10-19)
+- Picker opens on join; claiming lot 1 builds the store, sets `StoreId`/`StoreOwner`, uniform on, player placed at the entrance; leaving frees the lot; opening on lot 2 works; stations work with no clock-in.
+- With Studio's Config temporarily patched (free hires, 7-insider cap, start at 4:54 PM; restored afterwards): 7 insiders auto-assigned one per station + 1 driver; the cap is enforced; NPCs stand at their stations (register one on the floor after a raycast fix); orders were rung in, made, baked, cut, boxed, and delivered by the NPC driver (who walked out, vanished and came back); sales board recorded load/total times.
+- A player at a station an NPC works hides that NPC locally and no longer stands on its head.
 
 ## Not verified
-- The user has **not** hand-playtested the new UI. Claude checked it with scripted Studio runs and screenshots only.
-- The save lock only runs in a published game (Studio has API access off, so it plays unsaved).
-- Multi-player behaviour hasn't been run.
+- The user has **not** hand-playtested any of this (or the earlier UI overhaul).
+- Owner handover and joining another player's store need 2 players; not run.
+- Saves (Studio has API access off): hires persisting across sessions, and the save lock.
+- Assigning an insider by clicking in the menu (only the remote was driven); the staff menu with a non-owner viewing.
 
-## Known bugs / open findings (from the 2026-10-19 audit; numbers match that report)
-5. Auto-match puts a pizza on an order with a different recipe (`ShopService` `matchTicket`); fix needs the user's rule call (only exact recipe matches?).
-6. Pay/scoring rules (`itemAccuracy`, `matchScore`, `toppingAccuracy`, cut evenness, `Config.PortionFactor`) have no specs.
-7. Register accepts up to 40 pizzas for any order (cheat scripts can flood the make-line); cap at the order size + a margin.
-8. `ShopService.luau` is ~3,000 lines doing ~10 jobs; split ovens and customers out first.
-9. Duplicate formatters (`formatMinutes` vs `Style.clock`; two thousands-separator copies).
-10. Dead code: `Ui.Style`, `Ui.Toasts`, `Icons.has`, the `exit` icon, `Style.Font.BodyBold`, shop `id`/`nextShopId`, `WorkHud.Init`'s `_isBusy`.
-11. Dough/ready racks rebuild every part and re-search markers on each change (slow-ish, not broken).
-12. Topping names show only on hover, so touch players see icons only.
-- Also: the Stations tab sits in the mobile thumbstick zone; the Follow chip disappears after 12 s; extras are paid as "Sloppy"; the 120 s bake is the whole belt (~90 s until pullable); a solo CSR sees few orders (deliveries need a driver).
+## Known bugs / open findings
+- From this session: dough is the bottleneck with one NPC stretcher (10 s a skin); NPCs walk straight through counters to the driver door; hiring rebuilds every NPC (a short pop); the Supreme job aid shows "PEPP" for both Pepperoni and Peppers.
+- Old saves: the `Franchise` field was dropped (anyone who bought a franchise loses it, no refund); fine if the game has no real players yet.
+- From the 2026-10-19 audit (numbers match that report): 5 Auto-match can put a pizza on a different recipe (NPC loaders only load exact matches; players still can); 6 pay/scoring rules have no specs; 7 Register accepts up to 40 pizzas; 8 `ShopService.luau` is ~3,300 lines (now also holds the staff); 9 duplicate formatters; 10 dead code; 11 racks rebuild every part; 12 topping names only on hover.
+- Also: the Stations tab sits in the mobile thumbstick zone; the Follow chip disappears after 12 s; extras are paid as "Sloppy"; the 120 s bake is the whole belt.
 
 ## Exact next step
-Ask the user to playtest the new UI in Studio (`rojo serve` in this folder, Connect in the Rojo plugin, play a shift) and send screenshots of anything off. Then get their list of mechanics changes / new mechanics, plan it into batches for approval, and continue the session's workflow: commit + push each batch after build, lint and specs pass, plus a scripted Studio run.
+Ask the user to playtest (`rojo serve` in this folder, Connect in the Rojo plugin): pick a store, hire staff (needs coins: 250 / 400), assign insiders, and if possible join with a second player to try handover. Then design the roll/spin with them: duplicates, what Assistant/Store Managers do, coins vs Robux, and the spin presentation.
