@@ -28,7 +28,7 @@ end)
 
 ---------------------------------------------------------------------------
 -- HUD: one slim pill, top right - day, time, open dot | coins, level (XP
--- progress along its bottom edge). Clock In and the Stations tab are WorkHud's.
+-- progress along its bottom edge). Stores and the Stations tab are WorkHud's.
 ---------------------------------------------------------------------------
 local C = Style.Color
 -- The wrapper is sized from its contents by hand: its XP line spans the full
@@ -110,7 +110,6 @@ task.spawn(function()
 	refreshHud()
 end)
 player:GetAttributeChangedSignal("XP"):Connect(refreshHud)
-player:GetAttributeChangedSignal("Job"):Connect(refreshHud)
 refreshHud()
 
 Remotes.Notify.OnClientEvent:Connect(function(text: string, color: Color3?, payInfo: any?)
@@ -125,15 +124,8 @@ Remotes.Notify.OnClientEvent:Connect(function(text: string, color: Color3?, payI
 end)
 
 ---------------------------------------------------------------------------
--- Prompt filtering: only show stations for your job.
+-- Prompt filtering: only your own store's stations.
 ---------------------------------------------------------------------------
--- Every station some job is restricted to (derived from Config.Jobs).
-local JOB_STATIONS: { [string]: boolean } = {}
-for _, def in Config.Jobs do
-	for _, stationName in def.stations do
-		JOB_STATIONS[stationName] = true
-	end
-end
 local delivering = false
 
 local function applyPrompt(pp: ProximityPrompt)
@@ -144,13 +136,12 @@ local function applyPrompt(pp: ProximityPrompt)
 	-- Drawn by Prompts in the store-systems look.
 	pp.Style = Enum.ProximityPromptStyle.Custom
 	local station = parent:GetAttribute("Station")
-	if pp.Name == "ClockPrompt" then
-		pp.Enabled = true -- clocking in/out is always available at the register
-	elseif type(station) == "string" and JOB_STATIONS[station] then
-		local job = player:GetAttribute("Job")
-		local def = if type(job) == "string" then Config.Jobs[job] else nil
-		-- Off duty: show everything so players discover stations (the server explains how to clock in).
-		pp.Enabled = def == nil or table.find(def.stations, station) ~= nil
+	if type(station) == "string" and Config.StationInfo(station) then
+		-- Not at a store yet: show every store's, so players find them (the server
+		-- points them to the Stores menu).
+		local mine = player:GetAttribute("StoreId")
+		local store = parent:FindFirstAncestorWhichIsA("Model")
+		pp.Enabled = mine == nil or (store ~= nil and store:GetAttribute("StoreId") == mine)
 	elseif parent:GetAttribute("HouseId") ~= nil then
 		pp.Enabled = delivering
 	elseif pp:GetAttribute("CarOwner") ~= nil then
@@ -171,7 +162,7 @@ workspace.DescendantAdded:Connect(function(d)
 		task.defer(applyPrompt, d)
 	end
 end)
-player:GetAttributeChangedSignal("Job"):Connect(applyAll)
+player:GetAttributeChangedSignal("StoreId"):Connect(applyAll)
 task.defer(applyAll)
 
 ---------------------------------------------------------------------------
@@ -206,14 +197,9 @@ Remotes.CancelMinigame.OnClientEvent:Connect(function(token: string)
 end)
 
 ---------------------------------------------------------------------------
--- Job menu
+-- Store picker: every lot in the server - open your own store on a free one,
+-- join one with room, or leave yours.
 ---------------------------------------------------------------------------
-local JOB_BLURBS = {
-	CSR = "Take orders and make pizzas. Earns the most XP toward management.",
-	Delivery = "Everything a CSR does, plus deliveries in your own car. Less XP, the best tips.",
-	ShiftManager = string.format("%d slots, highest XP wins. Any station, plus the supply truck. Level %d+ unless no manager is on.", Config.Management.ShiftManager.slots, Config.Management.ShiftManager.minLevel),
-	GeneralManager = string.format("%d slot, highest XP wins. Runs the store. Level %d+ unless no manager is on.", Config.Management.GeneralManager.slots, Config.Management.GeneralManager.minLevel),
-}
 local menuOpen: Frame? = nil
 
 local function closeMenu()
@@ -223,115 +209,49 @@ local function closeMenu()
 	end
 end
 
-Remotes.OpenJobMenu.OnClientEvent:Connect(function(shopName: string)
+Remotes.OpenStorePicker.OnClientEvent:Connect(function(lots: { any }, focus: number?)
 	closeMenu()
-	-- The time clock: one row per position, then Clock Out.
-	local root, body, close = Ui.panel("Time clock - " .. tostring(shopName), 540, 432)
+	local member = false
+	for _, lot in lots do
+		member = member or lot.mine
+	end
+	local root, body, close = Ui.panel("Stores", 540, 72 + #lots * 68 + (if member then 46 else 0))
 	menuOpen = root
 	close.Activated:Connect(closeMenu)
 	Ui.new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = body })
-	for i, jobName in Config.JobOrder do
-		local def = Config.Jobs[jobName]
-		local row = Ui.box(C.Tile, { Size = UDim2.new(1, 0, 0, 72), LayoutOrder = i, Parent = body })
-		Ui.edge(row, "left", 4, def.color)
-		Ui.text(string.upper(def.display), Style.Font.Heading, Style.Size.Big, { Position = UDim2.fromOffset(16, 8), Size = UDim2.new(1, -150, 0, 22), Parent = row })
-		Ui.text(JOB_BLURBS[jobName] or "", Style.Font.Body, Style.Size.Small, {
-			TextColor3 = C.CreamDim,
-			TextWrapped = true,
-			TextYAlignment = Enum.TextYAlignment.Top,
-			Position = UDim2.fromOffset(16, 32),
-			Size = UDim2.new(1, -150, 0, 34),
-			Parent = row,
-		})
-		local current = player:GetAttribute("Job") == jobName
-		if current then
-			local chip = Ui.chip("On shift", C.Green, C.White, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(0, 30), Parent = row })
-			chip.TextSize = Style.Size.Body
+	for i, lot in lots do
+		local row = Ui.box(C.Tile, { Size = UDim2.new(1, 0, 0, 62), LayoutOrder = i, Parent = body })
+		Ui.edge(row, "left", 4, if lot.mine then C.Green elseif lot.id == focus then C.Gold else C.Line)
+		local title, blurb
+		if lot.owner == nil then
+			title, blurb = string.format("Lot #%d", lot.id), "Free lot - open your own store here."
 		else
-			local b = Ui.flatButton("Clock in", "primary", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(112, 40), Parent = row })
+			title = if lot.owned then "Your store" else string.format("%s's store", tostring(lot.owner))
+			blurb = string.format("Lot #%d - %d/%d working", lot.id, lot.count, lot.max)
+		end
+		Ui.text(string.upper(title), Style.Font.Heading, Style.Size.Big, { Position = UDim2.fromOffset(16, 8), Size = UDim2.new(1, -150, 0, 22), TextTruncate = Enum.TextTruncate.AtEnd, Parent = row })
+		Ui.text(blurb, Style.Font.Body, Style.Size.Small, { TextColor3 = C.CreamDim, Position = UDim2.fromOffset(16, 34), Size = UDim2.new(1, -150, 0, 18), Parent = row })
+		local at = { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(112, 40), Parent = row }
+		if lot.mine then
+			local chip = Ui.chip("You're here", C.Green, C.White, { AnchorPoint = at.AnchorPoint, Position = at.Position, Size = UDim2.fromOffset(0, 30), Parent = row })
+			chip.TextSize = Style.Size.Body
+		elseif lot.owner ~= nil and lot.count >= lot.max then
+			Ui.flatButton("Full", "dark", at)
+		else
+			local b = Ui.flatButton(if lot.owner == nil then "Open store" else "Join", "primary", at)
 			b.Activated:Connect(function()
-				Remotes.ChooseJob:FireServer(jobName)
+				Remotes.ChooseStore:FireServer(lot.id)
 				closeMenu()
 			end)
 		end
 	end
-	local out = Ui.flatButton("Clock out", "ghost", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 99, Parent = body })
-	out.Activated:Connect(function()
-		Remotes.ChooseJob:FireServer(nil)
-		closeMenu()
-	end)
-end)
-
----------------------------------------------------------------------------
--- Franchise menu
----------------------------------------------------------------------------
-Remotes.OpenFranchiseMenu.OnClientEvent:Connect(function(info: any)
-	closeMenu()
-	local root, body, close = Ui.panel("Open a franchise", 520, if info.owned then 200 else 400)
-	menuOpen = root
-	close.Activated:Connect(closeMenu)
-
-	if info.owned then
-		Ui.text("You already own a franchise. It opens on a free lot whenever you're in a server.", Style.Font.Body, Style.Size.Body, {
-			TextWrapped = true,
-			TextYAlignment = Enum.TextYAlignment.Top,
-			Size = UDim2.fromScale(1, 1),
-			Parent = body,
-		})
-		return
-	end
-	-- What you get, then what it takes (and where you stand).
-	local perks = {
-		string.format("%d%% of every sale at your shop", math.floor(info.saleCut * 100)),
-		string.format("%d%% royalty on what your workers make", math.floor(info.royalty * 100)),
-		"You name it",
-	}
-	for i, perk in perks do
-		local line = Ui.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, (i - 1) * 26), Size = UDim2.new(1, 0, 0, 24), Parent = body })
-		Ui.box(C.Gold, { Position = UDim2.fromOffset(0, 8), Size = UDim2.fromOffset(8, 8), Parent = line })
-		Ui.text(perk, Style.Font.Body, Style.Size.Body, { Position = UDim2.fromOffset(18, 0), Size = UDim2.new(1, -18, 1, 0), Parent = line })
-	end
-	local needs = Ui.box(C.Tile, { Position = UDim2.fromOffset(0, 92), Size = UDim2.new(1, 0, 0, 64), Parent = body })
-	local function stat(x: number, label: string, need: string, have: string, ok: boolean)
-		Ui.caption(label, { Position = UDim2.new(x, 12, 0, 8), Size = UDim2.new(0.5, -24, 0, 16), Parent = needs })
-		Ui.text(string.format("%s  /  %s", have, need), Style.Font.Mono, Style.Size.Big, {
-			TextColor3 = if ok then C.Green else C.Cream,
-			Position = UDim2.new(x, 12, 0, 28),
-			Size = UDim2.new(0.5, -24, 0, 24),
-			Parent = needs,
-		})
-	end
-	stat(0, "Level", tostring(info.minLevel), tostring(info.level), info.level >= info.minLevel)
-	stat(0.5, "Coins", tostring(info.cost), tostring(info.coins), info.coins >= info.cost)
-	local eligible = info.level >= info.minLevel and info.coins >= info.cost
-	Ui.caption("Shop name", { Position = UDim2.fromOffset(0, 170), Parent = body })
-	local box = Ui.new("TextBox", {
-		Position = UDim2.fromOffset(0, 190),
-		Size = UDim2.new(1, 0, 0, 44),
-		BackgroundColor3 = C.Tile,
-		PlaceholderText = "3-24 characters",
-		PlaceholderColor3 = C.CreamDim,
-		Text = player.DisplayName .. "'s Pizza",
-		TextColor3 = C.Cream,
-		FontFace = Style.Font.LabelBold,
-		TextSize = Style.Size.Big,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ClearTextOnFocus = false,
-		Parent = body,
-	}, { Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12) }), Ui.new("UIStroke", { Color = C.Line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }) })
-	local buy = Ui.flatButton(if eligible then string.format("Buy franchise - %d coins", info.cost) else "Not eligible yet", if eligible then "primary" else "dark", {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.fromScale(0, 1),
-		Size = UDim2.new(1, 0, 0, 48),
-		TextSize = Style.Size.Big,
-		Parent = body,
-	})
-	buy.Activated:Connect(function()
-		if eligible then
-			Remotes.BuyFranchise:FireServer(box.Text)
+	if member then
+		local leave = Ui.flatButton("Leave store", "ghost", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 99, Parent = body })
+		leave.Activated:Connect(function()
+			Remotes.ChooseStore:FireServer(nil)
 			closeMenu()
-		end
-	end)
+		end)
+	end
 end)
 
 ---------------------------------------------------------------------------
@@ -399,7 +319,7 @@ player.CharacterAdded:Connect(function()
 end)
 
 task.delay(3, function()
-	Ui.toast(string.format("Welcome to %s. Clock in to start a shift (%s).", Config.GameName, GameClock.hoursText()), C.Gold)
+	Ui.toast(string.format("Welcome to %s. Open your own store or join one (%s).", Config.GameName, GameClock.hoursText()), C.Gold)
 end)
 
 Driving.Init()

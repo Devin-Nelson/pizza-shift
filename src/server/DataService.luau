@@ -14,7 +14,6 @@ export type Profile = {
 	XP: number,
 	PizzasMade: number,
 	Deliveries: number,
-	Franchise: { owned: boolean, name: string },
 	TipsSeen: { [string]: boolean }, -- stations whose first-visit tip the player has closed
 }
 
@@ -44,7 +43,6 @@ local function defaultProfile(): Profile
 		XP = 0,
 		PizzasMade = 0,
 		Deliveries = 0,
-		Franchise = { owned = false, name = "" },
 		TipsSeen = {},
 	}
 end

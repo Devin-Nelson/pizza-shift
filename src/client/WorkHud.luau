@@ -6,14 +6,14 @@
 --    table, every pizza in the ovens by slot (OUT to pull, red as it's about
 --    to fall); at the heat rack, deliveries ready to go (click one to take it)
 --    and the ones on the road.
---  * Stations tab (bottom left, on shift): collapsed by default. It opens
+--  * Stations tab (bottom left, at your store): collapsed by default. It opens
 --    sideways along the bottom into a key per station (gold badge = jobs
 --    waiting), then Help (the station's tip), Job Aid, the order-matching
---    switch, Exit and Positions.
+--    switch, Exit and Stores.
 --    While it's open the work strip steps aside so nothing covers the pizza.
 --  * Follow chip (above the tab) after a step: takes that pizza to its next
 --    station.
---  * Off duty: a Clock In button where the tab goes.
+--  * Not at a store: a Stores button where the tab goes (open or join one).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -60,15 +60,12 @@ local function stationLabel(id: string): string
 	return if info then info.label else id
 end
 
+-- Every station (there are no roles), while you work at a store.
 local function myStations(): { string }
-	local job = player:GetAttribute("Job")
-	local def = if type(job) == "string" then Config.Jobs[job] else nil
 	local list = {}
-	if def then
+	if player:GetAttribute("StoreId") ~= nil then
 		for _, s in Config.Stations do
-			if table.find(def.stations, s.id) then
-				table.insert(list, s.id)
-			end
+			table.insert(list, s.id)
 		end
 	end
 	return list
@@ -244,8 +241,8 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		end
 	end
 
-	-- Bottom left: Clock In / Stations tab / open bar / follow chip ---------------
-	local clockIn = Ui.flatButton("Clock In", "primary", {
+	-- Bottom left: Stores / Stations tab / open bar / follow chip ---------------
+	local storesButton = Ui.flatButton("Stores", "primary", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 10, 1, -10),
 		Size = UDim2.fromOffset(150, 44),
@@ -253,8 +250,8 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		Visible = false,
 		Parent = Ui.Root,
 	})
-	clockIn.Activated:Connect(function()
-		Remotes.RequestTimeClock:FireServer()
+	storesButton.Activated:Connect(function()
+		Remotes.RequestStores:FireServer()
 	end)
 
 	local tab = Ui.flatButton("", "key", {
@@ -341,7 +338,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 	local function rebuildBar()
 		local here = StationMode.Current()
 		local stations = myStations()
-		local sig = table.concat({ tostring(here), tostring(player:GetAttribute("Job")), Loading.mode, tostring(StationPicks.HasAid()) }, "|")
+		local sig = table.concat({ tostring(here), tostring(player:GetAttribute("StoreId")), Loading.mode, tostring(StationPicks.HasAid()) }, "|")
 		for _, id in stations do
 			sig ..= "|" .. waitingAt(id)
 		end
@@ -382,9 +379,9 @@ function WorkHud.Init(_isBusy: () -> boolean)
 				StationMode.Exit()
 			end, opts = { dim = true, iconOpts = { color = C.CreamDim } } })
 		end
-		table.insert(utils, { text = "Positions", icon = "person", fn = function()
+		table.insert(utils, { text = "Stores", icon = "person", fn = function()
 			setExpanded(false)
-			Remotes.RequestTimeClock:FireServer()
+			Remotes.RequestStores:FireServer()
 		end, opts = { dim = true, iconOpts = { color = C.CreamDim } } })
 		local fixed = #utils * KEY_W + 52
 		local n = math.max(#stations, 1)
@@ -441,7 +438,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		follow = if type(info) == "table" and type(info.next) == "string" then info else nil
 		followAt = os.clock()
 	end)
-	player:GetAttributeChangedSignal("Job"):Connect(function()
+	player:GetAttributeChangedSignal("StoreId"):Connect(function()
 		follow = nil
 		setExpanded(false)
 		barSig = ""
@@ -450,7 +447,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 
 	local lastTick = 0
 	RunService.Heartbeat:Connect(function()
-		local onShift = player:GetAttribute("Job") ~= nil
+		local onShift = player:GetAttribute("StoreId") ~= nil
 		local here = StationMode.Current()
 		if here ~= railStation then
 			-- Arriving somewhere new: tickets for that station, bar folded away.
@@ -485,7 +482,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		end
 		local info = if here then Config.StationInfo(here) else nil
 		rail.Visible = onShift and os.clock() - snapshotAt < 3 and info ~= nil and info.queue ~= nil
-		clockIn.Visible = not onShift and here == nil
+		storesButton.Visible = not onShift and here == nil
 		tab.Visible = onShift and not expanded
 		if expanded and not onShift then
 			setExpanded(false)

@@ -25,10 +25,10 @@ function GameClock.isOpen(weekHour: number?): boolean
 	return hour >= Config.Day.OpenHour and hour < Config.Day.CloseHour
 end
 
--- Staff may clock in a little before opening to prep (e.g. stretch dough).
-function GameClock.canClockIn(weekHour: number?): boolean
+-- Stations open a little before the store does, to prep (e.g. stretch dough).
+function GameClock.canWork(weekHour: number?): boolean
 	local _, hour = GameClock.split(weekHour)
-	return hour >= Config.Day.OpenHour - Config.Day.ClockInEarly and hour < Config.Day.CloseHour
+	return hour >= Config.Day.OpenHour - Config.Day.PrepEarly and hour < Config.Day.CloseHour
 end
 
 function GameClock.dayName(day: number): string
@@ -58,19 +58,19 @@ function GameClock.shortTime(hour: number): string
 	return (GameClock.format(hour):gsub(":00 ", " "))
 end
 
--- "open 10 AM to midnight, clock-in from 9:30 AM"
+-- "open 10 AM to midnight, prep from 9:30 AM"
 function GameClock.hoursText(): string
 	local D = Config.Day
-	return string.format("open %s to %s, clock-in from %s", GameClock.shortTime(D.OpenHour), GameClock.shortTime(D.CloseHour), GameClock.shortTime(D.OpenHour - D.ClockInEarly))
+	return string.format("open %s to %s, prep from %s", GameClock.shortTime(D.OpenHour), GameClock.shortTime(D.CloseHour), GameClock.shortTime(D.OpenHour - D.PrepEarly))
 end
 
--- Hours until clock-in next opens (0 if staff can clock in now).
-function GameClock.hoursUntilClockIn(weekHour: number?): number
+-- Hours until the stations next open (0 if they're open now).
+function GameClock.hoursUntilWork(weekHour: number?): number
 	local _, hour = GameClock.split(weekHour)
-	if GameClock.canClockIn(weekHour) then
+	if GameClock.canWork(weekHour) then
 		return 0
 	end
-	local start = Config.Day.OpenHour - Config.Day.ClockInEarly
+	local start = Config.Day.OpenHour - Config.Day.PrepEarly
 	return if hour < start then start - hour else 24 - hour + start
 end
 

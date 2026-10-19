@@ -366,14 +366,6 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 			p:SetAttribute("PizzaAt", pizzaAt)
 		end
 		prompt(p, action, title)
-		if kind == "Register" then
-			-- Clocking in and out happens at the order-taking station (F), alongside taking orders (E).
-			local clock = prompt(p, "Clock In / Out", "Register")
-			clock.Name = "ClockPrompt"
-			clock.KeyboardKeyCode = Enum.KeyCode.F
-			clock.GamepadKeyCode = Enum.KeyCode.ButtonY
-			clock.UIOffset = Vector2.new(0, 72)
-		end
 		StationArt.Build(kind, p, art)
 		return p
 	end
@@ -492,14 +484,13 @@ local function buildPlot(id: number, cf: CFrame, parent: Instance): Part
 	model.Name = "Plot" .. id
 	local base = part({ Name = "Base", Size = Vector3.new(84, 0.4, 100), CFrame = cf * CFrame.new(2, 0.2, -18), Color = Color3.fromRGB(140, 120, 90), Material = Enum.Material.Ground, Parent = model })
 	local signPost = part({ Name = "ForSale", Size = Vector3.new(10, 6, 0.5), CFrame = cf * CFrame.new(0, 5, 30), Color = Color3.fromRGB(255, 255, 255), Parent = model })
-	prompt(signPost, "Franchise Info", "Lot #" .. id)
-	label(signPost, "FRANCHISE LOT\nOpen your own store!", 5, UDim2.fromOffset(220, 60))
+	prompt(signPost, "Stores", "Lot #" .. id)
+	label(signPost, "STORE LOT #" .. id .. "\nOpen your own store!", 5, UDim2.fromOffset(220, 60))
 	model.Parent = parent
 	return base
 end
 
 export type World = {
-	hq: Model,
 	houses: { Part },
 	plots: { { id: number, cframe: CFrame, model: Model } },
 }
@@ -519,8 +510,8 @@ function MapBuilder.Build(): World
 
 	part({ Name = "Ground", Size = Vector3.new(1200, 2, 1200), CFrame = CFrame.new(0, -1, 0), Color = Color3.fromRGB(90, 160, 70), Material = Enum.Material.Grass, Parent = map })
 
-	-- Roads: Main Street (neighborhood), an avenue east of the HQ, a back
-	-- street past the franchise lots, and a driveway from the HQ lot.
+	-- Roads: Main Street (neighborhood), an avenue east of lot 1, a back
+	-- street past the other lots, and a driveway from lot 1's parking.
 	local roadColor = Color3.fromRGB(55, 55, 60)
 	local function road(name: string, size: Vector3, pos: Vector3)
 		part({ Name = name, Size = size, CFrame = CFrame.new(pos), Color = roadColor, Material = Enum.Material.Asphalt, CanCollide = false, Parent = map })
@@ -550,9 +541,6 @@ function MapBuilder.Build(): World
 	shops.Name = "Shops"
 	shops.Parent = workspace
 
-	local hq = MapBuilder.BuildShop(CFrame.new(0, 0, 0), Config.GameName, shops)
-	hq.Name = "HQ"
-
 	-- Delivery neighborhood along Main Street.
 	local housesFolder = Instance.new("Folder")
 	housesFolder.Name = "Houses"
@@ -571,18 +559,22 @@ function MapBuilder.Build(): World
 		table.insert(houses, buildHouse(id, CFrame.new(x, 0, 240) * CFrame.Angles(0, math.pi, 0), housesFolder))
 	end
 
-	-- Franchise lots north of the HQ.
+	-- Store lots: lot 1 on the old HQ site by the spawn, lots 2-5 up north.
+	-- Stores are built on them as players open them (StoreService).
 	local plotsFolder = Instance.new("Folder")
 	plotsFolder.Name = "Plots"
 	plotsFolder.Parent = workspace
 	local plots = {}
-	for i, x in { -195, -95, 5, 105 } do
-		local cf = CFrame.new(x, 0, -200)
+	local sites = { CFrame.new(0, 0, 0) }
+	for _, x in { -195, -95, 5, 105 } do
+		table.insert(sites, CFrame.new(x, 0, -200))
+	end
+	for i, cf in sites do
 		local model = buildPlot(i, cf, plotsFolder).Parent :: Model
 		table.insert(plots, { id = i, cframe = cf, model = model })
 	end
 
-	-- Trees, kept off roads, houses, lots and the HQ.
+	-- Trees, kept off roads, houses and lots.
 	local rng = Random.new(7)
 	for _ = 1, 90 do
 		local x = rng:NextNumber(-580, 580)
@@ -590,15 +582,15 @@ function MapBuilder.Build(): World
 		local clear = (math.abs(z - 190) < 80) -- Main Street + houses
 			or (math.abs(x - 52) < 25 and z > -170 and z < 200) -- Avenue
 			or (math.abs(z + 130) < 20 and x > -240 and x < 70) -- Back Street
-			or (z > -280 and z < -140 and x > -250 and x < 160) -- franchise lots
-			or (x > -45 and x < 70 and z > -70 and z < 90) -- HQ + lot
+			or (z > -280 and z < -140 and x > -250 and x < 160) -- lots 2-5
+			or (x > -45 and x < 70 and z > -70 and z < 90) -- lot 1 + its parking
 		if not clear then
 			part({ Name = "Trunk", Size = Vector3.new(2, 10, 2), CFrame = CFrame.new(x, 5, z), Color = Color3.fromRGB(100, 70, 40), Material = Enum.Material.Wood, Parent = map })
 			part({ Name = "Leaves", Shape = Enum.PartType.Ball, Size = Vector3.new(12, 12, 12), CFrame = CFrame.new(x, 13, z), Color = Color3.fromRGB(50, 130, 50), Material = Enum.Material.Grass, Parent = map })
 		end
 	end
 
-	return { hq = hq, houses = houses, plots = plots }
+	return { houses = houses, plots = plots }
 end
 
 return MapBuilder

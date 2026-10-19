@@ -103,14 +103,6 @@ local function sum(t: { number }): number
 end
 
 ----------------------------------------------------------------- Config wiring
-spec("every station a job can work is defined in Config.Stations", function()
-	for job, info in Config.Jobs do
-		for _, id in info.stations do
-			assert(Config.StationInfo(id), job .. " lists unknown station " .. id)
-		end
-	end
-end)
-
 spec("every StationView entry is a real station (or Default)", function()
 	for id in Config.StationView do
 		assert(id == "Default" or Config.StationInfo(id), "StationView has unknown station " .. id)
@@ -237,19 +229,19 @@ spec("store is open 10 AM up to (not including) midnight", function()
 	eq(GameClock.isOpen(24), false, "midnight")
 end)
 
-spec("clock-in opens at 9:30 AM", function()
-	eq(GameClock.canClockIn(9.49), false, "9:29")
-	eq(GameClock.canClockIn(9.5), true, "9:30")
-	eq(GameClock.hoursUntilClockIn(0), 9.5, "from midnight")
-	eq(GameClock.hoursUntilClockIn(9.5), 0, "at 9:30")
-	near(GameClock.hoursUntilClockIn(24 + 6), 3.5, "Tuesday 6 AM")
+spec("stations open for prep at 9:30 AM", function()
+	eq(GameClock.canWork(9.49), false, "9:29")
+	eq(GameClock.canWork(9.5), true, "9:30")
+	eq(GameClock.hoursUntilWork(0), 9.5, "from midnight")
+	eq(GameClock.hoursUntilWork(9.5), 0, "at 9:30")
+	near(GameClock.hoursUntilWork(24 + 6), 3.5, "Tuesday 6 AM")
 end)
 
-spec("a fresh server starts just before clock-in", function()
+spec("a fresh server starts just before prep opens", function()
 	attrs.WeekHour = nil
 	eq(GameClock.weekHour(), Config.Day.StartWeekHour, "default week hour")
-	eq(GameClock.canClockIn(), false, "can clock in at start")
-	assert(GameClock.hoursUntilClockIn() < 0.25, "clock-in should be minutes away")
+	eq(GameClock.canWork(), false, "stations open at start")
+	assert(GameClock.hoursUntilWork() < 0.25, "prep should be minutes away")
 end)
 
 spec("split maps week hours to Mon..Sun", function()
@@ -267,7 +259,7 @@ spec("times format like a wall clock", function()
 	eq(GameClock.format(9.5), "9:30 AM", "9.5")
 	eq(GameClock.shortTime(10), "10 AM", "short 10")
 	eq(GameClock.shortTime(24), "midnight", "short 24")
-	eq(GameClock.hoursText(), "open 10 AM to midnight, clock-in from 9:30 AM", "hoursText")
+	eq(GameClock.hoursText(), "open 10 AM to midnight, prep from 9:30 AM", "hoursText")
 end)
 
 spec("format's documented example: 17.7 reads 5:42 PM", function()

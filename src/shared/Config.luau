@@ -32,58 +32,12 @@ Config.UiScaleRange = { 0.7, 1.6 }
 Config.TicketAge = { Fresh = 120, Aging = 300 }
 
 ---------------------------------------------------------------------------
--- Jobs
+-- Stations and jobs
 ---------------------------------------------------------------------------
 
--- `stations` lists the station kinds a job may use; xpMult scales XP per task.
--- Tips follow the order instead of the job: delivery tips go to the driver,
--- carryout tips are split among the insiders who made it.
--- CSRs run the store (phones, counter, every make step, cut table) and level
--- fastest. Drivers can do everything a CSR does plus deliveries: less XP, more
--- tip cash. Managers can work every station, including unloading the truck.
-local KITCHEN = { "Register", "Dough", "Sauce", "Cheese", "Toppings", "Load", "CutTable" }
-local DRIVER = table.clone(KITCHEN)
-table.insert(DRIVER, "DeliveryRack")
-local EVERYTHING = table.clone(DRIVER)
-table.insert(EVERYTHING, "SupplyTruck")
-
-Config.Jobs = {
-	CSR = { display = "CSR", color = Color3.fromRGB(52, 152, 219), stations = KITCHEN, xpMult = 1.5 },
-	Delivery = { display = "Delivery Driver", color = Color3.fromRGB(46, 204, 113), stations = DRIVER, xpMult = 0.6 },
-	ShiftManager = { display = "Shift Manager", color = Color3.fromRGB(155, 89, 182), stations = EVERYTHING, xpMult = 1.2, management = true },
-	GeneralManager = { display = "General Manager", color = Color3.fromRGB(230, 126, 34), stations = EVERYTHING, xpMult = 1.2, management = true },
-}
-Config.JobOrder = { "CSR", "Delivery", "ShiftManager", "GeneralManager" }
-
--- Management: finite slots per store, filled by XP. If nobody at the store holds
--- a management role, anyone may step up; otherwise minLevel applies, and when
--- every slot is taken a higher-XP player bumps the lowest-XP holder.
-Config.Management = {
-	ShiftManager = { slots = 4, minLevel = 5 },
-	GeneralManager = { slots = 1, minLevel = 10 },
-}
-
--- Jobs allowed to use `station`, in JobOrder.
-function Config.JobsWithStation(station: string): { string }
-	local list = {}
-	for _, name in Config.JobOrder do
-		if table.find(Config.Jobs[name].stations, station) then
-			table.insert(list, name)
-		end
-	end
-	return list
-end
-
--- Jobs flagged as management, in JobOrder.
-function Config.ManagementJobs(): { string }
-	local list = {}
-	for _, name in Config.JobOrder do
-		if Config.Jobs[name].management then
-			table.insert(list, name)
-		end
-	end
-	return list
-end
+-- There are no roles: every player at a store can work every station, the
+-- truck and deliveries included (deliveries need the store to take them, see
+-- Config.Store.DeliveryMinPlayers).
 
 -- Work stations as the HUD shows them, in workflow order. `stage` is the stage
 -- of the pizzas a station works (pizzas waiting there are in that stage).
@@ -329,9 +283,9 @@ end
 Config.Day = {
 	RealSecondsPerHour = 150, -- 1 game hour = 2.5 real minutes (day = 1 hr, week = 7 hrs)
 	OpenHour = 10,
-	ClockInEarly = 0.5, -- staff can clock in 30 minutes before opening to prep
+	PrepEarly = 0.5, -- stations open 30 minutes before the store does, to prep
 	CloseHour = 24,
-	StartWeekHour = 9.4, -- new servers start Monday ~9:25 AM, just before clock-in opens
+	StartWeekHour = 9.4, -- new servers start Monday ~9:25 AM, just before prep opens
 	DayNames = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" },
 }
 
@@ -361,13 +315,13 @@ Config.OrderSizes = {
 	SizeMix = { Small = 0.25, Medium = 0.35, Large = 0.40 }, -- how often each pizza size is ordered
 }
 
--- How much of the order flow players get. Orders that would exceed this many
--- open pizzas per staff member on shift are handled by the off-screen crew
--- (they still count as store sales). With nobody on shift, the crew runs the store.
+-- How much of the order flow a store's crew (its players) gets. Orders that
+-- would exceed this many open pizzas per worker are handled by the off-screen
+-- crew (they still count as store sales).
 Config.Crew = { PizzasPerWorker = 4 }
 
 ---------------------------------------------------------------------------
--- Store, franchises, monetization
+-- Stores, monetization
 ---------------------------------------------------------------------------
 
 Config.Shop = {
@@ -376,16 +330,23 @@ Config.Shop = {
 	MaxCustomers = 6, -- NPCs in the lobby at once
 	CustomerPatience = 300, -- real seconds for a 1-pizza order (the bake alone is ~90 s)...
 	PatiencePerPizza = 75, -- ...plus this much per extra pizza (big orders take a while)
-	AutoRegisterDelay = 12, -- online kiosk takes an order if no one answers (x3 while staff are on shift)
-	AutoRestockInterval = 20, -- trickle restock when no manager is on shift
+	AutoRegisterDelay = 12, -- online kiosk takes an order if no one answers (x3 while a player is at the store)
+	AutoRestockInterval = 20, -- trickle restock (up to StartingStock); the truck fills to MaxStock
 	AutoRestockAmount = 2,
 }
 
-Config.Franchise = {
-	Cost = 15000,
-	MinLevel = 8,
-	OwnerRoyalty = 0.2, -- owner earns 20% of worker pay at their shop (paid by the house, not deducted)
-	SaleCut = 0.5, -- owner earns 50% of each completed sale's price
+-- Store slots: each server has Slots lots (the first is the old HQ site).
+-- A player opens their own store on a free lot or joins one with room.
+-- The owner earns SaleCut of every completed sale there and OwnerRoyalty on
+-- every other worker's pay (paid by the house, not deducted). When the owner
+-- leaves, the longest-serving worker takes over with their own store.
+-- Delivery orders only come in with DeliveryMinPlayers players at the store
+-- or a hired driver; otherwise they arrive as carryout.
+Config.Store = {
+	MaxPlayers = 4,
+	SaleCut = 0.5,
+	OwnerRoyalty = 0.2,
+	DeliveryMinPlayers = 2,
 }
 
 -- Set these after creating the products on the Creator Dashboard. 0 = disabled.

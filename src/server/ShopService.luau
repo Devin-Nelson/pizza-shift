@@ -186,11 +186,6 @@ end
 local function holdsStation(session: Session): boolean
 	return STAY[session.station] and session.kind ~= "Delivery"
 end
--- Derived from Config so adding or changing a job can't leave these out of date.
-local STAFF_JOBS = Config.JobsWithStation("Register") -- anyone who takes orders / makes pizzas
-local DRIVING_JOBS = Config.JobsWithStation("DeliveryRack")
-local MANAGEMENT_JOBS = Config.ManagementJobs()
-
 local SESSION_TIMEOUT = 120
 local FLAT = Pizza3D.FLAT
 local SCREEN_COLOR = Color3.fromRGB(58, 58, 62) -- pizza screens, dark from use (matches StationArt)
@@ -209,28 +204,20 @@ local function randomFrom<T>(list: { T }): T
 	return list[math.random(1, #list)]
 end
 
-local function jobDef(player: Player): any
-	local job = player:GetAttribute("Job")
-	return if type(job) == "string" then Config.Jobs[job] else nil
-end
-
-local function jobAllows(player: Player, stationName: string): boolean
-	local def = jobDef(player)
-	return def ~= nil and table.find(def.stations, stationName) ~= nil
-end
-
-local function staffAt(shop: Shop, jobs: { string }): { Player }
+-- The players working at `shop` (its members, see ShopService.SetMember).
+local function membersOf(shop: Shop): { Player }
 	local list = {}
 	for player, s in playerShop do
-		if s == shop and player.Parent and table.find(jobs, player:GetAttribute("Job")) then
+		if s == shop and player.Parent then
 			table.insert(list, player)
 		end
 	end
 	return list
 end
 
-local function onShift(shop: Shop, jobs: { string }): boolean
-	return #staffAt(shop, jobs) > 0
+-- Delivery orders need a second player (or, later, a hired driver).
+local function takesDeliveries(shop: Shop): boolean
+	return #membersOf(shop) >= Config.Store.DeliveryMinPlayers
 end
 
 local function average(list: { number }): number
@@ -264,13 +251,13 @@ local function isOpen(): boolean
 	return GameClock.isOpen(ClockService.WeekHour())
 end
 
--- Staff can be on the clock from 30 minutes before opening (to prep) until midnight.
+-- Stations open 30 minutes before the store (to prep) until midnight.
 local function canWork(): boolean
-	return GameClock.canClockIn(ClockService.WeekHour())
+	return GameClock.canWork(ClockService.WeekHour())
 end
 
 local function closedMessage(): string
-	local hours = math.ceil(GameClock.hoursUntilClockIn(ClockService.WeekHour()))
+	local hours = math.ceil(GameClock.hoursUntilWork(ClockService.WeekHour()))
 	return string.format("We're closed (%s). That's about %d game hour%s away.", GameClock.hoursText(), hours, if hours == 1 then "" else "s")
 end
 
@@ -516,8 +503,7 @@ local function pay(shop: Shop, player: Player, base: number, quality: number, wh
 	end
 	local q = math.clamp(math.max(Config.MinQualityPay, quality), 0, 1)
 	local amount = DataService.AddCoins(player, base * q)
-	local def = jobDef(player)
-	local xp = math.max(1, math.floor(Config.XPPerTask * (if def then def.xpMult else 1) + 0.5))
+	local xp = Config.XPPerTask
 	local leveled = DataService.AddXP(player, xp)
 	local grade = if quality >= 0.9 then "PERFECT" elseif quality >= 0.7 then "Great" elseif quality >= 0.45 then "OK" else "Sloppy"
 	-- The client shows this as a pay slip (grade, what, coins, XP); the text is the fallback.
@@ -527,7 +513,7 @@ local function pay(shop: Shop, player: Player, base: number, quality: number, wh
 	end
 	local owner = shop.owner
 	if owner and owner ~= player and owner.Parent then
-		DataService.AddCoins(owner, base * q * Config.Franchise.OwnerRoyalty, true)
+		DataService.AddCoins(owner, base * q * Config.Store.OwnerRoyalty, true)
 	end
 end
 
@@ -634,7 +620,7 @@ local function customerLeave(shop: Shop, c: Customer, mood: string)
 		c.order.customer = nil
 		c.order.cancelled = true
 		-- Say so out loud, otherwise the order just vanishes from the screens.
-		for _, p in staffAt(shop, STAFF_JOBS) do
+		for _, p in membersOf(shop) do
 			notify(p, string.format("The customer for order #%d gave up and left - order cancelled.", c.order.id), Color3.fromRGB(255, 120, 100))
 		end
 	end
@@ -1029,7 +1015,7 @@ local function dropPie(shop: Shop, pie: Pie)
 		visual:Destroy()
 	end
 	local what = if ticket then string.format("Pizza %s", ticketLabel(ticket)) else "An extra pizza"
-	for _, p in staffAt(shop, STAFF_JOBS) do
+	for _, p in membersOf(shop) do
 		notify(p, string.format("%s fell off the end of oven slot %d!%s", what, slot or 0, if ticket then " Make another one." else ""), Color3.fromRGB(255, 110, 90))
 	end
 	updateBoards(shop)
@@ -1295,7 +1281,7 @@ local function completeOrder(shop: Shop, order: Order, extra: number, driver: Pl
 	end
 	local owner = shop.owner
 	if owner and owner.Parent then
-		DataService.AddCoins(owner, price * Config.Franchise.SaleCut, true)
+		DataService.AddCoins(owner, price * Config.Store.SaleCut, true)
 	end
 
 	local c = order.customer
@@ -1467,13 +1453,14 @@ local function spawnCustomer(shop: Shop, items: { Item }, online: boolean)
 end
 
 -- One new order from the forecast: route it to the players or the off-screen crew.
+-- A store that can't take deliveries gets them as carryout instead.
 local function newOrder(shop: Shop, items: { Item })
 	local S = Config.Sales
-	local delivery = shop.rng:NextNumber() < S.DeliveryShare
+	local delivery = shop.rng:NextNumber() < S.DeliveryShare and takesDeliveries(shop)
 	local online = shop.rng:NextNumber() < S.OnlineShare
-	local staff = #staffAt(shop, STAFF_JOBS)
+	local staff = #membersOf(shop)
 	local capacity = staff * Config.Crew.PizzasPerWorker - openPizzas(shop)
-	local playable = staff > 0 and #items <= capacity and (not delivery or onShift(shop, DRIVING_JOBS))
+	local playable = staff > 0 and #items <= capacity
 	if not playable then
 		recordSale(shop, SalesPlan.price(items), true)
 		return
@@ -1696,7 +1683,7 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 		end
 		local needs = { Dough = 1 }
 		if hasStock(shop, needs) then
-			return "Out of dough! A manager needs to unload the truck."
+			return "Out of dough! Unload the supply truck out back."
 		end
 		consume(shop, needs)
 		begin(player, shop, stationName, {
@@ -1715,7 +1702,7 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 		end
 		local needs = { Sauce = 1 }
 		if hasStock(shop, needs) then
-			return "Out of sauce! A manager needs to unload the truck."
+			return "Out of sauce! Unload the supply truck out back."
 		end
 		consume(shop, needs)
 		begin(player, shop, stationName, { skins = counts, sizes = Config.Sizes, station = station(shop, stationName) }, { consumed = needs })
@@ -1733,7 +1720,7 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 			needs.Cheese = 1
 			local missing = hasStock(shop, needs)
 			if missing then
-				return "Out of " .. missing .. "! A manager needs to unload the truck."
+				return "Out of " .. missing .. "! Unload the supply truck out back."
 			end
 			consume(shop, needs)
 		elseif readyRoom(shop) <= 0 then
@@ -1972,15 +1959,10 @@ local function useStation(shop: Shop, stationName: string, player: Player, pickI
 		notify(player, closedMessage(), Color3.fromRGB(255, 160, 100))
 		return
 	end
-	if not jobAllows(player, stationName) then
-		local needed = {}
-		for _, jobName in Config.JobsWithStation(stationName) do
-			table.insert(needed, Config.Jobs[jobName].display)
-		end
-		notify(player, "That station is for: " .. table.concat(needed, ", ") .. ". Use Clock In / Positions (bottom left) to change jobs.", Color3.fromRGB(255, 160, 100))
+	if playerShop[player] ~= shop then
+		notify(player, "You don't work at this store. Open Stores (bottom left) to join it.", Color3.fromRGB(255, 160, 100))
 		return
 	end
-	playerShop[player] = shop
 	if STAY[stationName] then
 		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		if humanoid and humanoid.SeatPart then
@@ -2408,11 +2390,8 @@ local function closeStore(shop: Shop)
 	for _, c in table.clone(shop.customers) do
 		customerLeave(shop, c, "Aw, they're closing...")
 	end
-	for player, s in table.clone(playerShop) do
-		if s == shop and player:GetAttribute("Job") then
-			ShopService.SetJob(player, nil)
-			notify(player, string.format("The store's closed for the night and you've been clocked out (%s).", GameClock.hoursText()), Color3.fromRGB(180, 220, 255))
-		end
+	for _, player in membersOf(shop) do
+		notify(player, string.format("The store's closed for the night (%s).", GameClock.hoursText()), Color3.fromRGB(180, 220, 255))
 	end
 	updateBoards(shop)
 	updateSalesBoard(shop)
@@ -2561,8 +2540,8 @@ local function tick(shop: Shop)
 		assign(player)
 	end
 
-	-- Keep everyone on shift here up to date for the queue panel / station bar.
-	local staff = staffAt(shop, STAFF_JOBS)
+	-- Keep everyone working here up to date for the queue panel / station bar.
+	local staff = membersOf(shop)
 	if #staff > 0 then
 		local snapshot = queueSnapshot(shop)
 		for _, p in staff do
@@ -2577,9 +2556,9 @@ local function tick(shop: Shop)
 		return
 	end
 
-	-- Online kiosk picks up walk-ins and calls nobody has answered. Staff on shift
-	-- get a longer window to take them first (they're often busy on the make-line).
-	local kioskDelay = if onShift(shop, STAFF_JOBS) then S.AutoRegisterDelay * 3 else S.AutoRegisterDelay
+	-- Online kiosk picks up walk-ins and calls nobody has answered. Players get a
+	-- longer window to take them first (they're often busy on the make-line).
+	local kioskDelay = if #staff > 0 then S.AutoRegisterDelay * 3 else S.AutoRegisterDelay
 	for _, e in table.clone(shop.pending) do
 		if not e.claimedBy and now - e.created > kioskDelay then
 			if not e.customer or e.customer.state == "Queued" then
@@ -2589,8 +2568,8 @@ local function tick(shop: Shop)
 		end
 	end
 
-	-- Trickle restock when no manager is on shift to unload the truck.
-	if not onShift(shop, MANAGEMENT_JOBS) and now - shop.lastRestock > S.AutoRestockInterval then
+	-- Trickle restock up to the starting stock; the truck fills the shelves.
+	if now - shop.lastRestock > S.AutoRestockInterval then
 		shop.lastRestock = now
 		for _, ing in Config.Ingredients do
 			if shop.stock[ing] < S.StartingStock then
@@ -2654,6 +2633,7 @@ function ShopService.AddShop(model: Model, name: string, owner: Player?, volume:
 	for slot = 1, Config.Oven.Slots do
 		shop.lanes[slot] = {}
 	end
+	model:SetAttribute("StoreId", shop.id) -- the client matches prompts to the player's StoreId
 
 	-- A store that opens mid-day shouldn't dump the whole morning's orders at once.
 	local day, hour = GameClock.split(ClockService.WeekHour())
@@ -2662,15 +2642,6 @@ function ShopService.AddShop(model: Model, name: string, owner: Player?, volume:
 	shop.day = day
 	shop.mix = SalesPlan.dayMix(shop.rng)
 	shop.demandToday = (shop.week :: SalesPlan.Week).days[day] * SalesPlan.shareByHour(hour)
-
-	local function openTimeClock(player: Player)
-		if not canWork() then
-			notify(player, closedMessage(), Color3.fromRGB(255, 160, 100))
-			return
-		end
-		playerShop[player] = shop
-		Remotes.OpenJobMenu:FireClient(player, shop.name)
-	end
 
 	local stations = model:FindFirstChild("Stations") :: Folder
 	for _, st in stations:GetChildren() do
@@ -2681,20 +2652,6 @@ function ShopService.AddShop(model: Model, name: string, owner: Player?, volume:
 		end
 		if stationName == "Pickup" then
 			pp.Enabled = false
-		elseif stationName == "Register" then
-			-- The register doubles as the time clock: F clocks in/out, and E
-			-- while off duty opens the clock-in menu instead of taking an order.
-			local clock = st:FindFirstChild("ClockPrompt") :: ProximityPrompt?
-			if clock then
-				clock.Triggered:Connect(openTimeClock)
-			end
-			pp.Triggered:Connect(function(player)
-				if player:GetAttribute("Job") == nil then
-					openTimeClock(player)
-				else
-					useStation(shop, stationName, player)
-				end
-			end)
 		elseif stationName == "Fridge" then
 			pp.Triggered:Connect(function(player)
 				local parts = {}
@@ -2728,11 +2685,8 @@ function ShopService.RemoveShop(shop: Shop)
 			ShopService.CancelSession(player)
 		end
 	end
-	for player, s in table.clone(playerShop) do
-		if s == shop then
-			playerShop[player] = nil
-			CarService.Release(player)
-		end
+	for _, player in membersOf(shop) do
+		ShopService.SetMember(player, nil)
 	end
 	local i = table.find(shops, shop)
 	if i then
@@ -2741,83 +2695,18 @@ function ShopService.RemoveShop(shop: Shop)
 	shop.model:Destroy()
 end
 
--- Management slots are finite and go to the highest-XP players.
--- No management at the store: anyone may step up. Otherwise the role's
--- minLevel applies, and when every slot is taken you must out-XP the
--- lowest holder, who is bumped down (GM -> Shift Manager if a slot is free, else CSR).
-function ShopService.TryManagement(player: Player, shop: Shop, role: string): (boolean, string)
-	local M = Config.Management[role]
-	if not M then
-		return false, "Unknown role."
-	end
-	if #staffAt(shop, MANAGEMENT_JOBS) == 0 then
-		return true, ""
-	end
-	if DataService.GetLevel(player) < M.minLevel then
-		return false, string.format("%s needs level %d (management is already on shift).", Config.Jobs[role].display, M.minLevel)
-	end
-	local holders = staffAt(shop, { role })
-	if #holders < M.slots then
-		return true, ""
-	end
-	local function xpOf(p: Player): number
-		return tonumber(p:GetAttribute("XP")) or 0
-	end
-	table.sort(holders, function(a, b)
-		return xpOf(a) < xpOf(b)
-	end)
-	local lowest = holders[1]
-	if xpOf(player) <= xpOf(lowest) then
-		return false, "All " .. Config.Jobs[role].display .. " slots are held by players with more XP."
-	end
-	local demoteTo = "CSR"
-	if role == "GeneralManager" and #staffAt(shop, { "ShiftManager" }) < Config.Management.ShiftManager.slots then
-		demoteTo = "ShiftManager"
-	end
-	ShopService.SetJob(lowest, demoteTo)
-	notify(lowest, string.format("%s has more XP and took your %s slot. You're now %s.", player.DisplayName, Config.Jobs[role].display, Config.Jobs[demoteTo].display), Color3.fromRGB(255, 160, 100))
-	return true, ""
-end
-
-function ShopService.SetJob(player: Player, job: string?)
-	leaveStation(player)
-	ShopService.CancelSession(player)
-	if job ~= "Delivery" then
+-- Makes `player` one of `shop`'s workers (nil: of no store). Who works where
+-- is StoreService's call; this keeps the work state in step with it.
+function ShopService.SetMember(player: Player, shop: Shop?)
+	if playerShop[player] ~= shop then
+		leaveStation(player)
+		ShopService.CancelSession(player)
 		CarService.Release(player)
+		playerShop[player] = shop
 	end
-	player:SetAttribute("Job", job)
-	local character = player.Character
-	if not character then
-		return
-	end
-	setUniform(character, job ~= nil)
-	local head = character:FindFirstChild("Head")
-	if head then
-		local old = head:FindFirstChild("JobTag")
-		if old then
-			old:Destroy()
-		end
-		if job then
-			local def = Config.Jobs[job]
-			local gui = Instance.new("BillboardGui")
-			gui.Name = "JobTag"
-			gui.Size = UDim2.fromOffset(140, 26)
-			gui.StudsOffset = Vector3.new(0, 2.6, 0)
-			gui.MaxDistance = 50
-			local tl = Instance.new("TextLabel")
-			tl.Size = UDim2.fromScale(1, 1)
-			tl.BackgroundColor3 = def.color
-			tl.BackgroundTransparency = 0.15
-			tl.TextColor3 = Color3.new(1, 1, 1)
-			tl.Font = Enum.Font.GothamBold
-			tl.TextScaled = true
-			tl.Text = def.display
-			local corner = Instance.new("UICorner")
-			corner.CornerRadius = UDim.new(0, 8)
-			corner.Parent = tl
-			tl.Parent = gui
-			gui.Parent = head
-		end
+	player:SetAttribute("StoreId", if shop then shop.id else nil)
+	if player.Character then
+		setUniform(player.Character, shop ~= nil)
 	end
 end
 
@@ -2879,32 +2768,6 @@ function ShopService.Init(houseDoors: { Part })
 			end
 		end
 	end)
-	-- HUD "Clock In" button: open the time clock for the nearest store.
-	Remotes.RequestTimeClock.OnServerEvent:Connect(function(player)
-		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if not root then
-			return
-		end
-		local nearest: Shop? = nil
-		local best = 220
-		for _, shop in shops do
-			local dist = (shop.model:GetPivot().Position - root.Position).Magnitude
-			if shop.alive and dist < best then
-				nearest, best = shop, dist
-			end
-		end
-		if not nearest then
-			notify(player, "Head to a " .. Config.GameName .. " store to clock in.", Color3.fromRGB(255, 160, 100))
-			return
-		end
-		if not canWork() then
-			notify(player, closedMessage(), Color3.fromRGB(255, 160, 100))
-			return
-		end
-		playerShop[player] = nearest
-		Remotes.OpenJobMenu:FireClient(player, nearest.name)
-	end)
-
 	-- HUD station bar and rail, queue panel clicks, and the "follow" button.
 	-- Works from anywhere in your store; you're moved to the station.
 	Remotes.UseStation.OnServerEvent:Connect(function(player, stationName, pickId)
@@ -2914,7 +2777,7 @@ function ShopService.Init(houseDoors: { Part })
 		local shop = playerShop[player]
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if not shop or not shop.alive or not root then
-			notify(player, "Clock in at a store first.", Color3.fromRGB(255, 160, 100))
+			notify(player, "Open or join a store first (Stores, bottom left).", Color3.fromRGB(255, 160, 100))
 			return
 		end
 		if (shop.model:GetPivot().Position - root.Position).Magnitude > 90 then
@@ -2927,42 +2790,13 @@ function ShopService.Init(houseDoors: { Part })
 		useStation(shop, stationName, player, pickId)
 	end)
 
-	Remotes.ChooseJob.OnServerEvent:Connect(function(player, job)
-		if job ~= nil and (type(job) ~= "string" or not Config.Jobs[job]) then
-			return
-		end
-		local shop = playerShop[player]
-		if job and (not shop or not canWork()) then
-			notify(player, if shop then closedMessage() else "Head to a store to clock in.", Color3.fromRGB(255, 160, 100))
-			return
-		end
-		if job and Config.Management[job] and player:GetAttribute("Job") ~= job then
-			local ok, reason = ShopService.TryManagement(player, shop :: Shop, job)
-			if not ok then
-				notify(player, reason, Color3.fromRGB(255, 160, 100))
-				return
-			end
-		end
-		ShopService.SetJob(player, job)
-		if job then
-			notify(player, "Clocked in as " .. Config.Jobs[job].display .. "!", Config.Jobs[job].color)
-		else
-			notify(player, "Clocked out.")
-		end
-		if job == "Delivery" and shop then
-			CarService.Ensure(player, shop.model)
-			notify(player, "Your delivery car is parked in the lot out back.", Color3.fromRGB(120, 255, 160))
-		end
-	end)
-
 	local function hookCharacter(player: Player)
 		player.CharacterAdded:Connect(function(character)
 			leaveStation(player)
 			ShopService.CancelSession(player)
-			local job = player:GetAttribute("Job")
-			if type(job) == "string" then
+			if playerShop[player] then
 				character:WaitForChild("Head", 5)
-				ShopService.SetJob(player, job)
+				setUniform(character, playerShop[player] ~= nil)
 			end
 		end)
 	end
