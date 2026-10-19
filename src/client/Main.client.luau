@@ -18,7 +18,6 @@ local Loading = require(script.Parent.Loading)
 local StationMode = require(script.Parent.StationMode)
 local StationPicks = require(script.Parent.StationPicks)
 local WorkHud = require(script.Parent.WorkHud)
-local T = Ui.Theme
 
 local player = Players.LocalPlayer
 
@@ -207,9 +206,9 @@ end)
 -- Job menu
 ---------------------------------------------------------------------------
 local JOB_BLURBS = {
-	CSR = "Take orders and make pizzas: dough, make-line, cut & box. Earns the most XP toward management.",
-	Delivery = "Everything a CSR does, plus deliveries in your own car. Less XP, but the best tip money.",
-	ShiftManager = string.format("%d slots, highest XP wins. Runs any station and unloads the supply truck. Level %d+ unless no manager is on.", Config.Management.ShiftManager.slots, Config.Management.ShiftManager.minLevel),
+	CSR = "Take orders and make pizzas. Earns the most XP toward management.",
+	Delivery = "Everything a CSR does, plus deliveries in your own car. Less XP, the best tips.",
+	ShiftManager = string.format("%d slots, highest XP wins. Any station, plus the supply truck. Level %d+ unless no manager is on.", Config.Management.ShiftManager.slots, Config.Management.ShiftManager.minLevel),
 	GeneralManager = string.format("%d slot, highest XP wins. Runs the store. Level %d+ unless no manager is on.", Config.Management.GeneralManager.slots, Config.Management.GeneralManager.minLevel),
 }
 local menuOpen: Frame? = nil
@@ -223,29 +222,37 @@ end
 
 Remotes.OpenJobMenu.OnClientEvent:Connect(function(shopName: string)
 	closeMenu()
-	local root, body, close = Ui.panel("Clock In - " .. tostring(shopName), 520, 470)
+	-- The time clock: one row per position, then Clock Out.
+	local root, body, close = Ui.panel("Time clock - " .. tostring(shopName), 540, 432)
 	menuOpen = root
 	close.Activated:Connect(closeMenu)
-	Ui.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = body })
+	Ui.new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = body })
 	for i, jobName in Config.JobOrder do
 		local def = Config.Jobs[jobName]
-		local row = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 76), BackgroundColor3 = T.Card, LayoutOrder = i, Parent = body }, { Ui.corner(10), Ui.pad(8) })
-		Ui.new("Frame", { Size = UDim2.new(0, 6, 1, 0), BackgroundColor3 = def.color, Parent = row }, { Ui.corner(3) })
-		Ui.label(def.display, { Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -150, 0, 28), TextXAlignment = Enum.TextXAlignment.Left, Font = T.Title, Parent = row })
-		Ui.label(JOB_BLURBS[jobName] or "", { Position = UDim2.fromOffset(16, 30), Size = UDim2.new(1, -150, 0, 30), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextColor3 = T.Muted, MaxText = 15, Parent = row })
-		local current = player:GetAttribute("Job") == jobName
-		local b = Ui.button(if current then "On shift" else "Clock In", if current then T.Good else def.color, {
-			AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.fromScale(1, 0.5),
-			Size = UDim2.fromOffset(120, 44),
+		local row = Ui.box(C.Tile, { Size = UDim2.new(1, 0, 0, 72), LayoutOrder = i, Parent = body })
+		Ui.edge(row, "left", 4, def.color)
+		Ui.text(string.upper(def.display), Style.Font.Heading, Style.Size.Big, { Position = UDim2.fromOffset(16, 8), Size = UDim2.new(1, -150, 0, 22), Parent = row })
+		Ui.text(JOB_BLURBS[jobName] or "", Style.Font.Body, Style.Size.Small, {
+			TextColor3 = C.CreamDim,
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			Position = UDim2.fromOffset(16, 32),
+			Size = UDim2.new(1, -150, 0, 34),
 			Parent = row,
 		})
-		b.Activated:Connect(function()
-			Remotes.ChooseJob:FireServer(jobName)
-			closeMenu()
-		end)
+		local current = player:GetAttribute("Job") == jobName
+		if current then
+			local chip = Ui.chip("On shift", C.Green, C.White, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(0, 30), Parent = row })
+			chip.TextSize = Style.Size.Body
+		else
+			local b = Ui.flatButton("Clock in", "primary", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(112, 40), Parent = row })
+			b.Activated:Connect(function()
+				Remotes.ChooseJob:FireServer(jobName)
+				closeMenu()
+			end)
+		end
 	end
-	local out = Ui.button("Clock Out", Color3.fromRGB(90, 70, 70), { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 99, Parent = body })
+	local out = Ui.flatButton("Clock out", "ghost", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 99, Parent = body })
 	out.Activated:Connect(function()
 		Remotes.ChooseJob:FireServer(nil)
 		closeMenu()
@@ -257,40 +264,63 @@ end)
 ---------------------------------------------------------------------------
 Remotes.OpenFranchiseMenu.OnClientEvent:Connect(function(info: any)
 	closeMenu()
-	local root, body, close = Ui.panel("Open a Franchise", 520, 420)
+	local root, body, close = Ui.panel("Open a franchise", 520, if info.owned then 200 else 400)
 	menuOpen = root
 	close.Activated:Connect(closeMenu)
 
-	local text
 	if info.owned then
-		text = "You already own a franchise! It opens on a free lot whenever you're in a server."
-	else
-		text = string.format(
-			"Run your own " .. Config.GameName .. " store!\n\n- Earn %d%% of every sale at your shop\n- Earn a %d%% royalty on what your workers make\n- Name it yourself\n\nRequires level %d and %d coins.\nYou: level %d, %d coins.",
-			math.floor(info.saleCut * 100), math.floor(info.royalty * 100), info.minLevel, info.cost, info.level, info.coins
-		)
-	end
-	Ui.label(text, { Size = UDim2.new(1, 0, 0, 200), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, MaxText = 18, Parent = body })
-	if info.owned then
+		Ui.text("You already own a franchise. It opens on a free lot whenever you're in a server.", Style.Font.Body, Style.Size.Body, {
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			Size = UDim2.fromScale(1, 1),
+			Parent = body,
+		})
 		return
 	end
+	-- What you get, then what it takes (and where you stand).
+	local perks = {
+		string.format("%d%% of every sale at your shop", math.floor(info.saleCut * 100)),
+		string.format("%d%% royalty on what your workers make", math.floor(info.royalty * 100)),
+		"You name it",
+	}
+	for i, perk in perks do
+		local line = Ui.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, (i - 1) * 26), Size = UDim2.new(1, 0, 0, 24), Parent = body })
+		Ui.box(C.Gold, { Position = UDim2.fromOffset(0, 8), Size = UDim2.fromOffset(8, 8), Parent = line })
+		Ui.text(perk, Style.Font.Body, Style.Size.Body, { Position = UDim2.fromOffset(18, 0), Size = UDim2.new(1, -18, 1, 0), Parent = line })
+	end
+	local needs = Ui.box(C.Tile, { Position = UDim2.fromOffset(0, 92), Size = UDim2.new(1, 0, 0, 64), Parent = body })
+	local function stat(x: number, label: string, need: string, have: string, ok: boolean)
+		Ui.caption(label, { Position = UDim2.new(x, 12, 0, 8), Size = UDim2.new(0.5, -24, 0, 16), Parent = needs })
+		Ui.text(string.format("%s  /  %s", have, need), Style.Font.Mono, Style.Size.Big, {
+			TextColor3 = if ok then C.Green else C.Cream,
+			Position = UDim2.new(x, 12, 0, 28),
+			Size = UDim2.new(0.5, -24, 0, 24),
+			Parent = needs,
+		})
+	end
+	stat(0, "Level", tostring(info.minLevel), tostring(info.level), info.level >= info.minLevel)
+	stat(0.5, "Coins", tostring(info.cost), tostring(info.coins), info.coins >= info.cost)
 	local eligible = info.level >= info.minLevel and info.coins >= info.cost
+	Ui.caption("Shop name", { Position = UDim2.fromOffset(0, 170), Parent = body })
 	local box = Ui.new("TextBox", {
-		Position = UDim2.fromOffset(0, 214),
+		Position = UDim2.fromOffset(0, 190),
 		Size = UDim2.new(1, 0, 0, 44),
-		BackgroundColor3 = T.Card,
-		PlaceholderText = "Name your shop (3-24 chars)",
-		PlaceholderColor3 = T.Muted,
+		BackgroundColor3 = C.Tile,
+		PlaceholderText = "3-24 characters",
+		PlaceholderColor3 = C.CreamDim,
 		Text = player.DisplayName .. "'s Pizza",
-		TextColor3 = T.Text,
-		Font = T.Font,
-		TextSize = 20,
+		TextColor3 = C.Cream,
+		FontFace = Style.Font.LabelBold,
+		TextSize = Style.Size.Big,
+		TextXAlignment = Enum.TextXAlignment.Left,
 		ClearTextOnFocus = false,
 		Parent = body,
-	}, { Ui.corner(8) })
-	local buy = Ui.button(if eligible then string.format("Buy Franchise (%d coins)", info.cost) else "Not eligible yet", if eligible then T.Good else T.Card, {
-		Position = UDim2.new(0, 0, 1, -50),
-		Size = UDim2.new(1, 0, 0, 50),
+	}, { Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12) }), Ui.new("UIStroke", { Color = C.Line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }) })
+	local buy = Ui.flatButton(if eligible then string.format("Buy franchise - %d coins", info.cost) else "Not eligible yet", if eligible then "primary" else "dark", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, 48),
+		TextSize = Style.Size.Big,
 		Parent = body,
 	})
 	buy.Activated:Connect(function()
@@ -342,7 +372,7 @@ Remotes.DeliveryTarget.OnClientEvent:Connect(function(door: BasePart?, seconds: 
 	beam.Width0 = 1
 	beam.Width1 = 1
 	beam.FaceCamera = true
-	beam.Color = ColorSequence.new(T.Good)
+	beam.Color = ColorSequence.new(C.Green)
 	beam.LightEmission = 1
 	beam.Transparency = NumberSequence.new(0.3)
 	beam.Parent = root

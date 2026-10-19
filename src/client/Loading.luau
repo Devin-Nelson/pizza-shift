@@ -7,8 +7,10 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Style = require(ReplicatedStorage.Shared.Style)
 local Ui = require(script.Parent.Ui)
-local T = Ui.Theme
+
+local C = Style.Color
 
 local Loading = {}
 
@@ -42,31 +44,48 @@ local function openPicker(pieId: number, size: string)
 		end
 	end
 	local rows = math.max(#eligible, 1)
-	local root, body, close = Ui.panel(string.format("Load this %s: which order?", size), 480, 130 + math.min(rows, 6) * 52)
+	local root, body, close = Ui.panel(string.format("Load this %s: which order?", size), 480, 128 + math.min(rows, 6) * 52)
 	picker = root
 	close.Activated:Connect(closePicker)
 	local list = Ui.new("ScrollingFrame", {
-		Size = UDim2.new(1, 0, 1, -50),
+		Size = UDim2.new(1, 0, 1, -54),
 		BackgroundTransparency = 1,
-		ScrollBarThickness = 5,
+		ScrollBarThickness = 4,
+		ScrollBarImageColor3 = C.Line,
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		Parent = body,
 	}, { Ui.new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }) })
+	-- One row per order still waiting on this size: the order like a ticket
+	-- header, then what it needs.
 	for i, e in eligible do
 		local o = e.order
-		local where = if o.delivery then "DELIVERY #" .. tostring(o.house) else "CARRYOUT"
-		local b = Ui.button(string.format("#%d  %s  -  needs %s", o.id, where, table.concat(e.names, ", ")), T.Card, { Size = UDim2.new(1, -6, 0, 46), LayoutOrder = i, MaxText = 16 })
-		b.Parent = list
+		local b = Ui.flatButton("", "dark", { Size = UDim2.new(1, -6, 0, 46), LayoutOrder = i, Parent = list })
+		local bg, fg = Style.ticketColor(tonumber(o.age) or 0)
+		local head = Ui.chip(string.format("#%d %s", o.id, if o.delivery then "Delivery" else "Carryout"), bg, fg, {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 10, 0.5, 0),
+			Size = UDim2.fromOffset(0, 26),
+			Parent = b,
+		})
+		head.TextSize = Style.Size.Body
+		Ui.text(string.upper("Needs " .. table.concat(e.names, ", ")), Style.Font.Label, Style.Size.Body, {
+			TextXAlignment = Enum.TextXAlignment.Right,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -12, 0.5, 0),
+			Size = UDim2.new(1, -170, 0, 20),
+			Parent = b,
+		})
 		b.Activated:Connect(function()
 			closePicker()
 			Remotes.LoadPizza:FireServer(pieId, o.id)
 		end)
 	end
 	if #eligible == 0 then
-		Ui.label(string.format("No order is waiting on a %s right now.", size), { Size = UDim2.new(1, 0, 0, 40), TextColor3 = T.Muted, MaxText = 16, Parent = list })
+		Ui.text(string.format("No order is waiting on a %s right now.", size), Style.Font.Body, Style.Size.Body, { TextColor3 = C.CreamDim, Size = UDim2.new(1, 0, 0, 40), Parent = list })
 	end
-	local extra = Ui.button("Load it with no order (extra)", Color3.fromRGB(90, 70, 70), { Position = UDim2.new(0, 0, 1, -44), Size = UDim2.new(1, 0, 0, 44), MaxText = 16, Parent = body })
+	local extra = Ui.flatButton("Load as an extra", "ghost", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 44), Parent = body })
 	extra.Activated:Connect(function()
 		closePicker()
 		Remotes.LoadPizza:FireServer(pieId, 0) -- 0 = no order: bake it as an extra

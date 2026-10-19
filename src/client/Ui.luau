@@ -2,14 +2,10 @@
 -- The UI toolkit, in the "store systems" look (Style.luau): flat, squared,
 -- brand charcoal / red / cream, Oswald labels and Roboto Mono numbers.
 --
--- Two layers:
---  * Ui.Root: a full-screen frame laid out at Config.UiReference (1280x720)
---    and scaled to the screen by one UIScale. New screens build here with the
---    flat components (Ui.text, Ui.box, Ui.flatButton, Ui.badge, Ui.chip,
---    Ui.iconButton, Ui.edge) and fixed text sizes from Style.Size.
---  * Older screens still use Ui.label / Ui.button / Ui.panel / Ui.dock (scaled
---    text in a box). They get the same colours and fonts, so nothing looks
---    out of place while screens move over.
+-- Everything builds on Ui.Root: a full-screen frame laid out at
+-- Config.UiReference (1280x720) and scaled to the screen by one UIScale, with
+-- flat components (text, box, edge, flatButton, iconButton, badge, chip,
+-- caption, strip, rule, panel) and fixed text sizes from Style.Size.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -25,29 +21,6 @@ local C = Style.Color
 Ui.Style = Style
 Ui.Icons = Icons
 
--- Colour names the older screens use, mapped onto the palette. `Font` and
--- `Title` are the Enum.Font values those screens pass; Ui.new swaps them for
--- the brand faces (Oswald, or Roboto Mono for Code).
-Ui.Theme = {
-	Bg = C.Panel,
-	Panel = C.Panel,
-	Card = C.Tile,
-	Accent = C.Red,
-	Accent2 = C.Gold,
-	Good = C.Green,
-	Text = C.Cream,
-	Muted = C.CreamDim,
-	Font = Enum.Font.GothamBold,
-	Title = Enum.Font.FredokaOne,
-}
-local T = Ui.Theme
-
-local FONT_FACES: { [Enum.Font]: Font } = {
-	[Enum.Font.GothamBold] = Style.Font.Label,
-	[Enum.Font.FredokaOne] = Style.Font.Heading,
-	[Enum.Font.Code] = Style.Font.Mono,
-}
-
 function Ui.new(className: string, props: { [string]: any }?, children: { Instance }?): any
 	local inst = Instance.new(className)
 	if inst:IsA("GuiObject") then
@@ -58,11 +31,7 @@ function Ui.new(className: string, props: { [string]: any }?, children: { Instan
 			if k == "Parent" then
 				continue
 			end
-			if k == "Font" and typeof(v) == "EnumItem" and FONT_FACES[v] then
-				(inst :: any).FontFace = FONT_FACES[v]
-			else
-				(inst :: any)[k] = v
-			end
+			(inst :: any)[k] = v
 		end
 	end
 	if children then
@@ -74,20 +43,6 @@ function Ui.new(className: string, props: { [string]: any }?, children: { Instan
 		inst.Parent = props.Parent
 	end
 	return inst
-end
-
--- Squared corners everywhere: the radius argument is kept for older callers.
-function Ui.corner(_radius: number?): UICorner
-	return Ui.new("UICorner", { CornerRadius = UDim.new(0, 0) })
-end
-
-function Ui.stroke(color: Color3?, thickness: number?): UIStroke
-	return Ui.new("UIStroke", { Color = color or C.Line, Thickness = math.min(thickness or 1, 2), ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
-end
-
-function Ui.pad(px: number): UIPadding
-	local u = UDim.new(0, px)
-	return Ui.new("UIPadding", { PaddingLeft = u, PaddingRight = u, PaddingTop = u, PaddingBottom = u })
 end
 
 ---------------------------------------------------------------------------
@@ -121,10 +76,6 @@ local function fitRoot()
 end
 screen:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitRoot)
 fitRoot()
-
-function Ui.scale(): number
-	return rootScale.Scale
-end
 
 ---------------------------------------------------------------------------
 -- Flat components (for Root)
@@ -295,75 +246,26 @@ function Ui.chip(text: string, bg: Color3, fg: Color3?, props: { [string]: any }
 	return l
 end
 
----------------------------------------------------------------------------
--- Older components (scaled text), restyled
----------------------------------------------------------------------------
-function Ui.label(text: string, props: { [string]: any }?): TextLabel
-	local base: { [string]: any } = {
-		BackgroundTransparency = 1,
-		Font = T.Font,
-		Text = text,
-		TextColor3 = C.Cream,
-		TextScaled = true,
-		Size = UDim2.new(1, 0, 0, 30),
-	}
-	if props then
-		for k, v in props do
-			if k ~= "MaxText" then
-				base[k] = v
-			end
-		end
-	end
-	local l = Ui.new("TextLabel", base)
-	Ui.new("UITextSizeConstraint", { MaxTextSize = (props and props.MaxText) or 28, Parent = l })
-	return l
-end
-
-function Ui.button(text: string, color: Color3?, props: { [string]: any }?): TextButton
-	local base: { [string]: any } = {
-		BackgroundColor3 = color or C.Red,
-		Font = T.Font,
-		Text = text,
-		TextColor3 = C.Cream,
-		TextScaled = true,
-		AutoButtonColor = true,
-		Size = UDim2.new(1, 0, 0, 44),
-	}
-	if props then
-		for k, v in props do
-			if k ~= "MaxText" then
-				base[k] = v
-			end
-		end
-	end
-	local b = Ui.new("TextButton", base, { Ui.pad(6) })
-	Ui.new("UITextSizeConstraint", { MaxTextSize = (props and props.MaxText) or 24, Parent = b })
-	return b
-end
-
--- Modal panel centred on screen. Returns (root, body, close button).
+-- Modal panel centred on screen (on Root, so it scales with the HUD), with a
+-- red top bar, a heading and a close button. Returns (root, body, close).
 function Ui.panel(title: string, width: number, height: number): (Frame, Frame, TextButton)
 	local panel = Ui.new("Frame", {
 		Name = "Panel",
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.52),
+		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(width, height),
 		BackgroundColor3 = C.Panel,
-		Parent = screen,
+		ZIndex = 5,
+		Parent = root,
 	})
 	Ui.edge(panel, "top", 4, C.Red)
-	-- Shrink to fit small (mobile) screens.
-	local scale = Ui.new("UIScale", { Parent = panel })
-	local function fit()
-		local view = workspace.CurrentCamera.ViewportSize
-		scale.Scale = math.min(1, (view.X - 20) / width, (view.Y - 60) / height)
+	-- Taller than the reference screen allows? Shrink it to fit.
+	local ref = Config.UiReference
+	local fit = math.min(1, (ref.Y - 60) / height, (ref.X - 40) / width)
+	if fit < 1 then
+		Ui.new("UIScale", { Scale = fit, Parent = panel })
 	end
-	fit()
-	local resize = workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)
-	panel.Destroying:Connect(function()
-		resize:Disconnect()
-	end)
-	Ui.text(string.upper(title), Style.Font.Heading, Style.Size.Title, { Position = UDim2.fromOffset(16, 14), Size = UDim2.new(1, -70, 0, 26), Parent = panel })
+	Ui.text(string.upper(title), Style.Font.Heading, Style.Size.Title, { Position = UDim2.fromOffset(16, 14), Size = UDim2.new(1, -70, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, Parent = panel })
 	local close = Ui.iconButton("close", 32, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 12), Parent = panel })
 	local body = Ui.new("Frame", {
 		Name = "Body",
@@ -375,34 +277,15 @@ function Ui.panel(title: string, width: number, height: number): (Frame, Frame, 
 	return panel, body, close
 end
 
--- Work strip docked at the bottom of the screen (3D minigames and the idle
--- strip), so the view of the work stays clear. Controls only: no title (the
--- user found it redundant) and no close button (leave from the Stations bar).
--- `height` is what older callers asked for with a title row; the strip drops
--- most of that row. Returns (root, body, close); close is hidden and kept for
--- older callers.
-local TITLE_ROW = 12
-function Ui.dock(_title: string, height: number): (Frame, Frame, TextButton)
-	local h = height - TITLE_ROW
-	local strip = Ui.new("Frame", {
-		Name = "Dock",
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -8),
-		Size = UDim2.new(1, -24, 0, h),
-		BackgroundColor3 = C.Panel,
-		Parent = screen,
-	})
-	Ui.edge(strip, "top", 3, C.Red)
-	Ui.new("UISizeConstraint", { MaxSize = Vector2.new(760, h), Parent = strip })
-	local close = Ui.iconButton("close", 28, { Visible = false, Parent = strip })
-	local body = Ui.new("Frame", {
-		Name = "Body",
-		Position = UDim2.fromOffset(12, 9),
-		Size = UDim2.new(1, -24, 1, -15),
-		BackgroundTransparency = 1,
-		Parent = strip,
-	})
-	return strip, body, close
+-- A small uppercase caption over a group of controls.
+function Ui.caption(text: string, props: { [string]: any }?): TextLabel
+	local base: { [string]: any } = { TextColor3 = C.CreamDim, Size = UDim2.new(1, 0, 0, 16) }
+	if props then
+		for k, v in props do
+			base[k] = v
+		end
+	end
+	return Ui.text(string.upper(text), Style.Font.Label, Style.Size.Small, base)
 end
 
 -- The work strip: controls for the job at hand, docked bottom centre on Root

@@ -7,9 +7,13 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Style = require(ReplicatedStorage.Shared.Style)
 local Ui = require(script.Parent.Ui)
 local Minigames3D = require(script.Parent.Minigames3D)
-local T = Ui.Theme
+
+local C = Style.Color
+local F = Style.Font
+local S = Style.Size
 
 local Minigames = {}
 
@@ -47,83 +51,84 @@ local function open(title: string, w: number, h: number, cancel: Cancel): (Frame
 	return root, body, cleanup
 end
 
+-- Marks the chosen key of a group (red) and resets the others.
 local function selectGroup(buttons: { [string]: TextButton }, chosen: string)
 	for key, b in buttons do
-		b.BackgroundColor3 = if key == chosen then T.Good else T.Card
+		Ui.setButtonColor(b, if key == chosen then C.Red else C.Tile)
 	end
+end
+
+-- A row of equal keys across `parent` at `y`.
+local function keyRow(parent: Instance, y: number, height: number, width: UDim, labels: { string }, onPick: (string) -> ()): { [string]: TextButton }
+	local row = Ui.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, y), Size = UDim2.new(width.Scale, width.Offset, 0, height), Parent = parent }, {
+		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / #labels, -6, 1, 0), CellPadding = UDim2.fromOffset(6, 0), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	local buttons = {}
+	for i, label in labels do
+		local b = Ui.flatButton(label, "dark", { LayoutOrder = i, Parent = row })
+		buttons[label] = b
+		b.Activated:Connect(function()
+			onPick(label)
+		end)
+	end
+	return buttons
 end
 
 ---------------------------------------------------------------------------
 -- Register: listen to the customer, ring in every pizza (orders can be big).
+-- Laid out like the store's POS touchscreen.
 ---------------------------------------------------------------------------
 local function register(data: any, finish: Finish, cancel: Cancel)
 	local phone = data.phone == true
-	local _, body = open(if phone then "Phone Order" else "Register", 640, if phone then 720 else 540, cancel)
+	local _, body = open(if phone then "Phone order" else "Register", 640, if phone then 574 else 468, cancel)
 
-	local speech = Ui.new("Frame", { Size = UDim2.new(1, 0, 0, 70), BackgroundColor3 = Color3.new(1, 1, 1), Parent = body }, { Ui.corner(12), Ui.pad(8) })
-	Ui.label((if phone then "Caller: " else "Customer: ") .. '"' .. tostring(data.line) .. '"', {
-		Size = UDim2.fromScale(1, 1),
-		TextColor3 = Color3.fromRGB(30, 30, 30),
+	-- What they said, on a slip.
+	local speech = Ui.box(C.Cream, { Size = UDim2.new(1, 0, 0, 56), Parent = body })
+	local who = Ui.chip(if phone then "Caller" else "Customer", C.Panel, C.Cream, { Position = UDim2.fromOffset(10, 8), Parent = speech })
+	who.TextSize = S.Small
+	Ui.text('"' .. tostring(data.line) .. '"', F.Body, S.Label, {
+		TextColor3 = C.Ink,
 		TextWrapped = true,
-		MaxText = 20,
+		Position = UDim2.fromOffset(10, 28),
+		Size = UDim2.new(1, -20, 0, 24),
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		Parent = speech,
 	})
 
 	local chosen: { pizza: string?, size: string?, house: number? } = {}
 	local cart: { { pizza: string, size: string } } = {}
-	local y = 80
 
-	local function sectionLabel(text: string, atY: number)
-		Ui.label(text, { Position = UDim2.fromOffset(0, atY), Size = UDim2.new(1, 0, 0, 20), TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, MaxText = 15, Parent = body })
-	end
+	Ui.caption("Pizza", { Position = UDim2.fromOffset(0, 66), Parent = body })
+	local pizzaButtons: { [string]: TextButton } = {}
+	pizzaButtons = keyRow(body, 84, 44, UDim.new(1, 6), Config.PizzaOrder, function(name)
+		chosen.pizza = name
+		selectGroup(pizzaButtons, name)
+	end)
 
-	sectionLabel("PIZZA", y)
-	local pizzaRow = Ui.new("Frame", { Position = UDim2.fromOffset(0, y + 22), Size = UDim2.new(1, 0, 0, 44), BackgroundTransparency = 1, Parent = body }, {
-		Ui.new("UIGridLayout", { CellSize = UDim2.new(0.2, -6, 1, 0), CellPadding = UDim2.fromOffset(6, 0) }),
-	})
-	local pizzaButtons = {}
-	for _, name in Config.PizzaOrder do
-		local b = Ui.button(name, T.Card, { Parent = pizzaRow, MaxText = 17 })
-		pizzaButtons[name] = b
-		b.Activated:Connect(function()
-			chosen.pizza = name
-			selectGroup(pizzaButtons, name)
-		end)
-	end
-	y += 74
+	Ui.caption("Size", { Position = UDim2.fromOffset(0, 138), Parent = body })
+	local sizeButtons: { [string]: TextButton } = {}
+	sizeButtons = keyRow(body, 156, 44, UDim.new(0.62, 6), Config.Sizes, function(size)
+		chosen.size = size
+		selectGroup(sizeButtons, size)
+	end)
+	local add1 = Ui.flatButton("+1", "dark", { Position = UDim2.new(0.64, 0, 0, 156), Size = UDim2.new(0.17, 0, 0, 44), BackgroundColor3 = C.Gold, TextColor3 = C.Ink, TextSize = S.Big, Parent = body })
+	local add5 = Ui.flatButton("+5", "dark", { Position = UDim2.new(0.83, 0, 0, 156), Size = UDim2.new(0.17, 0, 0, 44), BackgroundColor3 = C.Gold, TextColor3 = C.Ink, TextSize = S.Big, Parent = body })
 
-	sectionLabel("SIZE", y)
-	local sizeRow = Ui.new("Frame", { Position = UDim2.fromOffset(0, y + 22), Size = UDim2.new(0.62, 0, 0, 44), BackgroundTransparency = 1, Parent = body }, {
-		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 3, -6, 1, 0), CellPadding = UDim2.fromOffset(6, 0) }),
-	})
-	local sizeButtons = {}
-	for _, size in Config.Sizes do
-		local b = Ui.button(size, T.Card, { Parent = sizeRow, MaxText = 17 })
-		sizeButtons[size] = b
-		b.Activated:Connect(function()
-			chosen.size = size
-			selectGroup(sizeButtons, size)
-		end)
-	end
-	local add1 = Ui.button("+1", T.Accent2, { Position = UDim2.new(0.64, 0, 0, y + 22), Size = UDim2.new(0.17, 0, 0, 44), TextColor3 = Color3.fromRGB(30, 30, 30), Parent = body })
-	local add5 = Ui.button("+5", T.Accent2, { Position = UDim2.new(0.83, 0, 0, y + 22), Size = UDim2.new(0.17, 0, 0, 44), TextColor3 = Color3.fromRGB(30, 30, 30), Parent = body })
-	y += 74
-
-	sectionLabel("ORDER  (tap a line to remove one)", y)
+	Ui.caption("Order  -  tap a line to take one off", { Position = UDim2.fromOffset(0, 210), Parent = body })
 	local list = Ui.new("ScrollingFrame", {
-		Position = UDim2.fromOffset(0, y + 22),
-		Size = UDim2.new(1, 0, 0, 120),
-		BackgroundColor3 = T.Card,
-		ScrollBarThickness = 6,
+		Position = UDim2.fromOffset(0, 228),
+		Size = UDim2.new(1, 0, 0, 110),
+		BackgroundColor3 = C.Cream,
+		ScrollBarThickness = 4,
+		ScrollBarImageColor3 = C.Line,
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		Parent = body,
-	}, { Ui.corner(8), Ui.pad(6), Ui.new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }) })
-	y += 150
+	}, { Ui.new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }) })
 
 	local function renderCart()
 		for _, c in list:GetChildren() do
-			if c:IsA("TextButton") or c:IsA("TextLabel") then
+			if c:IsA("GuiObject") then
 				c:Destroy()
 			end
 		end
@@ -137,11 +142,16 @@ local function register(data: any, finish: Finish, cancel: Cancel)
 			counts[key] += 1
 		end
 		if #order == 0 then
-			Ui.label("Nothing rung in yet.", { Size = UDim2.new(1, 0, 0, 26), TextColor3 = T.Muted, MaxText = 16, Parent = list })
+			Ui.text("Nothing rung in yet.", F.Body, S.Body, { TextColor3 = Color3.fromRGB(139, 132, 120), Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 0, 30), Parent = list })
 		end
 		for i, entry in order do
-			local b = Ui.button(string.format("%d x %s", counts[entry.key], entry.key), T.Panel, { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = i, MaxText = 16, Parent = list })
-			b.Activated:Connect(function()
+			local row = Ui.new("TextButton", { BackgroundColor3 = C.Cream, AutoButtonColor = true, Text = "", Size = UDim2.new(1, 0, 0, 28), LayoutOrder = i, Parent = list })
+			Ui.box(C.Rule, { Size = UDim2.new(1, 0, 0, 1), Parent = row })
+			Ui.text(string.format("%d  x  %s", counts[entry.key], string.upper(entry.key)), F.Label, S.Label, { TextColor3 = C.Ink, Position = UDim2.fromOffset(10, 1), Size = UDim2.new(1, -40, 1, -1), Parent = row })
+			local x = Ui.Icons.make("close", 10, row, { color = C.Ink })
+			x.AnchorPoint = Vector2.new(1, 0.5)
+			x.Position = UDim2.new(1, -12, 0.5, 0)
+			row.Activated:Connect(function()
 				for j = #cart, 1, -1 do
 					if cart[j].size .. " " .. cart[j].pizza == entry.key then
 						table.remove(cart, j)
@@ -172,13 +182,14 @@ local function register(data: any, finish: Finish, cancel: Cancel)
 	renderCart()
 
 	if phone then
-		sectionLabel("DELIVER TO HOUSE #", y)
-		local grid = Ui.new("Frame", { Position = UDim2.fromOffset(0, y + 22), Size = UDim2.new(1, 0, 0, 150), BackgroundTransparency = 1, Parent = body }, {
-			Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 6, -6, 0, 44), CellPadding = UDim2.fromOffset(6, 6) }),
+		Ui.caption("Deliver to house #", { Position = UDim2.fromOffset(0, 348), Parent = body })
+		local grid = Ui.new("Frame", { Position = UDim2.fromOffset(0, 366), Size = UDim2.new(1, 0, 0, 78), BackgroundTransparency = 1, Parent = body }, {
+			Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 8, -6, 0, 36), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
 		})
-		local houseButtons = {}
+		local houseButtons: { [string]: TextButton } = {}
 		for i = 1, (tonumber(data.houses) or 16) do
-			local b = Ui.button(tostring(i), T.Card, { Parent = grid, MaxText = 18 })
+			local b = Ui.flatButton(tostring(i), "dark", { LayoutOrder = i, Parent = grid })
+			b.FontFace = F.Mono
 			houseButtons[tostring(i)] = b
 			b.Activated:Connect(function()
 				chosen.house = i
@@ -187,12 +198,12 @@ local function register(data: any, finish: Finish, cancel: Cancel)
 		end
 	end
 
-	local submit = Ui.button("Send to Kitchen", T.Accent, { Position = UDim2.new(0, 0, 1, -48), Size = UDim2.new(1, 0, 0, 48), Parent = body })
+	local submit = Ui.flatButton("Send to kitchen", "primary", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 48), TextSize = S.Big, Parent = body })
 	submit.Activated:Connect(function()
 		if #cart == 0 or (phone and not chosen.house) then
-			submit.Text = if #cart == 0 then "Ring in at least one pizza!" else "Pick the house number!"
+			submit.Text = if #cart == 0 then "RING IN AT LEAST ONE PIZZA" else "PICK THE HOUSE NUMBER"
 			task.delay(1.2, function()
-				submit.Text = "Send to Kitchen"
+				submit.Text = "SEND TO KITCHEN"
 			end)
 			return
 		end
@@ -207,16 +218,17 @@ end
 local function supply(data: any, finish: Finish, cancel: Cancel)
 	local crates: { string } = data.crates or {}
 	local shelves: { string } = table.clone(data.shelves or Config.Ingredients)
-	local _, body = open("Unload the Truck", 580, 470, cancel)
+	local _, body = open("Unload the truck", 540, 440, cancel)
 
-	local status = Ui.label("", { Size = UDim2.new(1, 0, 0, 24), TextColor3 = T.Muted, MaxText = 18, Parent = body })
-	local crate = Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 30), Size = UDim2.fromOffset(240, 90), BackgroundColor3 = Color3.fromRGB(150, 105, 60), Parent = body }, { Ui.corner(6), Ui.stroke(Color3.fromRGB(90, 60, 30), 4) })
-	local swatch = Ui.new("Frame", { Position = UDim2.fromOffset(10, 10), Size = UDim2.fromOffset(20, 70), Parent = crate }, { Ui.corner(4) })
-	local crateLabel = Ui.label("", { Position = UDim2.fromOffset(40, 10), Size = UDim2.new(1, -50, 1, -20), Font = T.Title, Parent = crate })
-
-	local grid = Ui.new("Frame", { Position = UDim2.fromOffset(0, 136), Size = UDim2.new(1, 0, 1, -136), BackgroundTransparency = 1, Parent = body }, {
-		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 3, -8, 0, 70), CellPadding = UDim2.fromOffset(8, 8) }),
+	local status = Ui.caption("", { Size = UDim2.new(1, 0, 0, 18), Parent = body })
+	-- The crate in hand.
+	local crate = Ui.box(Color3.fromRGB(150, 105, 60), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 28), Size = UDim2.fromOffset(260, 80), Parent = body }, {
+		Ui.new("UIStroke", { Color = Color3.fromRGB(96, 64, 34), Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
 	})
+	local swatch = Ui.box(C.White, { Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(18, 56), Parent = crate })
+	local crateLabel = Ui.text("", F.Heading, S.Huge, { TextColor3 = C.Cream, Position = UDim2.fromOffset(44, 0), Size = UDim2.new(1, -56, 1, 0), Parent = crate })
+
+	local grid = Ui.new("Frame", { Position = UDim2.fromOffset(0, 124), Size = UDim2.new(1, 0, 1, -124), BackgroundTransparency = 1, Parent = body })
 	local answers: { string } = {}
 	local index = 1
 	local rng = Random.new()
@@ -230,14 +242,16 @@ local function supply(data: any, finish: Finish, cancel: Cancel)
 
 	local function render()
 		local current = crates[index]
-		status.Text = string.format("Crate %d of %d - put it on the matching shelf", index, #crates)
+		status.Text = string.upper(string.format("Crate %d of %d  -  put it on its shelf", index, #crates))
 		crateLabel.Text = string.upper(current or "")
-		swatch.BackgroundColor3 = Config.IngredientColors[current] or Color3.new(1, 1, 1)
+		swatch.BackgroundColor3 = Config.IngredientColors[current] or C.White
 		grid:ClearAllChildren()
-		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 3, -8, 0, 70), CellPadding = UDim2.fromOffset(8, 8), Parent = grid })
+		Ui.new("UIGridLayout", { CellSize = UDim2.new(1 / 3, -8, 0, 64), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
 		shuffle(shelves)
-		for _, ing in shelves do
-			local b = Ui.button(ing, T.Card, { Parent = grid, MaxText = 18 })
+		for i, ing in shelves do
+			local b = Ui.flatButton("", "dark", { LayoutOrder = i, Parent = grid })
+			Ui.box(Config.IngredientColors[ing] or C.White, { Size = UDim2.new(1, 0, 0, 6), Parent = b })
+			Ui.text(string.upper(ing), F.LabelBold, S.Label, { TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, 0, 1, -6), Parent = b })
 			b.Activated:Connect(function()
 				answers[index] = ing
 				index += 1
