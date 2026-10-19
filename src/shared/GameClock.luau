@@ -37,8 +37,11 @@ end
 
 -- "5:42 PM"
 function GameClock.format(hour: number): string
-	local h = math.floor(hour) % 24
-	local m = math.floor((hour - math.floor(hour)) * 60)
+	-- Whole minutes first: fractions like 17.7 aren't exact in floating point,
+	-- and flooring (hour - floor(hour)) * 60 would read 5:41.
+	local minutes = math.floor(hour * 60 + 1e-6)
+	local h = math.floor(minutes / 60) % 24
+	local m = minutes % 60
 	local suffix = if h < 12 then "AM" else "PM"
 	local h12 = h % 12
 	if h12 == 0 then

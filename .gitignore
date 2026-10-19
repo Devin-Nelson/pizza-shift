@@ -10,3 +10,7 @@ sourcemap.json
 Thumbs.db
 desktop.ini
 .vscode/
+
+# Playtest recordings
+*.mp4
+*.mkv
