@@ -23,7 +23,49 @@
       "$properties": {
         "ClockTime": 14,
         "Brightness": 2.5,
-        "GlobalShadows": true
+        "GlobalShadows": true,
+        "Technology": "Future",
+        "Ambient": [0.27, 0.25, 0.23],
+        "OutdoorAmbient": [0.5, 0.48, 0.46],
+        "EnvironmentDiffuseScale": 0.6,
+        "EnvironmentSpecularScale": 0.9,
+        "ShadowSoftness": 0.3,
+        "ExposureCompensation": 0
+      },
+      "ColorCorrection": {
+        "$className": "ColorCorrectionEffect",
+        "$properties": {
+          "Brightness": 0.02,
+          "Contrast": 0.12,
+          "Saturation": 0.06,
+          "TintColor": [1, 0.97, 0.93]
+        }
+      },
+      "Bloom": {
+        "$className": "BloomEffect",
+        "$properties": {
+          "Intensity": 0.35,
+          "Size": 28,
+          "Threshold": 1.6
+        }
+      },
+      "SunRays": {
+        "$className": "SunRaysEffect",
+        "$properties": {
+          "Intensity": 0.04,
+          "Spread": 0.6
+        }
+      },
+      "Atmosphere": {
+        "$className": "Atmosphere",
+        "$properties": {
+          "Density": 0.28,
+          "Offset": 0.2,
+          "Color": [0.8, 0.72, 0.66],
+          "Decay": [0.45, 0.36, 0.32],
+          "Glare": 0.1,
+          "Haze": 1.2
+        }
       }
     },
     "Players": {

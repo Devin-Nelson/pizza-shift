@@ -60,8 +60,11 @@ The user sent 20 reference photos (Domino's slap table, dough trays, makeline + 
 - The gold outline around the lit tray clipped through the tray (the "yellow texture"): gone; the tray to use now glows (its walls Neon, locally).
 - "Nothing is 3D rendered... very sterile and boring": still open. The Blender models wait on the Open Cloud key, which isn't set (`ROBLOX_API_KEY` / `ROBLOX_USER_ID` absent on 2026-10-20). Talk to the user about the look before more layout work.
 
+## Look pass (2026-10-20, pushed)
+The user chose a lighting / materials / decor pass while they set the Open Cloud key: see CLAUDE.md ("Look pass"). Seen in Studio from edit-mode previews (lobby, kitchen, street): much warmer and busier; the kitchen floor was toned down from orange. Not seen: night time, the look on a low-end / mobile device (Future lighting and shadowed lights cost GPU), the store sign and OPEN text rendering (SurfaceGuis lagged in the captures).
+
 ## Exact next step
-1. The look (the user's main complaint): get the Open Cloud key set (or pick another upload route), then the Blender models; a lighting / material / decor pass can happen before that without uploads.
+1. The Blender models, as soon as `ROBLOX_API_KEY` and `ROBLOX_USER_ID` are set (check with PowerShell `[Environment]::GetEnvironmentVariable(name, "User")`, never print the value): one station per batch, each with a render for the user to approve before upload. Until then, ask the user for their reaction to the look pass.
 2. The user's hands-on playtest of batch 2 (`rojo serve` in this folder, Connect in the Rojo plugin): the new store, clicking dough balls (and a tray refilling after its last ball), the camera views (tray pick -> stretch close-up; the cut table looking at the exits, turning to the boxes for a job), customers' path, NPC staff in the new spots. Fix what they report first.
 3. Once the user has set the Open Cloud key (and restarted the Claude app so it sees the env vars): the Blender models, one station per batch, each with a render for the user to approve before upload: slap table + trays, makeline + food pans, load table, cut table, ovens + animated belts; then the rest of the store.
 4. Still owed by the user: a hands-on playtest (`rojo serve` in this folder, Connect in the Rojo plugin) of following (Stretch -> Sauce -> Cheese -> Toppings -> oven on its own), parking from the Stations bar and the Follow key, the store picker, Staff menu, scales and topping pans, and, with a second player, owner handover.
