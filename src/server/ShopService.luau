@@ -25,6 +25,7 @@ local ClockService = require(script.Parent.ClockService)
 local DataService = require(script.Parent.DataService)
 local SalesPlan = require(script.Parent.SalesPlan)
 local Screens = require(script.Parent.Screens)
+local StationArt = require(script.Parent.StationArt)
 
 type Item = SalesPlan.Item
 
@@ -215,7 +216,6 @@ local function holdsStation(session: Session): boolean
 end
 local SESSION_TIMEOUT = 120
 local FLAT = Pizza3D.FLAT
-local SCREEN_COLOR = Color3.fromRGB(58, 58, 62) -- pizza screens, dark from use (matches StationArt)
 
 ---------------------------------------------------------------------------
 -- Helpers
@@ -450,8 +450,8 @@ local function updateSkinRack(shop: Shop)
 	for slot, skin in shop.rack do
 		local slotMarker = marker(shop, "SkinSlot_" .. slot)
 		if slotMarker then
-			-- Screens are all rack-width; the skin on top is its real size.
-			disc("Screen", 2.55, 0.03, CFrame.new(slotMarker.Position + Vector3.new(0, 0.02, 0)), SCREEN_COLOR, Enum.Material.DiamondPlate)
+			-- Each skin on a screen of its own size (the user: they fit it exactly).
+			StationArt.Screen(skin.size, CFrame.new(slotMarker.Position + Vector3.new(0, 0.02, 0))).Parent = folder
 			disc("Skin", Config.PizzaDiameter[skin.size], 0.06, CFrame.new(slotMarker.Position + Vector3.new(0, 0.065, 0)), Config.IngredientColors.Dough, Enum.Material.SmoothPlastic)
 		end
 	end
@@ -962,17 +962,7 @@ local function arrangeMakeLine(shop: Shop)
 	for _, p in shop.pies do
 		local slotMarker = if p.stage == "Ready" and p.readySlot then marker(shop, "ReadySlot_" .. p.readySlot) else nil
 		if slotMarker and p.visual then
-			local screen = Instance.new("Part")
-			screen.Name = "Screen"
-			screen.Shape = Enum.PartType.Cylinder
-			screen.Size = Vector3.new(0.03, 2.55, 2.55)
-			screen.Color = SCREEN_COLOR
-			screen.Material = Enum.Material.DiamondPlate
-			screen.Anchored = true
-			screen.CanCollide = false
-			screen.CanQuery = false
-			screen.CFrame = CFrame.new(slotMarker.Position + Vector3.new(0, 0.02, 0)) * FLAT
-			screen.Parent = screens
+			StationArt.Screen(p.size, CFrame.new(slotMarker.Position + Vector3.new(0, 0.02, 0))).Parent = screens
 			Pizza3D.place(p.visual, CFrame.new(slotMarker.Position + Vector3.new(0, 0.1, 0)))
 		end
 	end

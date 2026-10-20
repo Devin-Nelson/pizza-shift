@@ -596,10 +596,18 @@ local function sauce(data: any, finish: Finish, cancel: Cancel)
 		local pizza = Pizza3D.new(ws.frame * CFrame.new(0, 0.06, 0), d, ctx.folder)
 		sizeChip(body, size, 1)
 		local doneBtn = actionButton(body, "Done", 2, 130)
-		-- The spoodle: a flat-bottomed ladle, its handle angled up toward you
-		local bowl = localPart(ctx.folder, "Spoodle", Vector3.new(0.08, SC.SpoodleRadius * 2, SC.SpoodleRadius * 2), STEEL, Enum.Material.Metal, Enum.PartType.Cylinder)
-		local handle = localPart(ctx.folder, "SpoodleHandle", Vector3.new(0.06, 0.06, 1.3), STEEL, Enum.Material.Metal)
-		local grip = localPart(ctx.folder, "SpoodleGrip", Vector3.new(0.09, 0.09, 0.45), Color3.fromRGB(200, 30, 30), Enum.Material.Plastic)
+		-- The spoodle: a flat-bottomed ladle, its handle angled up toward you (the
+		-- Blender one the server put in ReplicatedStorage, else built from parts)
+		local template = ReplicatedStorage:FindFirstChild("Spoodle")
+		local held = if template and template:IsA("Model") then template:Clone() else nil
+		local bowl, handle, grip
+		if held then
+			held.Parent = ctx.folder
+		else
+			bowl = localPart(ctx.folder, "Spoodle", Vector3.new(0.08, SC.SpoodleRadius * 2, SC.SpoodleRadius * 2), STEEL, Enum.Material.Metal, Enum.PartType.Cylinder)
+			handle = localPart(ctx.folder, "SpoodleHandle", Vector3.new(0.06, 0.06, 1.3), STEEL, Enum.Material.Metal)
+			grip = localPart(ctx.folder, "SpoodleGrip", Vector3.new(0.09, 0.09, 0.45), Color3.fromRGB(200, 30, 30), Enum.Material.Plastic)
+		end
 
 		local cells = table.create(SC.Rings * SC.Sectors, 0)
 		local cellPos = {}
@@ -620,15 +628,21 @@ local function sauce(data: any, finish: Finish, cancel: Cancel)
 				return
 			end
 			local r = math.sqrt(x * x + z * z)
-			if r > R + 0.6 then
-				local k = (R + 0.6) / r
-				x, z, r = x * k, z * k, R + 0.6
+			-- past the rim far enough to sauce it (R + SpoodleRadius), not into the tub behind the spot
+			if r > R + 0.25 then
+				local k = (R + 0.25) / r
+				x, z, r = x * k, z * k, R + 0.25
 			end
 			local p = ws:at(x, 0.16, z)
-			bowl.CFrame = CFrame.new(p) * Pizza3D.FLAT
-			local handleEnd = p + ws.toWorker * 0.9 + Vector3.new(0, 0.7, 0)
-			handle.CFrame = CFrame.lookAt((p + handleEnd) / 2, handleEnd)
-			grip.CFrame = CFrame.lookAt(handleEnd, handleEnd + (handleEnd - p).Unit)
+			if held then
+				-- the shaft leaves the cup nearly level: held higher, tipped back toward you
+				held:PivotTo(CFrame.lookAt(p, p + ws.toWorker) * CFrame.new(0, 0.1, 0) * CFrame.Angles(math.rad(15), 0, 0))
+			else
+				bowl.CFrame = CFrame.new(p) * Pizza3D.FLAT
+				local handleEnd = p + ws.toWorker * 0.9 + Vector3.new(0, 0.7, 0)
+				handle.CFrame = CFrame.lookAt((p + handleEnd) / 2, handleEnd)
+				grip.CFrame = CFrame.lookAt(handleEnd, handleEnd + (handleEnd - p).Unit)
+			end
 			if not holding() then
 				return
 			end

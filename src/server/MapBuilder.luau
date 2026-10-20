@@ -714,7 +714,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- hitboxes over the work spots from StationArt.Layout), makeline, ready rack.
 	local ST, SL, ML = StationArt.Layout.StretchTable, StationArt.Layout.SauceTable, StationArt.Layout.MakeLine
 	local stretchCF = at(-5.4, 1, 16.25) * FACE_RIGHT
-	local sauceCF = at(0.1, 1, 24.95)
+	local sauceCF = at(0.568, 1, 25.95) -- the sauce table: from the corner table (x -2.264) to the makeline, front flush with it (z 23.6)
 	local makeCF = at(11.9, 1, 25.4)
 	StationArt.Build("StretchTable", decor, stretchCF)
 	StationArt.Build("SauceTable", decor, sauceCF)

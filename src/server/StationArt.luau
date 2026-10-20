@@ -10,6 +10,7 @@
 -- generated art everywhere, franchises included.
 
 local AssetService = game:GetService("AssetService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
@@ -21,6 +22,8 @@ local StationArt = {}
 local STEEL = Color3.fromRGB(196, 200, 206)
 local STEEL_DARK = Color3.fromRGB(120, 124, 130)
 local STAINLESS = Color3.fromRGB(140, 145, 152) -- big Metal meshes: STEEL blows out white under the store's lights
+local SAUCE_TUB = Color3.fromRGB(160, 38, 26) -- sauce in the tub, darker than on a pizza
+local GRIP_RED = Color3.fromRGB(200, 35, 35) -- spoodle grips (the user's photo)
 local BLACK = Color3.fromRGB(25, 25, 28)
 local SCREEN = Color3.fromRGB(58, 58, 62) -- pizza screens, dark from use (as in the user's photos)
 local DOUGH = Config.IngredientColors.Dough
@@ -80,6 +83,38 @@ local function surfaceText(part: BasePart, face: Enum.NormalId, text: string, co
 	return tl
 end
 
+-- A solid steel triangle from the floor to height h over art-local points a,
+-- b, c (y ignored): two WedgePart right triangles, split at the foot of the
+-- altitude onto the longest side.
+local function triangleSlab(parent: Instance, base: CFrame, a: Vector3, b: Vector3, c: Vector3, h: number)
+	if (c - b).Magnitude > (b - a).Magnitude and (c - b).Magnitude >= (a - c).Magnitude then
+		a, b, c = b, c, a
+	elseif (a - c).Magnitude > (b - a).Magnitude then
+		a, b, c = c, a, b
+	end
+	local along = (b - a).Unit
+	local foot = a + along * (c - a):Dot(along)
+	local alt = c - foot
+	for _, far in { a, b } do
+		local leg = far - foot
+		if leg.Magnitude > 0.001 then
+			-- the right angle at the foot: local -Z runs to `far`, +Y to c, X is vertical
+			local zAxis, yAxis = -leg.Unit, alt.Unit
+			local wedge = Instance.new("WedgePart")
+			wedge.Name = "CornerTop"
+			wedge.Anchored = true
+			wedge.Size = Vector3.new(h, alt.Magnitude, leg.Magnitude)
+			wedge.CFrame = base * CFrame.fromMatrix(foot + leg / 2 + alt / 2 + Vector3.new(0, h / 2, 0), yAxis:Cross(zAxis), yAxis, zAxis)
+			wedge.Color = STEEL
+			wedge.Material = Enum.Material.Metal
+			wedge.TopSurface = Enum.SurfaceType.Smooth
+			wedge.BottomSurface = Enum.SurfaceType.Smooth
+			wedge.CanTouch = false
+			wedge.Parent = parent
+		end
+	end
+end
+
 local function steelTable(parent: Instance, base: CFrame, w: number, d: number, h: number)
 	P(parent, base, Vector3.new(w, 0.3, d), at(0, h - 0.15, 0), STEEL, Enum.Material.Metal, { reflect = 0.1 })
 	-- Rolled front edge
@@ -132,6 +167,7 @@ local function M(parent: Instance, base: CFrame, mesh: MeshBank.Mesh, offset: CF
 	p.Color = color
 	p.Material = material
 	p.Reflectance = (opts and opts.reflect) or 0
+	p.Transparency = (opts and opts.transparency) or 0
 	p.CanCollide = (opts and opts.collide) or false
 	p.CanTouch = false
 	p.Parent = parent
@@ -164,29 +200,36 @@ StationArt.Layout = {
 			Large = { x = -0.2, ball = 0.92, rows = { 2, 2, 2 } },
 		},
 	},
-	-- Sauce station in the corner where the stretch table turns into the
-	-- makeline: the saucing spot at the front, the two skin racks behind it,
-	-- and a corner piece (`corner`, art-local x and z ranges) whose far edge
-	-- follows the angled lobby wall, where the sauce buckets stand.
+	-- The sauce corner (user, 2026-10-20, from their photos): separate tables
+	-- pushed together, their connecting ends the same size. The trapezoid corner
+	-- table along the angled lobby wall (`corner`: art-local corners, front then
+	-- back at the stretch table, back then front at the sauce table; its front
+	-- parallel to its back) and the sauce table, its front flush with the
+	-- makeline's. The two skin racks side by side on the corner table (`racks`:
+	-- art-local centres and turn in degrees; `rackLift` raises their slots so the
+	-- Sauce minigame's spoodle passes under them), the sauce tub in the back
+	-- corner against the makeline (`tub`), the saucing spot right in front of it.
+	-- All from tools/blender/sauce_table.py (its [layout] printout).
 	SauceTable = {
-		width = 6.6,
-		depth = 6.7,
+		width = 5.664,
+		depth = 4.7,
 		height = 3.4,
-		workX = -0.3,
-		workZ = -2.0,
-		rackX = { -1.7, 1.1 },
-		rackZ = 1.9,
+		workX = 1.582,
+		workZ = -1.101,
+		racks = { { x = -5.371, z = -2.462, yaw = -46.89 }, { x = -3.663, z = -0.637, yaw = -46.89 } },
+		rackLift = 0.35,
 		rackWidth = 2.6,
 		rackDepth = 2.2,
 		slotSpacing = 0.2,
-		corner = { x0 = -7.7, x1 = -3.3, z0 = -2.35, z1 = -0.99, z2 = 3.19 }, -- rectangle z0..z1, then a wedge rising to z2 at x1
+		corner = { Vector3.new(-3.768, 0, -3.35), Vector3.new(-8.168, 0, -3.35), Vector3.new(-2.832, 0, 2.35), Vector3.new(-2.832, 0, -2.35) },
+		tub = Vector3.new(1.982, 0, 1.44),
 	},
 	MakeLine = {
 		width = 17,
 		depth = 4.7, -- front face at z -1.8
 		grateDepth = 2.9, -- a Large is 2.4 across (2.55 on its screen): room to spare front and back
 		boardZ = -0.3, -- center of the grate (where pizzas sit), just behind the front lip
-		boardTop = 3.445,
+		boardTop = 3.4, -- flush with the sauce and stretch tables
 		saucedQueueX = -6.5,
 		cheeseX = -2.5,
 		cheesedQueueX = 1.5,
@@ -273,14 +316,23 @@ end
 -- frame, side frames, and a pair of front-to-back rails per slot with a short
 -- inward hook at the front (screens slide in from -Z). Adds invisible
 -- `<prefix><n>` markers where each screen rests, top slot first, numbered from
--- `first`; returns the next number.
-local function screenRack(m: Instance, base: CFrame, cx: number, cz: number, rw: number, rd: number, h: number, slots: number, spacing: number, prefix: string, first: number): number
-	local CHROME = Color3.fromRGB(215, 218, 222)
+-- `first`; returns the next number. `wires` false: only the bounds and markers
+-- (the rack itself is a mesh). `lift` raises every slot; `yaw` (degrees) turns
+-- the rack about its centre.
+local CHROME = Color3.fromRGB(215, 218, 222)
+local RACK_LEDGE = 0.75 -- a Small screen is 0.89 in radius
+local function screenRack(m: Instance, base: CFrame, cx: number, cz: number, rw: number, rd: number, h: number, slots: number, spacing: number, prefix: string, first: number, wires: boolean?, lift: number?, yaw: number?): number
+	if yaw then
+		base = base * CFrame.new(cx, 0, cz) * CFrame.Angles(0, math.rad(yaw), 0)
+		cx, cz = 0, 0
+	end
 	local wire = 0.05
-	local topRail = h + 0.2 + (slots - 1) * spacing
+	local topRail = h + 0.2 + (lift or 0) + (slots - 1) * spacing
 	local front, back = cz - rd / 2 + 0.06, cz + rd / 2 - 0.04
 	local function bar(size: Vector3, offset: CFrame)
-		P(m, base, size, offset, CHROME, Enum.Material.Metal, { reflect = 0.25, collide = false })
+		if wires ~= false then
+			P(m, base, size, offset, CHROME, Enum.Material.Metal, { reflect = 0.25, collide = false })
+		end
 	end
 	for _, sx in { -1, 1 } do
 		bar(Vector3.new(wire, wire, rd), at(cx + sx * rw / 2, h + 0.03, cz))
@@ -296,9 +348,11 @@ local function screenRack(m: Instance, base: CFrame, cx: number, cz: number, rw:
 		bar(Vector3.new(wire, wire, back - mid), at(x, topRail + 0.15, (back + mid) / 2))
 		bar(Vector3.new(wire, 0.8, wire), at(x, h + 0.35, cz - 0.25) * CFrame.Angles(math.rad(-30), 0, 0))
 		for i = 1, slots do
+			-- a ledge just inside a Small screen's edge (every size rests on it), tied to the side frame
 			local y = topRail - (i - 1) * spacing
-			bar(Vector3.new(wire, wire, back - front), at(x, y, (front + back) / 2))
-			bar(Vector3.new(0.25, wire, wire), at(x - sx * 0.125, y, front))
+			bar(Vector3.new(wire, wire, back - front), at(cx + sx * RACK_LEDGE, y, (front + back) / 2))
+			bar(Vector3.new(rw / 2 - RACK_LEDGE, wire, wire), at(cx + sx * (rw / 2 + RACK_LEDGE) / 2, y, front))
+			bar(Vector3.new(rw / 2 - RACK_LEDGE, wire, wire), at(cx + sx * (rw / 2 + RACK_LEDGE) / 2, y, back))
 		end
 	end
 	P(m, base, Vector3.new(rw, topRail - h + 0.2, rd), at(cx, (h + topRail + 0.2) / 2, cz), CHROME, nil, { name = "RackBounds", transparency = 1, collide = true })
@@ -448,42 +502,55 @@ end
 -- pizza-screen racks of stretched skins behind it (SkinSlot_<n>, rack 1 top to
 -- bottom, then rack 2; ShopService puts each skin in its slot), and a corner
 -- piece whose far edge follows the angled lobby wall, where the sauce buckets
--- stand with the spoodles.
+-- stand with the spoodles. Blender meshes when they load (MeshBank, after the
+-- user's photos: a refrigerated work table, two tall wire screen racks, one
+-- clear sauce tub left of the racks with its spoodle, drips), else parts.
 Builders.SauceTable = function(m, base)
 	local L = StationArt.Layout.SauceTable
 	local w, d, h = L.width, L.depth, L.height
-	steelTable(m, base, w, d, h)
-	-- Corner piece: a rectangle, then a wedge out to the angled wall (a
-	-- WedgePart laid flat: its right angle sits at (x1, z1)).
-	local c = L.corner
-	P(m, base, Vector3.new(c.x1 - c.x0, h, c.z1 - c.z0), at((c.x0 + c.x1) / 2, h / 2, (c.z0 + c.z1) / 2), STEEL, Enum.Material.Metal, { name = "CornerCabinet", collide = true })
-	local wedge = Instance.new("WedgePart")
-	wedge.Name = "CornerTop"
-	wedge.Anchored = true
-	wedge.Size = Vector3.new(h, c.x1 - c.x0, c.z2 - c.z1)
-	wedge.CFrame = base * at((c.x0 + c.x1) / 2, h / 2, (c.z1 + c.z2) / 2) * CFrame.Angles(0, math.pi, 0) * CFrame.Angles(0, 0, -math.pi / 2)
-	wedge.Color = STEEL
-	wedge.Material = Enum.Material.Metal
-	wedge.TopSurface = Enum.SurfaceType.Smooth
-	wedge.BottomSurface = Enum.SurfaceType.Smooth
-	wedge.CanTouch = false
-	wedge.Parent = m
-	-- Sauce buckets in the corner, spoodles standing in them (green handles up)
-	local BUCKET = Color3.fromRGB(235, 232, 225)
-	for _, b in { { -4.4, 0.4 }, { -5.8, -0.5 } } do
-		P(m, base, Vector3.new(0.9, 1.15, 1.15), up(b[1], h + 0.45, b[2]), BUCKET, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, transparency = 0.25, name = "SauceBucket" })
-		P(m, base, Vector3.new(0.05, 1.05, 1.05), up(b[1], h + 0.82, b[2]), Config.IngredientColors.Sauce, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, collide = false })
-		P(m, base, Vector3.new(0.08, 1.3, 0.08), at(b[1] + 0.15, h + 1.35, b[2]) * CFrame.Angles(0, 0, math.rad(-14)), STEEL, Enum.Material.Metal, { collide = false })
-		P(m, base, Vector3.new(0.11, 0.45, 0.11), at(b[1] + 0.32, h + 2.0, b[2]) * CFrame.Angles(0, 0, math.rad(-14)), Color3.fromRGB(60, 150, 70), Enum.Material.Plastic, { collide = false })
+	local mesh = stationMeshes("SauceTable")
+	if mesh then
+		M(m, base, mesh.Steel, CFrame.new(mesh.Steel.at), STAINLESS, Enum.Material.Metal, { collide = true, name = "Table" })
+		M(m, base, mesh.Rubber, CFrame.new(mesh.Rubber.at), BLACK, Enum.Material.Rubber)
+		M(m, base, mesh.Racks, CFrame.new(mesh.Racks.at), CHROME, Enum.Material.Metal, { name = "Racks" })
+		M(m, base, mesh.Tubs, CFrame.new(mesh.Tubs.at), Color3.fromRGB(235, 235, 230), Enum.Material.SmoothPlastic, { name = "SauceBucket", transparency = 0.6 })
+		M(m, base, mesh.Sauce, CFrame.new(mesh.Sauce.at), SAUCE_TUB, Enum.Material.SmoothPlastic)
+		M(m, base, mesh.Grips, CFrame.new(mesh.Grips.at), GRIP_RED, Enum.Material.Plastic)
+		-- The spoodle the Sauce minigame holds (the client clones it; pivot = the cup's centre).
+		if not ReplicatedStorage:FindFirstChild("Spoodle") then
+			local spoodle = Instance.new("Model")
+			spoodle.Name = "Spoodle"
+			for _, part in { M(spoodle, CFrame.identity, mesh.Spoodle, CFrame.new(mesh.Spoodle.at), STEEL, Enum.Material.Metal), M(spoodle, CFrame.identity, mesh.SpoodleGrip, CFrame.new(mesh.SpoodleGrip.at), GRIP_RED, Enum.Material.Plastic) } do
+				part.CanQuery = false
+			end
+			spoodle.WorldPivot = CFrame.identity
+			spoodle.Parent = ReplicatedStorage
+		end
+		local slot = 1
+		for r = 1, Config.Dough.Racks do
+			slot = screenRack(m, base, L.racks[r].x, L.racks[r].z, L.rackWidth, L.rackDepth, h, Config.Dough.SlotsPerRack, L.slotSpacing, "SkinSlot_", slot, false, L.rackLift, L.racks[r].yaw)
+		end
+		return
 	end
+	steelTable(m, base, w, d, h)
+	-- The corner table: its trapezoid as two solid triangles.
+	local c = L.corner
+	triangleSlab(m, base, c[1], c[2], c[3], h)
+	triangleSlab(m, base, c[1], c[3], c[4], h)
+	-- The sauce tub in the back corner against the makeline, its spoodle in it
+	local tx, tz = L.tub.X, L.tub.Z
+	P(m, base, Vector3.new(1.4, 1.9, 1.9), up(tx, h + 0.7, tz), Color3.fromRGB(235, 232, 225), Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, transparency = 0.25, name = "SauceBucket" })
+	P(m, base, Vector3.new(0.05, 1.8, 1.8), up(tx, h + 0.98, tz), SAUCE_TUB, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, collide = false })
+	P(m, base, Vector3.new(0.08, 1.3, 0.08), at(tx - 0.15, h + 1.4, tz - 0.3) * CFrame.Angles(math.rad(60), 0, 0), STEEL, Enum.Material.Metal, { collide = false })
+	P(m, base, Vector3.new(0.17, 0.04, 0.7), at(tx - 0.2, h + 1.62, tz - 1.1) * CFrame.Angles(math.rad(-25), 0, 0), GRIP_RED, Enum.Material.Plastic, { collide = false })
 	-- A few drips at the saucing spot
-	for _, drip in { { 1.3, -0.5, 0.3 }, { -1.1, 0.7, 0.18 } } do
+	for _, drip in { { -1.3, -0.45, 0.3 }, { -1.0, 0.85, 0.18 } } do
 		P(m, base, Vector3.new(0.02, drip[3], drip[3]), up(L.workX + drip[1], h + 0.01, L.workZ + drip[2]), Config.IngredientColors.Sauce, Enum.Material.SmoothPlastic, { shape = Enum.PartType.Cylinder, collide = false })
 	end
-	-- The skin racks behind the spot
+	-- The skin racks
 	local slot = 1
 	for r = 1, Config.Dough.Racks do
-		slot = screenRack(m, base, L.rackX[r], L.rackZ, L.rackWidth, L.rackDepth, h, Config.Dough.SlotsPerRack, L.slotSpacing, "SkinSlot_", slot)
+		slot = screenRack(m, base, L.racks[r].x, L.racks[r].z, L.rackWidth, L.rackDepth, h, Config.Dough.SlotsPerRack, L.slotSpacing, "SkinSlot_", slot, nil, L.rackLift, L.racks[r].yaw)
 	end
 end
 
@@ -925,6 +992,39 @@ Builders.Fridge = function(m, base)
 	text.Text = ""
 	text.Parent = gui
 	gui.Parent = tablet
+end
+
+-- A pizza screen for a `size` pizza (its diameter plus the rim, so the skin
+-- fits it exactly), centred at `cf` lying flat: the Blender screen with its wire
+-- mesh texture once the sauce corner's meshes have loaded, else a plain disc.
+local SCREEN_RIM = 0.06
+function StationArt.Screen(size: string, cf: CFrame): BasePart
+	local d = (Config.PizzaDiameter[size] or 2.4) + SCREEN_RIM
+	local bank = MeshBank.SauceTable
+	local mesh = bank and bank.meshes.Screen
+	local part: BasePart
+	if mesh and templates[mesh.id] then
+		local p = (templates[mesh.id] :: MeshPart):Clone()
+		p.Size = Vector3.new(d, mesh.size.Y, d)
+		p.CFrame = cf * CFrame.new(mesh.at) * IMPORT_TURN
+		p.TextureID = "rbxassetid://" .. bank.images.Screen
+		p.Material = Enum.Material.Metal
+		part = p
+	else
+		part = Instance.new("Part")
+		part.Shape = Enum.PartType.Cylinder
+		part.Size = Vector3.new(0.03, d, d)
+		part.CFrame = cf * CFrame.Angles(0, 0, math.pi / 2)
+		part.Color = SCREEN
+		part.Material = Enum.Material.DiamondPlate
+	end
+	part.Name = "Screen"
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	return part
 end
 
 -- Builds art for `kind` under `parent`, preferring a custom model if one exists.

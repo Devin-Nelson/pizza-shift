@@ -64,6 +64,8 @@ class Mesh:
     def __init__(self, name: str, color: tuple, metal: float = 0.0, rough: float = 0.5, instanced: bool = False, grain: bool = False):
         self.name = name
         self.grain = grain  # preview only: mottled like Roblox's Sand material
+        self.texture = None  # a bpy image (colour + alpha), uploaded as an Image for its TextureID
+        self.alpha = 1.0  # preview only: see-through like the part's Transparency in game
         self.color = color
         self.metal = metal
         self.rough = rough
@@ -98,11 +100,11 @@ class Mesh:
             r = Matrix.Rotation(math.pi / 2, 4, "X")
         self.add(tmp, at, r)
 
-    def rod(self, p0, p1, radius: float, segs: int = 8):
+    def rod(self, p0, p1, radius: float, segs: int = 8, caps: bool = True):
         a, b = rb(*p0), rb(*p1)
         d = b - a
         tmp = bmesh.new()
-        bmesh.ops.create_cone(tmp, cap_ends=True, cap_tris=False, segments=segs, radius1=radius, radius2=radius, depth=d.length)
+        bmesh.ops.create_cone(tmp, cap_ends=caps, cap_tris=False, segments=segs, radius1=radius, radius2=radius, depth=d.length)
         q = Vector((0, 0, 1)).rotation_difference(d.normalized())
         bmesh.ops.rotate(tmp, verts=tmp.verts[:], cent=(0, 0, 0), matrix=q.to_matrix())
         bmesh.ops.translate(tmp, vec=(a + b) / 2, verts=tmp.verts[:])
@@ -129,6 +131,10 @@ class Mesh:
             bmesh.ops.solidify(tmp, geom=tmp.faces[:], thickness=thickness)
         self.add(tmp, at)
 
+    def merge(self, other: "Mesh", at=(0, 0, 0), r: Matrix | None = None):
+        """Copy another mesh's geometry in, turned by `r` then moved to `at`."""
+        self.add(other.bm.copy(), at, r)
+
     def tris(self) -> int:
         return sum(len(f.verts) - 2 for f in self.bm.faces)
 
@@ -151,7 +157,7 @@ def rounded_rect(w: float, d: float, r: float, segs: int = 4):
     return pts
 
 
-def loft(mesh: Mesh, rings, close_bottom: bool = True, at=(0, 0, 0), thickness: float = 0.0):
+def loft(mesh: Mesh, rings, close_bottom: bool = True, at=(0, 0, 0), thickness: float = 0.0, close_top: bool = False, r: Matrix | None = None):
     """Skin rings [(y, [(x, z), ...]), ...] (same point count) into a surface; optionally solidify."""
     tmp = bmesh.new()
     vrings = [[tmp.verts.new(rb(x, y, z)) for x, z in pts] for y, pts in rings]
@@ -162,10 +168,95 @@ def loft(mesh: Mesh, rings, close_bottom: bool = True, at=(0, 0, 0), thickness: 
             tmp.faces.new((a[i], a[j], b[j], b[i]))
     if close_bottom:
         tmp.faces.new(list(reversed(vrings[0])))
+    if close_top:
+        tmp.faces.new(vrings[-1])
     bmesh.ops.recalc_face_normals(tmp, faces=tmp.faces[:])
     if thickness:
         bmesh.ops.solidify(tmp, geom=tmp.faces[:], thickness=thickness)
-    mesh.add(tmp, at)
+    mesh.add(tmp, at, r)
+
+
+def _mitres(path, before=None, after=None):
+    """Per point of a polyline [(x, z)], the left normal mitred to its neighbours (length 1/cos of half the turn).
+    `before` / `after`: points the line comes from / goes on to beyond its ends (in another mesh), so the
+    end faces are mitred to meet that mesh's end exactly."""
+    path = ([before] if before else []) + list(path) + ([after] if after else [])
+    def left(a, b):
+        ln = math.hypot(b[0] - a[0], b[1] - a[1])
+        return (-(b[1] - a[1]) / ln, (b[0] - a[0]) / ln)
+    out = []
+    for i in range(len(path)):
+        ns = []
+        if i > 0:
+            ns.append(left(path[i - 1], path[i]))
+        if i < len(path) - 1:
+            ns.append(left(path[i], path[i + 1]))
+        if len(ns) == 2:
+            (ax, az), (bx, bz) = ns
+            k = 1 + ax * bx + az * bz
+            out.append(((ax + bx) / k, (az + bz) / k))
+        else:
+            out.append(ns[0])
+    return out[(1 if before else 0):len(out) - (1 if after else 0)]
+
+
+def ribbon(mesh: Mesh, path, d0: float, d1: float, y0: float, y1: float, before=None, after=None):
+    """A wall along a polyline [(x, z)], d0..d1 to its left (mitred at the corners, and at
+    the ends to `before` / `after`), from y0 to y1."""
+    ms = _mitres(path, before, after)
+    near = [(x + mx * d0, z + mz * d0) for (x, z), (mx, mz) in zip(path, ms)]
+    far = [(x + mx * d1, z + mz * d1) for (x, z), (mx, mz) in zip(path, ms)]
+    outline = near + far[::-1]
+    loft(mesh, [(y0, outline), (y1, outline)], close_bottom=True, close_top=True)
+
+
+def tube(mesh: Mesh, path, y: float, radius: float, segs: int = 12, before=None, after=None):
+    """A round rod along a level polyline [(x, z)] at height y, mitred at the corners, capped."""
+    tmp = bmesh.new()
+    rings = []
+    for (x, z), (mx, mz) in zip(path, _mitres(path, before, after)):
+        ring = []
+        for i in range(segs):
+            a = math.tau * i / segs
+            c, s = math.cos(a) * radius, math.sin(a) * radius
+            ring.append(tmp.verts.new(rb(x + mx * c, y + s, z + mz * c)))
+        rings.append(ring)
+    for a, b in zip(rings, rings[1:]):
+        for i in range(segs):
+            j = (i + 1) % segs
+            tmp.faces.new((a[i], a[j], b[j], b[i]))
+    tmp.faces.new(rings[0][::-1])
+    tmp.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(tmp, faces=tmp.faces[:])
+    mesh.add(tmp)
+
+
+def cut(mesh: Mesh, cutter: Mesh):
+    """Subtract `cutter` from `mesh` (exact boolean), e.g. a hole through a handle."""
+    def obj(m):
+        me = bpy.data.meshes.new(m.name + "_cut")
+        m.bm.to_mesh(me)
+        ob = bpy.data.objects.new(m.name + "_cut", me)
+        bpy.context.scene.collection.objects.link(ob)
+        return ob
+    a, b = obj(mesh), obj(cutter)
+    mod = a.modifiers.new("cut", "BOOLEAN")
+    mod.operation, mod.solver, mod.object = "DIFFERENCE", "EXACT", b
+    me = bpy.data.meshes.new_from_object(a.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    mesh.bm.free()
+    mesh.bm = bmesh.new()
+    mesh.bm.from_mesh(me)
+    for ob in (a, b):
+        bpy.data.objects.remove(ob)
+
+
+def planar_uv(mesh: Mesh, half: float):
+    """UVs projected from above: the square +-half (x, z) fills the texture."""
+    uv = mesh.bm.loops.layers.uv.verify()
+    for f in mesh.bm.faces:
+        for loop in f.loops:
+            x, z = loop.vert.co.x, -loop.vert.co.y
+            loop[uv].uv = (x / (2 * half) + 0.5, z / (2 * half) + 0.5)
 
 
 def lump(mesh: Mesh, seed: int, segs: int = 24, rings: int = 12, squash_top: float = 0.62, squash_bottom: float = 0.12, wobble: float = 0.05):
@@ -231,6 +322,12 @@ def _material(m: Mesh):
     bsdf.inputs["Base Color"].default_value = m.color
     bsdf.inputs["Metallic"].default_value = m.metal
     bsdf.inputs["Roughness"].default_value = m.rough
+    bsdf.inputs["Alpha"].default_value = m.alpha
+    if m.texture is not None:
+        tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+        tex.image = m.texture
+        mat.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        mat.node_tree.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
     if m.grain:
         nt = mat.node_tree
         tex = nt.nodes.new("ShaderNodeTexNoise")
@@ -289,7 +386,8 @@ def finish(station: str, meshes: list[Mesh], placements, cameras, render: bool, 
     """Export the meshes, write the manifest, and render previews.
 
     placements: [(mesh_name, (x, y, z) bbox centre, yaw_deg, scale)] extra copies
-    of instanced meshes, for the preview only (StationArt places the real ones).
+    of instanced meshes, for the preview only (StationArt places the real ones);
+    scale is a number or per-axis (x, y, z).
     cameras: [(file_suffix, eye (x, y, z), target (x, y, z), lens_mm)] in Roblox coords.
     wall_z: a white tile wall behind the piece (its front face at this z), for context.
     """
@@ -332,7 +430,8 @@ def finish(station: str, meshes: list[Mesh], placements, cameras, render: bool, 
         coll.objects.link(cp)
         c0 = Vector(manifest[name]["centre"])
         # the mesh's own bbox centre to the origin, then scaled, turned and placed
-        cp.matrix_world = Matrix.Translation(rb(*centre)) @ Matrix.Rotation(math.radians(yaw), 4, "Z") @ Matrix.Scale(scale, 4) @ Matrix.Translation(-rb(*c0))
+        sx, sy, sz = scale if isinstance(scale, tuple) else (scale, scale, scale)
+        cp.matrix_world = Matrix.Translation(rb(*centre)) @ Matrix.Rotation(math.radians(yaw), 4, "Z") @ Matrix.Diagonal((sx, sz, sy, 1)) @ Matrix.Translation(-rb(*c0))
     _stage(wall_z)
     for suffix, eye, target, lens in cameras:
         cam_data = bpy.data.cameras.new("cam")
@@ -379,6 +478,7 @@ def _stage(wall_z):
             bsdf.inputs["Emission Color"].default_value = col
             bsdf.inputs["Emission Strength"].default_value = glow
         ob.data.materials.append(mat)
+        ob.visible_camera = not glow  # the lamps light and reflect, but never block a view
         sc.collection.objects.link(ob)
     sun = bpy.data.objects.new("sun", bpy.data.lights.new("sun", "SUN"))
     sun.data.energy = 3.0

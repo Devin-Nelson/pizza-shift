@@ -16,6 +16,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
 import kit  # noqa: E402
+import layout  # noqa: E402
 from kit import Mesh, rgb  # noqa: E402
 
 # StationArt.Layout.StretchTable
@@ -53,13 +54,16 @@ balls = [Mesh(f"Ball{i}", rgb(234, 222, 186), rough=0.7, instanced=True) for i i
 # dough show wall, an open base (dollies roll in from the front) on six legs
 # with gussets and bullet feet, side rails and a back rail.
 steel.box((W, 0.08, D), (0, H - 0.04, 0), bevel=0.01)
-steel.cyl(0.07, W, (0, H - 0.07, -D / 2), axis="x", segs=12)
+# The rolled front edge; its end at the corner table is mitred to that table's front.
+kit.tube(steel, [(-W / 2, -D / 2), (W / 2, -D / 2)], H - 0.07, 0.07, after=layout.to_dough(*layout.C3))
 steel.box((W, 0.2, 0.03), (0, H - 0.18, -D / 2 + 0.06))
 steel.box((W, 0.2, 0.03), (0, H - 0.18, D / 2 - 0.02))
 for sx in (-1, 1):
     steel.box((0.03, 0.2, D - 0.1), (sx * (W / 2 - 0.02), H - 0.18, 0))
-steel.box((W, 0.45, 0.05), (0, H + 0.225, D / 2 - 0.025), bevel=0.008)
-steel.box((W, 0.03, 0.14), (0, H + 0.435, D / 2 - 0.07), bevel=0.008)
+# Backsplash with a folded top, its corner end mitred to the corner table's splash.
+splash = [(W / 2, D / 2), (-W / 2, D / 2)]
+kit.ribbon(steel, splash, 0.0, 0.05, H, H + 0.45, before=layout.to_dough(*layout.C4))
+kit.ribbon(steel, splash, 0.0, 0.14, H + 0.42, H + 0.45, before=layout.to_dough(*layout.C4))
 for lx in LEGS_X:
     for lz in LEGS_Z:
         steel.cyl(0.085, H - 0.45, (lx, 0.13 + (H - 0.45) / 2, lz), segs=14)
