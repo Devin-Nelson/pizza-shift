@@ -151,7 +151,7 @@ export type Shop = {
 	demandToday: number, -- forecast dollars generated so far today
 	sales: { today: number, week: number, lostToday: number, ordersToday: number, loadSum: number, loadCount: number, totalSum: number, totalCount: number },
 	rack: { [number]: RackSkin }, -- dough rack slot -> stretched skin (nil = empty)
-	trays: { [string]: number }, -- dough balls left in each size's tray on the stretch table
+	trays: { [string]: { [number]: boolean } }, -- dough balls still in each size's tray on the stretch table, by Index
 	lastRestock: number,
 	spawning: number,
 	crew: { Crew },
@@ -379,21 +379,48 @@ local function rackTake(shop: Shop, size: string): (RackSkin?, number?)
 end
 
 -- Draws each skin on a pizza screen resting in its rack slot.
--- The dough trays on the stretch table: hides the balls used up (each tray's
--- highest-numbered first; StationArt `DoughBall` parts), on every screen.
+-- A full tray of `size` dough balls (Index -> still there).
+local function fullTray(size: string): { [number]: boolean }
+	local tray = {}
+	for i = 1, Config.Dough.TrayBalls[size] or 0 do
+		tray[i] = true
+	end
+	return tray
+end
+
+-- The dough trays on the stretch table: hides the balls used up (StationArt
+-- `DoughBall` parts), on every screen.
 local function updateTrays(shop: Shop)
 	for _, d in shop.model:GetDescendants() do
 		if d:IsA("BasePart") and d.Name == "DoughBall" then
-			local left = shop.trays[d:GetAttribute("Size") :: string] or 0
-			d.Transparency = if (d:GetAttribute("Index") :: number) > left then 1 else 0
+			local tray = shop.trays[d:GetAttribute("Size") :: string]
+			d.Transparency = if tray and tray[d:GetAttribute("Index") :: number] then 0 else 1
 		end
 	end
 end
 
--- A ball off the `size` tray, stretched into a skin; an emptied tray is refilled.
-local function takeBall(shop: Shop, size: string)
-	local left = (shop.trays[size] or 0) - 1
-	shop.trays[size] = if left > 0 then left else Config.Dough.TrayBalls[size]
+-- A ball off the `size` tray, stretched into a skin: the one the player
+-- clicked (`index`), or for staff (or if someone else took it first) the
+-- highest-numbered one left. An emptied tray is refilled.
+local function takeBall(shop: Shop, size: string, index: number?)
+	local tray = shop.trays[size]
+	if not tray then
+		return
+	end
+	if not (index and tray[index]) then
+		index = nil
+		for i in tray do
+			if not index or i > index then
+				index = i
+			end
+		end
+	end
+	if index then
+		tray[index] = nil
+	end
+	if next(tray) == nil then
+		shop.trays[size] = fullTray(size)
+	end
 	updateTrays(shop)
 end
 
@@ -2914,7 +2941,7 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		endSession(player, session, false)
 		local score = sum / presses
 		rackAdd(shop, { size = size, quality = score, made = os.clock() })
-		takeBall(shop, size)
+		takeBall(shop, size, if isNumber(payload.ball) then math.floor(payload.ball) else nil)
 		updateSkinRack(shop)
 		updateBoards(shop)
 		pay(shop, player, Config.Pay.Dough, score, size .. " dough stretched")
@@ -3367,7 +3394,7 @@ function ShopService.AddShop(model: Model, name: string, owner: Player?, volume:
 		demandToday = 0,
 		sales = { today = 0, week = 0, lostToday = 0, ordersToday = 0, loadSum = 0, loadCount = 0, totalSum = 0, totalCount = 0 },
 		rack = {},
-		trays = table.clone(Config.Dough.TrayBalls),
+		trays = { Small = fullTray("Small"), Medium = fullTray("Medium"), Large = fullTray("Large") },
 		lastRestock = os.clock(),
 		spawning = 0,
 		crew = {},

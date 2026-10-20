@@ -52,8 +52,17 @@ The user sent 20 reference photos (Domino's slap table, dough trays, makeline + 
 - From batch 1: a follower who presses "To rack" is usually sent straight to Load to load that pizza (it's still the top pizza); followers' loads from the rack always auto-match (only the toppings Load honours Pick mode); the stock tablet and "Out of X" paths are now unreachable but kept for the truck's return.
 - From the no-crew change: a solo store at dinner gets far more orders than it can make, so most are lost until it's staffed (intended pressure, but the numbers are untuned); lost walk-ins who were never rung in aren't announced, only counted.
 
+## Playtest feedback, 2026-10-20 (batch 2b, fixed)
+- "A bit cramped": the store is now 48 x 90 (wider side lobby and kitchen, makers' aisle ~6.7, everything behind the makers moved back 3).
+- Restrooms removed; the office moved to the back-left corner.
+- Tray balls arranged like the user's photos (Small 1-2-1-2-1-2-1, Medium 2-1-2-1-2, Large 2-2-2), inset from the walls.
+- Bug: clicking a ball removed a different one (the code took the tray's highest-numbered ball); the server now tracks each ball and removes the clicked one (verified: reporting Small #7 hid exactly Small #7).
+- The gold outline around the lit tray clipped through the tray (the "yellow texture"): gone; the tray to use now glows (its walls Neon, locally).
+- "Nothing is 3D rendered... very sterile and boring": still open. The Blender models wait on the Open Cloud key, which isn't set (`ROBLOX_API_KEY` / `ROBLOX_USER_ID` absent on 2026-10-20). Talk to the user about the look before more layout work.
+
 ## Exact next step
-1. The user's hands-on playtest of batch 2 (`rojo serve` in this folder, Connect in the Rojo plugin): the new store, clicking dough balls (and a tray refilling after its last ball), the camera views (tray pick -> stretch close-up; the cut table looking at the exits, turning to the boxes for a job), customers' path, NPC staff in the new spots. Fix what they report first.
-2. Once the user has set the Open Cloud key (and restarted the Claude app so it sees the env vars): the Blender models, one station per batch, each with a render for the user to approve before upload: slap table + trays, makeline + food pans, load table, cut table, ovens + animated belts; then the rest of the store.
-3. Still owed by the user: a hands-on playtest (`rojo serve` in this folder, Connect in the Rojo plugin) of following (Stretch -> Sauce -> Cheese -> Toppings -> oven on its own), parking from the Stations bar and the Follow key, the store picker, Staff menu, scales and topping pans, and, with a second player, owner handover.
-4. Later: design the roll/spin with the user (team-member stat pool as a `Config.StaffGen` entry, duplicates, what managers do beyond Flexibility, coins vs Robux, the spin presentation).
+1. The look (the user's main complaint): get the Open Cloud key set (or pick another upload route), then the Blender models; a lighting / material / decor pass can happen before that without uploads.
+2. The user's hands-on playtest of batch 2 (`rojo serve` in this folder, Connect in the Rojo plugin): the new store, clicking dough balls (and a tray refilling after its last ball), the camera views (tray pick -> stretch close-up; the cut table looking at the exits, turning to the boxes for a job), customers' path, NPC staff in the new spots. Fix what they report first.
+3. Once the user has set the Open Cloud key (and restarted the Claude app so it sees the env vars): the Blender models, one station per batch, each with a render for the user to approve before upload: slap table + trays, makeline + food pans, load table, cut table, ovens + animated belts; then the rest of the store.
+4. Still owed by the user: a hands-on playtest (`rojo serve` in this folder, Connect in the Rojo plugin) of following (Stretch -> Sauce -> Cheese -> Toppings -> oven on its own), parking from the Stations bar and the Follow key, the store picker, Staff menu, scales and topping pans, and, with a second player, owner handover.
+5. Later: design the roll/spin with the user (team-member stat pool as a `Config.StaffGen` entry, duplicates, what managers do beyond Flexibility, coins vs Robux, the spin presentation).

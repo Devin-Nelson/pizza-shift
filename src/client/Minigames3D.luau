@@ -350,6 +350,7 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 	-- The dough ball (its tray's ball size) eases toward its new shape after every press.
 	local BALL = 1.0
 	local diameter, progress, sloppy = BALL, 0, 0
+	local ballIndex: number? = nil -- the tray ball taken (Index), reported with the result
 
 	local function stretch(size: string, ball: number?)
 		clearBody(body)
@@ -468,7 +469,7 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 				task.delay(0.6, function()
 					if active then
 						Minigames3D.Close()
-						finish({ hits = hits, size = size })
+						finish({ hits = hits, size = size, ball = ballIndex })
 					end
 				end)
 			else
@@ -487,13 +488,13 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 	local station = data.station
 	local shop = if typeof(station) == "Instance" and station.Parent then station.Parent.Parent else nil
 	local balls: { BasePart } = {}
-	local trays: { [string]: BasePart } = {}
+	local litWalls: { BasePart } = {}
 	for _, d in (if shop then shop:GetDescendants() else {}) do
 		if d:IsA("BasePart") then
 			if d.Name == "DoughBall" and d.Transparency < 1 and (forced == nil or d:GetAttribute("Size") == forced) then
 				table.insert(balls, d)
-			elseif string.sub(d.Name, 1, 10) == "DoughTray_" then
-				trays[string.sub(d.Name, 11)] = d
+			elseif d.Name == "DoughTrayWall" and d:GetAttribute("Size") == lit then
+				table.insert(litWalls, d)
 			end
 		end
 	end
@@ -511,11 +512,16 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 		sizeChip(body, forced, 1)
 	end
 	Ui.text("PICK A DOUGH BALL", F.Label, S.Body, { TextColor3 = C.CreamDim, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 28), LayoutOrder = 2, Parent = body })
-	local trayBox = Instance.new("SelectionBox")
-	trayBox.Color3 = C.Gold
-	trayBox.LineThickness = 0.06
-	trayBox.Adornee = if lit then trays[lit] else nil
-	trayBox.Parent = ctx.folder
+	-- The tray to use glows (its walls lit, on this screen only).
+	local function lightTray(on: boolean)
+		for _, wall in litWalls do
+			wall.Material = if on then Enum.Material.Neon else Enum.Material.Plastic
+		end
+	end
+	lightTray(true)
+	table.insert(ctx.cleanup, function()
+		lightTray(false)
+	end)
 	local hover = Instance.new("Highlight")
 	hover.FillTransparency = 1
 	hover.OutlineColor = Color3.new(1, 1, 1)
@@ -545,16 +551,11 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 			return
 		end
 		picked = true
-		trayBox.Adornee = nil
-		-- The tray's next ball goes (its highest-numbered one, as the server
-		-- counts them) and drops into the cornmeal.
+		lightTray(false)
+		-- That ball leaves the tray and drops into the cornmeal.
 		local size = b:GetAttribute("Size") :: string
 		local take = b
-		for _, other in balls do
-			if other:GetAttribute("Size") == size and (other:GetAttribute("Index") :: number) > (take:GetAttribute("Index") :: number) then
-				take = other
-			end
-		end
+		ballIndex = b:GetAttribute("Index") :: number
 		take.LocalTransparencyModifier = 1
 		table.insert(ctx.cleanup, function()
 			take.LocalTransparencyModifier = 0

@@ -108,14 +108,14 @@ local function screenText(target: BasePart, face: Enum.NormalId, text: string, c
 end
 
 -- Builds one store, after the user's floor plan v4.1 (`docs/floorplan.svg`,
--- traced from a real store's map): a narrow, deep store, 42 x 84 studs at
--- 1.5 studs per foot. Front (entrance) faces +Z of `origin`. An L-shaped
+-- traced from a real store's map), widened after their playtest for roomier
+-- walkways: 48 x 90 studs (x -24..24, z -48..42). Front (entrance) faces +Z of `origin`. An L-shaped
 -- lobby (tables along the front, booths down the left side, restrooms off the
 -- side hall); the carryout counter facing the side lobby; production as an L
 -- behind the dough show glass (stretch table along the side, sauce in the
 -- angled corner, makeline along the front wall) with the ovens right behind
 -- the makers, the cut table at the oven exits, dispatch behind it; walk-in,
--- restrooms, office and dish area in back. Returns the Model.
+-- office and dish area in back (no restrooms). Returns the Model.
 function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance): Model
 	local model = Instance.new("Model")
 	model.Name = "Shop"
@@ -152,7 +152,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	local FACE_RIGHT = CFrame.Angles(0, -math.pi / 2, 0) -- worker toward +X
 	local FACE_LEFT = CFrame.Angles(0, math.pi / 2, 0) -- worker toward -X
 
-	local HW, HD, h = 21, 42, 14 -- half width, half depth, wall height
+	local HW, FRONT, BACK, h = 24, 42, -48, 14 -- half width, front and back walls, wall height
 	local wallColor = Color3.fromRGB(236, 230, 220)
 	local tile = Color3.fromRGB(246, 246, 243) -- white subway tile on the walls the public sees
 	local glass = Color3.fromRGB(160, 205, 235)
@@ -161,46 +161,46 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	local glassProps = { Transparency = 0.55, Material = Enum.Material.Glass, CanCollide = true }
 
 	-- Floors: red quarry tile in the kitchen, wood-look planks in the L-shaped lobby.
-	box("Floor", -HW, HW, 0, 1, -HD, HD, Color3.fromRGB(150, 62, 48), Enum.Material.CeramicTiles)
-	box("LobbyFloor", -HW, HW, 1, 1.05, 28.9, HD, wood, Enum.Material.WoodPlanks, { CanCollide = false })
-	box("LobbyFloor", -HW, -10.6, 1, 1.05, -19.2, 28.9, wood, Enum.Material.WoodPlanks, { CanCollide = false })
+	box("Floor", -HW, HW, 0, 1, BACK, FRONT, Color3.fromRGB(150, 62, 48), Enum.Material.CeramicTiles)
+	box("LobbyFloor", -HW, HW, 1, 1.05, 28.9, FRONT, wood, Enum.Material.WoodPlanks, { CanCollide = false })
+	box("LobbyFloor", -HW, -10.6, 1, 1.05, -9.9, 28.9, wood, Enum.Material.WoodPlanks, { CanCollide = false })
 	box("LobbyFloor", -10.6, -8.4, 1, 1.05, 9.9, 28.9, wood, Enum.Material.WoodPlanks, { CanCollide = false }) -- in front of the dough show glass
 	box("LobbyFloor", -8.4, -2.4, 1, 1.05, 23.2, 28.9, wood, Enum.Material.WoodPlanks, { CanCollide = false }) -- the angled corner (the kitchen half is under the sauce table)
-	box("Mat", -20.3, -15.7, 1.05, 1.1, 38.5, 41.6, BRAND.Charcoal, Enum.Material.Carpet, { CanCollide = false })
+	box("Mat", -23.3, -18.7, 1.05, 1.1, 38.5, 41.6, BRAND.Charcoal, Enum.Material.Carpet, { CanCollide = false })
 
 	-- Outside walls, back door, storefront with a door at each front corner.
 	for _, sx in { -1, 1 } do
-		box("WallSide", sx * HW - 0.5, sx * HW + 0.5, 1, 1 + h, -HD, HD, wallColor, Enum.Material.Plaster)
-		box("WallStripe", sx * HW - 0.55, sx * HW + 0.55, 1, 3, -HD, HD, BRAND.Charcoal)
+		box("WallSide", sx * HW - 0.5, sx * HW + 0.5, 1, 1 + h, BACK, FRONT, wallColor, Enum.Material.Plaster)
+		box("WallStripe", sx * HW - 0.55, sx * HW + 0.55, 1, 3, BACK, FRONT, BRAND.Charcoal)
 	end
-	box("WallBack", -HW, -3.6, 1, 1 + h, -HD - 0.5, -HD + 0.5, wallColor, Enum.Material.Plaster)
-	box("WallBack", 1.6, HW, 1, 1 + h, -HD - 0.5, -HD + 0.5, wallColor, Enum.Material.Plaster)
-	box("Lintel", -3.6, 1.6, 9, 1 + h, -HD - 0.5, -HD + 0.5, wallColor, Enum.Material.Plaster)
-	local driverSign = part({ Name = "DriverDoorSign", Size = Vector3.new(6, 1, 0.1), CFrame = at(-1, 9.6, -HD + 0.6), Color = Color3.fromRGB(46, 160, 90), Parent = decor })
+	box("WallBack", -HW, -3.6, 1, 1 + h, BACK - 0.5, BACK + 0.5, wallColor, Enum.Material.Plaster)
+	box("WallBack", 1.6, HW, 1, 1 + h, BACK - 0.5, BACK + 0.5, wallColor, Enum.Material.Plaster)
+	box("Lintel", -3.6, 1.6, 9, 1 + h, BACK - 0.5, BACK + 0.5, wallColor, Enum.Material.Plaster)
+	local driverSign = part({ Name = "DriverDoorSign", Size = Vector3.new(6, 1, 0.1), CFrame = at(-1, 9.6, BACK + 0.6), Color = Color3.fromRGB(46, 160, 90), Parent = decor })
 	screenText(driverSign, Enum.NormalId.Back, "DRIVERS - CARS OUT BACK", Color3.new(1, 1, 1))
-	box("KneeWall", -15.5, 15.5, 1, 3, HD - 0.5, HD + 0.5, BRAND.Charcoal)
-	box("Storefront", -15.5, 15.5, 3, 11, HD - 0.2, HD + 0.2, glass, nil, glassProps)
+	box("KneeWall", -18.5, 18.5, 1, 3, FRONT - 0.5, FRONT + 0.5, BRAND.Charcoal)
+	box("Storefront", -18.5, 18.5, 3, 11, FRONT - 0.2, FRONT + 0.2, glass, nil, glassProps)
 	for _, sx in { -1, 1 } do
-		box("DoorFrame", sx * 15.5 - 0.3, sx * 15.5 + 0.3, 1, 11, HD - 0.4, HD + 0.4, BRAND.Charcoal, Enum.Material.Metal)
-		box("DoorFrame", sx * 20.5 - 0.3, sx * HW, 1, 11, HD - 0.4, HD + 0.4, BRAND.Charcoal, Enum.Material.Metal)
-		box("Transom", sx * 15.5, sx * 20.5, 9.6, 11, HD - 0.2, HD + 0.2, glass, nil, glassProps)
-		part({ Name = "Awning", Size = Vector3.new(15, 0.3, 3.4), CFrame = at(sx * 7.75, 11.6, HD + 1.5) * CFrame.Angles(math.rad(-18), 0, 0), Color = BRAND.Red, Material = Enum.Material.Fabric, Parent = decor })
+		box("DoorFrame", sx * 18.5 - 0.3, sx * 18.5 + 0.3, 1, 11, FRONT - 0.4, FRONT + 0.4, BRAND.Charcoal, Enum.Material.Metal)
+		box("DoorFrame", sx * 23.5 - 0.3, sx * HW, 1, 11, FRONT - 0.4, FRONT + 0.4, BRAND.Charcoal, Enum.Material.Metal)
+		box("Transom", sx * 18.5, sx * 23.5, 9.6, 11, FRONT - 0.2, FRONT + 0.2, glass, nil, glassProps)
+		part({ Name = "Awning", Size = Vector3.new(18, 0.3, 3.4), CFrame = at(sx * 9.25, 11.6, FRONT + 1.5) * CFrame.Angles(math.rad(-18), 0, 0), Color = BRAND.Red, Material = Enum.Material.Fabric, Parent = decor })
 	end
-	box("Header", -HW, HW, 11, 1 + h, HD - 0.5, HD + 0.5, BRAND.Red)
-	box("Roof", -HW - 0.5, HW + 0.5, 1 + h, 2 + h, -HD - 0.5, HD + 0.5, Color3.fromRGB(70, 70, 75))
-	box("Parapet", -HW - 0.5, HW + 0.5, 1 + h, 3.5 + h, HD, HD + 0.5, BRAND.Red)
+	box("Header", -HW, HW, 11, 1 + h, FRONT - 0.5, FRONT + 0.5, BRAND.Red)
+	box("Roof", -HW - 0.5, HW + 0.5, 1 + h, 2 + h, BACK - 0.5, FRONT + 0.5, Color3.fromRGB(70, 70, 75))
+	box("Parapet", -HW - 0.5, HW + 0.5, 1 + h, 3.5 + h, FRONT, FRONT + 0.5, BRAND.Red)
 	-- Brand sign on the header: round logo + name
-	part({ Name = "Logo", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 4.4, 4.4), CFrame = at(-14, 15.6, HD + 0.9) * CFrame.Angles(0, math.pi / 2, 0), Color = BRAND.Cream, Parent = decor })
-	part({ Name = "LogoSlice", Size = Vector3.new(2.1, 2.1, 0.2), CFrame = at(-14, 15.6, HD + 1.15) * CFrame.Angles(0, 0, math.rad(45)), Color = BRAND.Gold, Parent = decor })
-	part({ Name = "LogoPepperoni", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.1, 0.7, 0.7), CFrame = at(-14, 15.7, HD + 1.3) * CFrame.Angles(0, math.pi / 2, 0), Color = BRAND.Red, Parent = decor })
-	local sign = part({ Name = "Sign", Size = Vector3.new(24, 3.4, 0.4), CFrame = at(3, 15.6, HD + 0.9), Color = BRAND.Red, Parent = decor })
+	part({ Name = "Logo", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 4.4, 4.4), CFrame = at(-14, 15.6, FRONT + 0.9) * CFrame.Angles(0, math.pi / 2, 0), Color = BRAND.Cream, Parent = decor })
+	part({ Name = "LogoSlice", Size = Vector3.new(2.1, 2.1, 0.2), CFrame = at(-14, 15.6, FRONT + 1.15) * CFrame.Angles(0, 0, math.rad(45)), Color = BRAND.Gold, Parent = decor })
+	part({ Name = "LogoPepperoni", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.1, 0.7, 0.7), CFrame = at(-14, 15.7, FRONT + 1.3) * CFrame.Angles(0, math.pi / 2, 0), Color = BRAND.Red, Parent = decor })
+	local sign = part({ Name = "Sign", Size = Vector3.new(24, 3.4, 0.4), CFrame = at(3, 15.6, FRONT + 0.9), Color = BRAND.Red, Parent = decor })
 	local signText = screenText(sign, Enum.NormalId.Back, string.upper(shopName), Color3.new(1, 1, 1), nil, Enum.Font.FredokaOne, Vector2.new(720, 100))
 	signText.Name = "ShopName"
-	local service = part({ Name = "ServiceSign", Size = Vector3.new(11, 1.2, 0.1), CFrame = at(0, 10.5, HD + 0.3), Color = BRAND.Charcoal, Parent = decor })
+	local service = part({ Name = "ServiceSign", Size = Vector3.new(11, 1.2, 0.1), CFrame = at(0, 10.5, FRONT + 0.3), Color = BRAND.Charcoal, Parent = decor })
 	screenText(service, Enum.NormalId.Back, "CARRYOUT  |  DELIVERY", BRAND.Gold)
 
 	-- Ceiling light panels
-	for _, pos in { Vector2.new(-15, 34), Vector2.new(2, 35), Vector2.new(14, 35), Vector2.new(-15, 14), Vector2.new(-15, -6), Vector2.new(0, 21), Vector2.new(12, 22), Vector2.new(-2, 9), Vector2.new(9, 3), Vector2.new(7, -9), Vector2.new(-1, -22), Vector2.new(-12, -33), Vector2.new(10, -34) } do
+	for _, pos in { Vector2.new(-16, 34), Vector2.new(2, 35), Vector2.new(16, 35), Vector2.new(-17, 14), Vector2.new(-17, -3), Vector2.new(0, 21), Vector2.new(13, 21), Vector2.new(-2, 8), Vector2.new(10, 1), Vector2.new(7, -11), Vector2.new(-1, -25), Vector2.new(-14, -30), Vector2.new(-14, -16), Vector2.new(12, -40), Vector2.new(-10, -42) } do
 		local panel = part({ Name = "LightPanel", Size = Vector3.new(6, 0.2, 3), CFrame = at(pos.X, h + 0.85, pos.Y), Color = Color3.fromRGB(255, 252, 240), Material = Enum.Material.Neon, CanCollide = false, Parent = decor })
 		local light = Instance.new("SurfaceLight")
 		light.Face = Enum.NormalId.Bottom
@@ -255,7 +255,8 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	end
 	local orderHere = part({ Name = "OrderHere", Size = Vector3.new(0.1, 0.9, 4), CFrame = at(-11.2, 9.6, 7.4), Color = BRAND.Red, Parent = decor })
 	screenText(orderHere, Enum.NormalId.Left, "ORDER HERE", Color3.new(1, 1, 1))
-	-- Kitchen wall behind the counter's end, with the staff door
+	-- Kitchen wall behind the counter's end, with the staff door, and the side lobby's back wall
+	box("LobbyBackWall", -HW, -10.4, 1, 1 + h, -10.3, -9.9, tile, Enum.Material.Plaster)
 	box("StaffWall", -11, -10.4, 1, 1 + h, -9.9, -8.6, tile, Enum.Material.Plaster)
 	box("StaffWall", -11, -10.4, 1, 1 + h, -5.4, -3.6, tile, Enum.Material.Plaster)
 	box("StaffWall", -11, -10.4, 9, 1 + h, -8.6, -5.4, tile, Enum.Material.Plaster)
@@ -286,10 +287,10 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	local booth = Color3.fromRGB(190, 45, 40)
 	local tableTop = Color3.fromRGB(120, 85, 55)
 	for _, z0 in { 1.5, 10.5, 19.5 } do
-		box("BoothSeat", -HW + 0.5, -17.6, 1, 2.8, z0, z0 + 5.5, booth, Enum.Material.Fabric)
-		box("BoothBack", -HW + 0.5, -19.6, 2.8, 5.6, z0, z0 + 5.5, booth, Enum.Material.Fabric)
-		box("BoothTable", -17.4, -14.8, 3.4, 3.7, z0 + 1.4, z0 + 4.1, tableTop, Enum.Material.Wood)
-		box("TableLeg", -16.3, -15.9, 1, 3.4, z0 + 2.55, z0 + 2.95, BRAND.Charcoal, Enum.Material.Metal)
+		box("BoothSeat", -HW + 0.5, -20.6, 1, 2.8, z0, z0 + 5.5, booth, Enum.Material.Fabric)
+		box("BoothBack", -HW + 0.5, -22.6, 2.8, 5.6, z0, z0 + 5.5, booth, Enum.Material.Fabric)
+		box("BoothTable", -20.4, -17.8, 3.4, 3.7, z0 + 1.4, z0 + 4.1, tableTop, Enum.Material.Wood)
+		box("TableLeg", -19.3, -18.9, 1, 3.4, z0 + 2.55, z0 + 2.95, BRAND.Charcoal, Enum.Material.Metal)
 	end
 	for _, t in { Vector2.new(-3, 33.5), Vector2.new(6, 33.5), Vector2.new(13, 38.5) } do
 		box("LobbyTable", t.X - 1.4, t.X + 1.4, 3.4, 3.7, t.Y - 1.4, t.Y + 1.4, tableTop, Enum.Material.Wood)
@@ -360,66 +361,49 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 
 	-- Three stacked conveyor ovens right behind the makers, conveying toward the
 	-- back (not a station: pizzas ride through on their own).
-	StationArt.Build("Oven", decor, at(8.55, 1, 13.1))
+	StationArt.Build("Oven", decor, at(8.55, 1, 10.1))
 
 	-- Box storage along the right wall by the ovens, a window further back
 	for i = 0, 3 do
-		box("BoxShelf", HW - 3.2, HW - 0.5, 1.3 + i * 2.4, 1.45 + i * 2.4, 4.5, 15.5, steel, Enum.Material.DiamondPlate)
+		box("BoxShelf", HW - 3.2, HW - 0.5, 1.3 + i * 2.4, 1.45 + i * 2.4, 1.5, 12.5, steel, Enum.Material.DiamondPlate)
 		for j = 0, 3 do
-			box("FlatBoxes", HW - 3.0, HW - 0.7, 1.45 + i * 2.4, 2.5 + i * 2.4, 4.9 + j * 2.6, 6.9 + j * 2.6, Color3.fromRGB(205, 168, 118), Enum.Material.Cardboard, { CanCollide = false })
+			box("FlatBoxes", HW - 3.0, HW - 0.7, 1.45 + i * 2.4, 2.5 + i * 2.4, 1.9 + j * 2.6, 3.9 + j * 2.6, Color3.fromRGB(205, 168, 118), Enum.Material.Cardboard, { CanCollide = false })
 		end
 	end
-	box("Window", HW - 0.6, HW + 0.6, 4, 9, -6.3, -0.9, glass, nil, glassProps)
+	box("Window", HW - 0.6, HW + 0.6, 4, 9, -9.3, -3.9, glass, nil, glassProps)
 
 	-- Dispatch zone behind the oven tender: a second heat rack and the bag cabinet
-	StationArt.Build("DeliveryRack", decor, at(1.9, 1, -10.4) * FACE_FRONT)
-	box("BagCabinet", 11.6, 14.0, 1, 6, -12.2, -9.6, Color3.fromRGB(150, 25, 30), Enum.Material.Fabric)
-	local bagSign = part({ Name = "BagSign", Size = Vector3.new(2.4, 0.8, 0.1), CFrame = at(12.8, 6.6, -9.5), Color = BRAND.Charcoal, Parent = decor })
+	StationArt.Build("DeliveryRack", decor, at(1.9, 1, -13.4) * FACE_FRONT)
+	box("BagCabinet", 11.6, 14.0, 1, 6, -15.2, -12.6, Color3.fromRGB(150, 25, 30), Enum.Material.Fabric)
+	local bagSign = part({ Name = "BagSign", Size = Vector3.new(2.4, 0.8, 0.1), CFrame = at(12.8, 6.6, -12.5), Color = BRAND.Charcoal, Parent = decor })
 	screenText(bagSign, Enum.NormalId.Back, "HOT BAGS", BRAND.Gold)
 
 	-- Walk-in cooler: the Fridge station is its front's right end (door + stock
 	-- tablet), clear of the heat racks.
 	local walkIn = Color3.fromRGB(205, 210, 216)
-	box("WalkIn", 5.75, 14, 1, 11, -28.4, -13.2, walkIn, Enum.Material.Metal)
-	box("WalkIn", 14, HW - 0.5, 1, 11, -28.4, -17.2, walkIn, Enum.Material.Metal)
-	box("WalkIn", 20, HW - 0.5, 1, 11, -17.2, -13.2, walkIn, Enum.Material.Metal)
-	box("HandSink", 2.9, 5.0, 3.0, 3.6, -14.6, -12.4, steel, Enum.Material.Metal)
-	box("HandSinkBase", 3.4, 4.5, 1, 3.0, -14.2, -12.8, steel, Enum.Material.Metal)
+	box("WalkIn", 5.75, 14, 1, 11, -31.4, -16.2, walkIn, Enum.Material.Metal)
+	box("WalkIn", 14, HW - 0.5, 1, 11, -31.4, -20.2, walkIn, Enum.Material.Metal)
+	box("WalkIn", 20, HW - 0.5, 1, 11, -20.2, -16.2, walkIn, Enum.Material.Metal)
+	box("HandSink", 2.9, 5.0, 3.0, 3.6, -17.6, -15.4, steel, Enum.Material.Metal)
+	box("HandSinkBase", 3.4, 4.5, 1, 3.0, -17.2, -15.8, steel, Enum.Material.Metal)
 
-	-- Restrooms and the office off the side hall
+	-- Back of house where the restrooms were (the user dropped them): the
+	-- office in the back-left corner, the 3-compartment sink on the left wall,
+	-- dish rack, prep table, mop sink and water heater, dry storage, tray
+	-- storage and back storage along the back.
 	local function wall(name: string, x0: number, x1: number, z0: number, z1: number)
 		box(name, x0, x1, 1, 11, z0, z1, wallColor, Enum.Material.Plaster)
 	end
-	-- Women's: x -21..-10.2, z -26.2..-19.2, door to the hall
-	wall("RestroomWall", -HW, -17.5, -19.4, -19.0)
-	wall("RestroomWall", -15.0, -10.2, -19.4, -19.0)
-	wall("RestroomWall", -10.4, -10.0, -26.2, -19.0)
-	wall("RestroomWall", -HW, -10.0, -26.4, -26.0)
-	-- Men's: x -13.8..-4.3, z -18.9..-9.9, door to the hall
-	wall("RestroomWall", -13.8, -4.3, -10.1, -9.7)
-	wall("RestroomWall", -13.8, -4.3, -18.9, -18.5)
-	wall("RestroomWall", -14.0, -13.6, -18.9, -16.0)
-	wall("RestroomWall", -14.0, -13.6, -13.5, -9.9)
-	wall("RestroomWall", -4.5, -4.1, -18.9, -9.9)
-	for _, r in { { -15.6, -22.7, "WOMEN" }, { -9.0, -14.4, "MEN" } } do
-		box("Toilet", r[1] - 0.6, r[1] + 0.6, 1, 2.6, r[2] - 2.5, r[2] - 1.0, Color3.new(1, 1, 1), Enum.Material.SmoothPlastic)
-		box("Sink", r[1] + 1.4, r[1] + 2.8, 3.4, 3.8, r[2] + 1.0, r[2] + 2.2, Color3.new(1, 1, 1), Enum.Material.SmoothPlastic)
-	end
-	local womenSign = part({ Name = "RestroomSign", Size = Vector3.new(1.6, 1.6, 0.1), CFrame = at(-16.25, 8.6, -18.9), Color = Color3.fromRGB(40, 90, 160), Parent = decor })
-	screenText(womenSign, Enum.NormalId.Back, "WOMEN", Color3.new(1, 1, 1))
-	local menSign = part({ Name = "RestroomSign", Size = Vector3.new(0.1, 1.6, 1.6), CFrame = at(-14.1, 8.6, -14.75), Color = Color3.fromRGB(40, 90, 160), Parent = decor })
-	screenText(menSign, Enum.NormalId.Left, "MEN", Color3.new(1, 1, 1))
-	-- Office: x -10.2..-4.3, z -26.2..-19.6, door to the kitchen
-	wall("OfficeWall", -10.2, -4.3, -19.8, -19.4)
-	wall("OfficeWall", -4.5, -4.1, -26.2, -24.5)
-	wall("OfficeWall", -4.5, -4.1, -22.0, -19.6)
-	wall("OfficeWall", -10.2, -4.1, -26.4, -26.0)
-	box("Desk", -9.6, -6.4, 3.4, 3.7, -25.8, -24.0, Color3.fromRGB(110, 80, 55), Enum.Material.Wood)
-	box("DeskBody", -9.6, -8.4, 1, 3.4, -25.8, -24.0, Color3.fromRGB(90, 65, 45), Enum.Material.Wood)
-	box("OfficeChair", -8.4, -7.2, 1, 3.0, -23.6, -22.4, Color3.fromRGB(190, 40, 35), Enum.Material.Fabric)
-	box("Monitor", -8.6, -7.0, 3.7, 4.8, -25.7, -25.6, Color3.fromRGB(15, 15, 18))
-	-- Sales board on the restroom block's kitchen side: today's/this week's sales vs. forecast (ShopService writes to it)
-	local salesBoard = part({ Name = "SalesBoard", Size = Vector3.new(0.15, 3.6, 6), CFrame = at(-3.95, 6.5, -14.4), Color = Color3.fromRGB(12, 16, 22), Parent = decor })
+	wall("OfficeWall", -14.2, -13.8, -22.4, -18.0)
+	wall("OfficeWall", -14.2, -13.8, -15.5, -10.3)
+	wall("OfficeWall", -HW, -13.8, -22.6, -22.2)
+	box("Desk", -23.4, -20.2, 3.4, 3.7, -21.8, -19.6, Color3.fromRGB(110, 80, 55), Enum.Material.Wood)
+	box("DeskBody", -23.4, -22.2, 1, 3.4, -21.8, -19.6, Color3.fromRGB(90, 65, 45), Enum.Material.Wood)
+	box("OfficeChair", -20.0, -18.8, 1, 3.0, -21.0, -19.8, Color3.fromRGB(190, 40, 35), Enum.Material.Fabric)
+	box("Monitor", -23.3, -23.2, 3.7, 4.8, -21.4, -19.8, Color3.fromRGB(15, 15, 18))
+	box("Safe", -23.4, -21.8, 1, 3.2, -12.4, -10.8, Color3.fromRGB(60, 62, 66), Enum.Material.Metal)
+	-- Sales board on the office's kitchen side: today's/this week's sales vs. forecast (ShopService writes to it)
+	local salesBoard = part({ Name = "SalesBoard", Size = Vector3.new(0.15, 3.6, 5), CFrame = at(-13.65, 6.5, -12.9), Color = Color3.fromRGB(12, 16, 22), Parent = decor })
 	local salesGui = Instance.new("SurfaceGui")
 	salesGui.Name = "Sales"
 	salesGui.Face = Enum.NormalId.Right -- faces into the kitchen (+X)
@@ -443,32 +427,30 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	salesText.Parent = salesGui
 	salesGui.Parent = salesBoard
 
-	-- Back of house: 3-compartment sink, dish rack, prep table, mop sink, dry
-	-- storage, tray storage, back storage.
-	box("SinkBody", -17.4, -7.0, 1, 4.2, -28.4, -26.6, steel, Enum.Material.Metal)
+	box("SinkBody", -HW + 0.5, -21.7, 1, 4.2, -38.4, -27.6, steel, Enum.Material.Metal)
 	for i = 0, 2 do
-		box("SinkBasin", -16.9 + i * 3.4, -14.1 + i * 3.4, 4.15, 4.25, -28.2, -26.8, Color3.fromRGB(120, 160, 190), Enum.Material.Glass, { Transparency = 0.3, CanCollide = false })
+		box("SinkBasin", -HW + 0.7, -21.9, 4.15, 4.25, -38.0 + i * 3.5, -35.2 + i * 3.5, Color3.fromRGB(120, 160, 190), Enum.Material.Glass, { Transparency = 0.3, CanCollide = false })
 	end
-	box("Splash", -17.4, -7.0, 4.2, 6.0, -26.7, -26.55, steel, Enum.Material.Metal)
+	box("Splash", -HW + 0.5, -HW + 0.65, 4.2, 6.0, -38.4, -27.6, steel, Enum.Material.Metal)
 	for i = 0, 3 do
-		box("DishRack", -20.6, -17.6, 1.3 + i * 2.2, 1.45 + i * 2.2, -35.0, -30.9, steel, Enum.Material.DiamondPlate)
+		box("DishRack", -HW + 0.5, -20.6, 1.3 + i * 2.2, 1.45 + i * 2.2, -46.6, -41.6, steel, Enum.Material.DiamondPlate)
 	end
-	box("PrepTable", -13.3, -6.5, 3.2, 3.5, -34.8, -32.9, steel, Enum.Material.Metal)
-	box("PrepTableBase", -13.0, -6.8, 1, 3.2, -34.6, -33.1, Color3.fromRGB(150, 154, 160), Enum.Material.Metal, { Transparency = 0.2 })
-	box("MopSink", -20.6, -17.0, 1, 2.6, -41.6, -38.4, Color3.fromRGB(200, 200, 200), Enum.Material.Concrete)
-	box("WaterHeater", -20.4, -18.2, 1, 7, -37.8, -35.8, Color3.fromRGB(225, 225, 220), Enum.Material.Metal)
+	box("PrepTable", -16.0, -8.0, 3.2, 3.5, -32.0, -30.0, steel, Enum.Material.Metal)
+	box("PrepTableBase", -15.7, -8.3, 1, 3.2, -31.8, -30.2, Color3.fromRGB(150, 154, 160), Enum.Material.Metal, { Transparency = 0.2 })
+	box("MopSink", -18.6, -15.0, 1, 2.6, BACK + 0.5, BACK + 3.7, Color3.fromRGB(200, 200, 200), Enum.Material.Concrete)
+	box("WaterHeater", -14.2, -12.0, 1, 7, BACK + 0.6, BACK + 2.8, Color3.fromRGB(225, 225, 220), Enum.Material.Metal)
 	for i = 0, 3 do
-		box("DryShelf", 2.9, 5.6, 1.3 + i * 2.2, 1.45 + i * 2.2, -28.1, -24.0, steel, Enum.Material.DiamondPlate)
-		box("Cases", 3.1, 5.4, 1.45 + i * 2.2, 2.6 + i * 2.2, -27.8, -24.3, Color3.fromRGB(180, 140, 90), Enum.Material.Cardboard, { CanCollide = false })
+		box("DryShelf", -10.8, -5.2, 1.3 + i * 2.2, 1.45 + i * 2.2, BACK + 0.5, BACK + 3.0, steel, Enum.Material.DiamondPlate)
+		box("Cases", -10.5, -5.5, 1.45 + i * 2.2, 2.6 + i * 2.2, BACK + 0.7, BACK + 2.8, Color3.fromRGB(180, 140, 90), Enum.Material.Cardboard, { CanCollide = false })
 	end
-	for k = 0, 5 do
+	for k = 0, 6 do
 		for i = 0, 5 do
-			box("TrayStack", 3.4 + k * 2.9, 5.8 + k * 2.9, 1 + i * 0.36, 1.34 + i * 0.36, -41.0, -38.0, Color3.fromRGB(45, 125, 215), Enum.Material.Plastic)
+			box("TrayStack", 3.4 + k * 2.9, 5.8 + k * 2.9, 1 + i * 0.36, 1.34 + i * 0.36, BACK + 1.0, BACK + 4.0, Color3.fromRGB(45, 125, 215), Enum.Material.Plastic)
 		end
 	end
 	for i = 0, 3 do
-		box("BackStorage", 12.4, HW - 0.5, 1.3 + i * 2.2, 1.45 + i * 2.2, -35.0, -32.2, steel, Enum.Material.DiamondPlate)
-		box("Cases", 12.8, HW - 0.8, 1.45 + i * 2.2, 2.4 + i * 2.2, -34.7, -32.5, Color3.fromRGB(230, 205, 120), Enum.Material.Cardboard, { CanCollide = false })
+		box("BackStorage", 12.4, HW - 0.5, 1.3 + i * 2.2, 1.45 + i * 2.2, -41.0, -38.2, steel, Enum.Material.DiamondPlate)
+		box("Cases", 12.8, HW - 0.8, 1.45 + i * 2.2, 2.4 + i * 2.2, -40.7, -38.5, Color3.fromRGB(230, 205, 120), Enum.Material.Cardboard, { CanCollide = false })
 	end
 
 	-- === Stations ===
@@ -515,37 +497,37 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	station("Toppings", makeCF * CFrame.new(ML.toppingsX, 0, 0), Vector3.new(3, 4, 3.6), "Toppings", "Make-Line", nil, makeWork)
 	-- The ready rack beside the oven entrance: the topper turns around to load.
 	local RR = StationArt.Layout.ReadyRack
-	StationArt.Build("ReadyRack", decor, at(15.3, 1, 18.4) * FACE_FRONT)
-	station("Load", at(15.3, 1, 18.4) * FACE_FRONT, Vector3.new(RR.width, 8, RR.depth), "Load Oven", "Ready Rack", nil, Vector3.new(0, RR.height + 2.3, 0.1 - RR.rackDepth / 2))
+	StationArt.Build("ReadyRack", decor, at(15.3, 1, 15.4) * FACE_FRONT)
+	station("Load", at(15.3, 1, 15.4) * FACE_FRONT, Vector3.new(RR.width, 8, RR.depth), "Load Oven", "Ready Rack", nil, Vector3.new(0, RR.height + 2.3, 0.1 - RR.rackDepth / 2))
 	-- Cut table behind the oven exits; the oven tender faces the carryout counter.
 	local CT = StationArt.Layout.CutTable
-	station("CutTable", at(3.1, 1, 1.5) * FACE_RIGHT, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(1.2, CT.height, -0.3))
-	station("DeliveryRack", at(8.1, 1, -10.4) * FACE_FRONT, Vector3.new(6, 7, 2.2), "Heat Rack", "Heat Rack", nil, Vector3.new(0, 3.6, -1.1))
-	station("Fridge", at(17, 1, -15.2) * FACE_FRONT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler")
+	station("CutTable", at(3.1, 1, -1.5) * FACE_RIGHT, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(1.2, CT.height, -0.3))
+	station("DeliveryRack", at(8.1, 1, -13.4) * FACE_FRONT, Vector3.new(6, 7, 2.2), "Heat Rack", "Heat Rack", nil, Vector3.new(0, 3.6, -1.1))
+	station("Fridge", at(17, 1, -18.2) * FACE_FRONT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler")
 
 	-- === Lot out back ===
-	part({ Name = "ParkingLot", Size = Vector3.new(36, 0.2, 28), CFrame = at(0, 0.1, -62), Color = Color3.fromRGB(55, 55, 60), Material = Enum.Material.Asphalt, CanCollide = false, Parent = decor })
-	part({ Name = "BackApron", Size = Vector3.new(12, 0.2, 6), CFrame = at(-1, 0.1, -45), Color = Color3.fromRGB(120, 120, 125), Material = Enum.Material.Concrete, CanCollide = false, Parent = decor })
+	part({ Name = "ParkingLot", Size = Vector3.new(36, 0.2, 28), CFrame = at(0, 0.1, -68), Color = Color3.fromRGB(55, 55, 60), Material = Enum.Material.Asphalt, CanCollide = false, Parent = decor })
+	part({ Name = "BackApron", Size = Vector3.new(12, 0.2, 6), CFrame = at(-1, 0.1, BACK - 3), Color = Color3.fromRGB(120, 120, 125), Material = Enum.Material.Concrete, CanCollide = false, Parent = decor })
 	for i = 0, 4 do
-		part({ Name = "Stripe", Size = Vector3.new(0.4, 0.05, 10), CFrame = at(-16 + i * 8, 0.22, -66), Color = Color3.new(1, 1, 1), CanCollide = false, Parent = decor })
+		part({ Name = "Stripe", Size = Vector3.new(0.4, 0.05, 10), CFrame = at(-16 + i * 8, 0.22, -72), Color = Color3.new(1, 1, 1), CanCollide = false, Parent = decor })
 	end
 	for i = 1, 4 do
-		spot(spots, "Parking" .. i, at(-12 + (i - 1) * 8, 2, -66))
+		spot(spots, "Parking" .. i, at(-12 + (i - 1) * 8, 2, -72))
 	end
-	local lotSign = part({ Name = "LotSign", Size = Vector3.new(8, 1.6, 0.3), CFrame = at(0, 5, -75.8), Color = Color3.fromRGB(46, 160, 90), Parent = decor })
+	local lotSign = part({ Name = "LotSign", Size = Vector3.new(8, 1.6, 0.3), CFrame = at(0, 5, -81.8), Color = Color3.fromRGB(46, 160, 90), Parent = decor })
 	screenText(lotSign, Enum.NormalId.Back, "DELIVERY PARKING ONLY", Color3.new(1, 1, 1))
-	part({ Name = "LotSignPost", Size = Vector3.new(0.3, 4.4, 0.3), CFrame = at(0, 2.2, -75.8), Color = Color3.fromRGB(90, 90, 95), Material = Enum.Material.Metal, Parent = decor })
+	part({ Name = "LotSignPost", Size = Vector3.new(0.3, 4.4, 0.3), CFrame = at(0, 2.2, -81.8), Color = Color3.fromRGB(90, 90, 95), Material = Enum.Material.Metal, Parent = decor })
 
 	-- Customer path: in at the front-left door, up the side lobby to the
 	-- register, wait by the carryout warmer, out the same door.
-	spot(spots, "CustomerSpawn", at(-13, 3, 38))
+	spot(spots, "CustomerSpawn", at(-16, 3, 38))
 	spot(spots, "Queue1", at(-12.8, 3, 7.4))
 	spot(spots, "Queue2", at(-12.8, 3, 11.0))
 	spot(spots, "Queue3", at(-12.8, 3, 14.6))
 	spot(spots, "Wait1", at(-13.0, 3, 0.4))
 	spot(spots, "Wait2", at(-13.6, 3, -3.0))
 	spot(spots, "Wait3", at(-12.6, 3, -6.4))
-	spot(spots, "Exit", at(-17.5, 3, 47))
+	spot(spots, "Exit", at(-21, 3, 47))
 
 	model.PrimaryPart = (decor:FindFirstChild("Floor") :: Part)
 	model.Parent = parent
@@ -607,7 +589,7 @@ end
 local function buildPlot(id: number, cf: CFrame, parent: Instance): Part
 	local model = Instance.new("Model")
 	model.Name = "Plot" .. id
-	local base = part({ Name = "Base", Size = Vector3.new(60, 0.4, 136), CFrame = cf * CFrame.new(0, 0.2, -16), Color = Color3.fromRGB(140, 120, 90), Material = Enum.Material.Ground, Parent = model })
+	local base = part({ Name = "Base", Size = Vector3.new(66, 0.4, 142), CFrame = cf * CFrame.new(0, 0.2, -19), Color = Color3.fromRGB(140, 120, 90), Material = Enum.Material.Ground, Parent = model })
 	local signPost = part({ Name = "ForSale", Size = Vector3.new(10, 6, 0.5), CFrame = cf * CFrame.new(0, 5, 48), Color = Color3.fromRGB(255, 255, 255), Parent = model })
 	prompt(signPost, "Stores", "Lot #" .. id)
 	label(signPost, "STORE LOT #" .. id .. "\nOpen your own store!", 5, UDim2.fromOffset(220, 60))
@@ -645,7 +627,7 @@ function MapBuilder.Build(): World
 	-- Overlapping road surfaces sit at distinct heights so they don't z-fight.
 	road("Avenue", Vector3.new(26, 0.2, 360), Vector3.new(52, 0.14, 15))
 	road("BackStreet", Vector3.new(300, 0.2, 24), Vector3.new(-85, 0.1, -130))
-	road("LotDriveway", Vector3.new(22, 0.2, 16), Vector3.new(29, 0.18, -62))
+	road("LotDriveway", Vector3.new(22, 0.2, 16), Vector3.new(29, 0.18, -68))
 	road("FrontStreet", Vector3.new(120, 0.2, 20), Vector3.new(0, 0.22, 75))
 	-- Center line on Main Street
 	for x = -440, 440, 20 do

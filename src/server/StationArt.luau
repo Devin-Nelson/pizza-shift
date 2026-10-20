@@ -108,7 +108,13 @@ StationArt.Layout = {
 		trayZ = 0.45,
 		trayWidth = 2.25, -- along the table
 		trayDepth = 3.25, -- across it
-		trays = { Small = { x = -5.0, ball = 0.6 }, Medium = { x = -2.6, ball = 0.74 }, Large = { x = -0.2, ball = 0.92 } },
+		-- `rows`: balls per row along the tray's long side, staggered like the
+		-- user's photos (a single row sits centred between the pairs).
+		trays = {
+			Small = { x = -5.0, ball = 0.6, rows = { 1, 2, 1, 2, 1, 2, 1 } },
+			Medium = { x = -2.6, ball = 0.74, rows = { 2, 1, 2, 1, 2 } },
+			Large = { x = -0.2, ball = 0.92, rows = { 2, 2, 2 } },
+		},
 	},
 	-- Sauce station in the corner where the stretch table turns into the
 	-- makeline: the saucing spot at the front, the two skin racks behind it,
@@ -293,19 +299,24 @@ Builders.StretchTable = function(m, base)
 	for _, size in Config.Sizes do
 		local t = L.trays[size]
 		P(m, base, Vector3.new(tw, 0.06, td), at(t.x, h + 0.03, L.trayZ), TRAY, Enum.Material.Plastic, { name = "DoughTray_" .. size })
+		-- Walls tagged with the size: the Stretch minigame lights the tray to use.
+		local walls = {}
 		for _, sx in { -1, 1 } do
-			P(m, base, Vector3.new(0.06, 0.32, td), at(t.x + sx * (tw / 2 - 0.03), h + 0.16, L.trayZ), TRAY, Enum.Material.Plastic, { collide = false })
+			table.insert(walls, P(m, base, Vector3.new(0.06, 0.32, td), at(t.x + sx * (tw / 2 - 0.03), h + 0.16, L.trayZ), TRAY, Enum.Material.Plastic, { collide = false, name = "DoughTrayWall" }))
 		end
 		for _, sz in { -1, 1 } do
-			P(m, base, Vector3.new(tw, 0.32, 0.06), at(t.x, h + 0.16, L.trayZ + sz * (td / 2 - 0.03)), TRAY, Enum.Material.Plastic, { collide = false })
+			table.insert(walls, P(m, base, Vector3.new(tw, 0.32, 0.06), at(t.x, h + 0.16, L.trayZ + sz * (td / 2 - 0.03)), TRAY, Enum.Material.Plastic, { collide = false, name = "DoughTrayWall" }))
 		end
-		local rows = (Config.Dough.TrayBalls[size] or 6) // 2
+		for _, wall in walls do
+			wall:SetAttribute("Size", size)
+		end
 		local n = 0
-		for r = 1, rows do
-			for c = 1, 2 do
+		for r, count in t.rows do
+			-- Rows spread between the end walls (row 1 nearest the stretcher), clear of them.
+			local bz = L.trayZ - td / 2 + 0.1 + t.ball / 2 + (r - 1) * (td - t.ball - 0.2) / math.max(#t.rows - 1, 1)
+			for c = 1, count do
 				n += 1
-				local bx = t.x + (c - 1.5) * (tw / 2)
-				local bz = L.trayZ + (r - (rows + 1) / 2) * (td / rows)
+				local bx = t.x + (if count == 1 then 0 else (c - 1.5) * (tw / 2))
 				-- A proofed ball is a soft dome: a sphere mesh squashed to 60% height.
 				local ball = P(m, base, Vector3.new(t.ball, t.ball * 0.6, t.ball), at(bx, h + 0.06 + t.ball * 0.3, bz), DOUGH, Enum.Material.SmoothPlastic, { name = "DoughBall", collide = false })
 				local mesh = Instance.new("SpecialMesh")
@@ -315,6 +326,7 @@ Builders.StretchTable = function(m, base)
 				ball:SetAttribute("Index", n)
 			end
 		end
+		assert(n == Config.Dough.TrayBalls[size], size .. " tray layout doesn't match Config.Dough.TrayBalls")
 		-- The size on the tray's front wall, facing the stretcher
 		local sizeTag = P(m, base, Vector3.new(0.5, 0.2, 0.03), at(t.x, h + 0.2, L.trayZ - td / 2 - 0.02), Color3.new(1, 1, 1), nil, { collide = false })
 		surfaceText(sizeTag, Enum.NormalId.Front, string.sub(size, 1, 1), Config.Brand.Red)
