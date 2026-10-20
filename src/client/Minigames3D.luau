@@ -556,15 +556,14 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 		local size = b:GetAttribute("Size") :: string
 		local take = b
 		ballIndex = b:GetAttribute("Index") :: number
+		local copy = take:Clone() -- the Blender lump (or the code-built dome)
+		copy.Name = "Ball"
+		copy.CanQuery = false
+		copy.Parent = ctx.folder
 		take.LocalTransparencyModifier = 1
 		table.insert(ctx.cleanup, function()
 			take.LocalTransparencyModifier = 0
 		end)
-		local copy = localPart(ctx.folder, "Ball", take.Size, take.Color)
-		local mesh = Instance.new("SpecialMesh")
-		mesh.MeshType = Enum.MeshType.Sphere
-		mesh.Parent = copy
-		copy.CFrame = take.CFrame
 		local drop = TweenService:Create(copy, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = ws.frame * CFrame.new(0, take.Size.Y / 2, 0) })
 		drop.Completed:Once(function()
 			if copy.Parent then

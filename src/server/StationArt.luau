@@ -9,15 +9,18 @@
 -- center with the front facing the pivot's LookVector; it replaces the
 -- generated art everywhere, franchises included.
 
+local AssetService = game:GetService("AssetService")
 local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
 local Style = require(game:GetService("ReplicatedStorage").Shared.Style)
+local MeshBank = require(script.Parent.MeshBank)
 
 local StationArt = {}
 
 local STEEL = Color3.fromRGB(196, 200, 206)
 local STEEL_DARK = Color3.fromRGB(120, 124, 130)
+local STAINLESS = Color3.fromRGB(140, 145, 152) -- big Metal meshes: STEEL blows out white under the store's lights
 local BLACK = Color3.fromRGB(25, 25, 28)
 local SCREEN = Color3.fromRGB(58, 58, 62) -- pizza screens, dark from use (as in the user's photos)
 local DOUGH = Config.IngredientColors.Dough
@@ -88,6 +91,51 @@ local function steelTable(parent: Instance, base: CFrame, w: number, d: number, 
 		end
 	end
 	P(parent, base, Vector3.new(w - 0.6, 0.15, d - 0.6), at(0, 0.9, 0), STEEL, Enum.Material.DiamondPlate)
+end
+
+-- Blender meshes (MeshBank): a MeshPart template per mesh id, loaded once per
+-- server (CreateMeshPartAsync yields); false = it failed to load.
+local templates: { [number]: MeshPart | false } = {}
+
+-- The station's meshes by name once all are loaded, or nil (none uploaded yet,
+-- or one failed: the station then gets its code-built art).
+local function stationMeshes(kind: string): { [string]: MeshBank.Mesh }?
+	local bank = MeshBank[kind]
+	if not bank then
+		return nil
+	end
+	for name, mesh in bank.meshes do
+		if templates[mesh.id] == nil then
+			local ok, part = pcall(AssetService.CreateMeshPartAsync, AssetService, "rbxassetid://" .. mesh.id, { CollisionFidelity = Enum.CollisionFidelity.Box })
+			templates[mesh.id] = if ok then part else false
+			if not ok then
+				warn(`StationArt: {kind} mesh {name} didn't load ({part}), using the code-built art`)
+			end
+		end
+		if not templates[mesh.id] then
+			return nil
+		end
+	end
+	return bank.meshes
+end
+
+-- Roblox's importer turns an uploaded glTF model 180 degrees about Y.
+local IMPORT_TURN = CFrame.Angles(0, math.pi, 0)
+
+-- A copy of a loaded mesh at `scale` times its size, its bounding-box centre at `offset`.
+local function M(parent: Instance, base: CFrame, mesh: MeshBank.Mesh, offset: CFrame, color: Color3, material: Enum.Material, opts: Opts?, scale: number?): MeshPart
+	local p = (templates[mesh.id] :: MeshPart):Clone()
+	p.Name = (opts and opts.name) or "Detail"
+	p.Anchored = true
+	p.Size = mesh.size * (scale or 1)
+	p.CFrame = base * offset * IMPORT_TURN
+	p.Color = color
+	p.Material = material
+	p.Reflectance = (opts and opts.reflect) or 0
+	p.CanCollide = (opts and opts.collide) or false
+	p.CanTouch = false
+	p.Parent = parent
+	return p
 end
 
 ---------------------------------------------------------------------------
@@ -290,22 +338,48 @@ end
 -- cornmeal where a ball is pressed out and stretched. Each ball is a
 -- `DoughBall` part with Size + Index: ShopService hides the ones used up (the
 -- highest numbers first) and the Stretch minigame picks one by clicking.
+-- Blender meshes when they load (MeshBank), else built from parts.
+local STRETCH_MESH = { -- extras in the mesh version, as in tools/blender/stretch_table.py
+	trayFloor = 0.03,
+	dollies = { -4.85, -2.5, -0.15 },
+	dollyZ = 0.1,
+	dollyTop = 0.32,
+	stack = 7,
+	pitch = 0.345,
+	binFill = CFrame.new(3.8, 1.95, 0),
+	binFillSize = Vector3.new(2.08, 0.02, 2.95),
+	dustZ = -0.15,
+	dustSize = 4,
+}
 Builders.StretchTable = function(m, base)
 	local L = StationArt.Layout.StretchTable
 	local w, d, h = L.width, L.depth, L.height
-	steelTable(m, base, w, d, h)
 	local TRAY = Color3.fromRGB(45, 125, 215)
 	local tw, td = L.trayWidth, L.trayDepth
+	local S = STRETCH_MESH
+	local mesh = stationMeshes("StretchTable")
+	if mesh then
+		M(m, base, mesh.Steel, CFrame.new(mesh.Steel.at), STAINLESS, Enum.Material.Metal, { collide = true, name = "Table" })
+		M(m, base, mesh.Rubber, CFrame.new(mesh.Rubber.at), BLACK, Enum.Material.Rubber)
+		M(m, base, mesh.Dollies, CFrame.new(mesh.Dollies.at), Color3.fromRGB(62, 64, 70), Enum.Material.Plastic)
+		M(m, base, mesh.Bin, CFrame.new(mesh.Bin.at), Color3.fromRGB(235, 232, 225), Enum.Material.Plastic, { name = "CornmealBin" })
+	else
+		steelTable(m, base, w, d, h)
+	end
 	for _, size in Config.Sizes do
 		local t = L.trays[size]
-		P(m, base, Vector3.new(tw, 0.06, td), at(t.x, h + 0.03, L.trayZ), TRAY, Enum.Material.Plastic, { name = "DoughTray_" .. size })
 		-- Walls tagged with the size: the Stretch minigame lights the tray to use.
 		local walls = {}
-		for _, sx in { -1, 1 } do
-			table.insert(walls, P(m, base, Vector3.new(0.06, 0.32, td), at(t.x + sx * (tw / 2 - 0.03), h + 0.16, L.trayZ), TRAY, Enum.Material.Plastic, { collide = false, name = "DoughTrayWall" }))
-		end
-		for _, sz in { -1, 1 } do
-			table.insert(walls, P(m, base, Vector3.new(tw, 0.32, 0.06), at(t.x, h + 0.16, L.trayZ + sz * (td / 2 - 0.03)), TRAY, Enum.Material.Plastic, { collide = false, name = "DoughTrayWall" }))
+		if mesh then
+			table.insert(walls, M(m, base, mesh.Tray, at(t.x, h + mesh.Tray.size.Y / 2, L.trayZ), TRAY, Enum.Material.Plastic, { name = "DoughTrayWall" }))
+		else
+			P(m, base, Vector3.new(tw, 0.06, td), at(t.x, h + 0.03, L.trayZ), TRAY, Enum.Material.Plastic, { name = "DoughTray_" .. size })
+			for _, sx in { -1, 1 } do
+				table.insert(walls, P(m, base, Vector3.new(0.06, 0.32, td), at(t.x + sx * (tw / 2 - 0.03), h + 0.16, L.trayZ), TRAY, Enum.Material.Plastic, { collide = false, name = "DoughTrayWall" }))
+			end
+			for _, sz in { -1, 1 } do
+				table.insert(walls, P(m, base, Vector3.new(tw, 0.32, 0.06), at(t.x, h + 0.16, L.trayZ + sz * (td / 2 - 0.03)), TRAY, Enum.Material.Plastic, { collide = false, name = "DoughTrayWall" }))
+			end
 		end
 		for _, wall in walls do
 			wall:SetAttribute("Size", size)
@@ -317,11 +391,19 @@ Builders.StretchTable = function(m, base)
 			for c = 1, count do
 				n += 1
 				local bx = t.x + (if count == 1 then 0 else (c - 1.5) * (tw / 2))
-				-- A proofed ball is a soft dome: a sphere mesh squashed to 60% height.
-				local ball = P(m, base, Vector3.new(t.ball, t.ball * 0.6, t.ball), at(bx, h + 0.06 + t.ball * 0.3, bz), DOUGH, Enum.Material.SmoothPlastic, { name = "DoughBall", collide = false })
-				local mesh = Instance.new("SpecialMesh")
-				mesh.MeshType = Enum.MeshType.Sphere
-				mesh.Parent = ball
+				local ball: BasePart
+				if mesh then
+					-- One of three proofed lumps, each turned its own way.
+					local lump = mesh["Ball" .. (n - 1) % 3 + 1]
+					local s = t.ball / lump.size.X
+					ball = M(m, base, lump, at(bx, h + S.trayFloor + lump.size.Y * s / 2, bz) * CFrame.Angles(0, math.rad(n * 77), 0), DOUGH, Enum.Material.SmoothPlastic, { name = "DoughBall" }, s)
+				else
+					-- A proofed ball is a soft dome: a sphere mesh squashed to 60% height.
+					ball = P(m, base, Vector3.new(t.ball, t.ball * 0.6, t.ball), at(bx, h + 0.06 + t.ball * 0.3, bz), DOUGH, Enum.Material.SmoothPlastic, { name = "DoughBall", collide = false })
+					local sphere = Instance.new("SpecialMesh")
+					sphere.MeshType = Enum.MeshType.Sphere
+					sphere.Parent = ball
+				end
 				ball:SetAttribute("Size", size)
 				ball:SetAttribute("Index", n)
 			end
@@ -330,6 +412,22 @@ Builders.StretchTable = function(m, base)
 		-- The size on the tray's front wall, facing the stretcher
 		local sizeTag = P(m, base, Vector3.new(0.5, 0.2, 0.03), at(t.x, h + 0.2, L.trayZ - td / 2 - 0.02), Color3.new(1, 1, 1), nil, { collide = false })
 		surfaceText(sizeTag, Enum.NormalId.Front, string.sub(size, 1, 1), Config.Brand.Red)
+	end
+	if mesh then
+		-- Dollies of full trays under the table, cornmeal in the bin, and a dusting
+		-- over the stretch spot (an image on an invisible part).
+		for _, x in S.dollies do
+			for k = 0, S.stack - 1 do
+				M(m, base, mesh.Tray, at(x, S.dollyTop + k * S.pitch + mesh.Tray.size.Y / 2, S.dollyZ), TRAY, Enum.Material.Plastic, { name = "Tray" })
+			end
+		end
+		P(m, base, S.binFillSize, S.binFill, CORNMEAL, Enum.Material.Sand, { collide = false })
+		local dust = P(m, base, Vector3.new(S.dustSize, 0.01, S.dustSize), at(L.workX, h + 0.005, S.dustZ), CORNMEAL, nil, { transparency = 1, collide = false, name = "CornmealDust" })
+		local decal = Instance.new("Decal")
+		decal.Face = Enum.NormalId.Top
+		decal.Texture = "rbxassetid://" .. MeshBank.StretchTable.images.Dust
+		decal.Parent = dust
+		return
 	end
 	-- Dollies of full trays under the table
 	for k = 0, 2 do

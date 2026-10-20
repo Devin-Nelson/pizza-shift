@@ -14,3 +14,6 @@ desktop.ini
 # Playtest recordings
 *.mp4
 *.mkv
+
+# Python bytecode (tools/blender)
+__pycache__/
