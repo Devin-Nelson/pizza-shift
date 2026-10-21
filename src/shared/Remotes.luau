@@ -27,6 +27,7 @@ local NAMES = {
 	"GrantStaff", -- client -> server: (kind) Studio only, until the staff roll exists: the owner gets a manager
 	"DeliveryTarget", -- server -> client: (doorPart | nil, seconds for the timer)
 	"TipSeen", -- client -> server: (stationId) the player closed that station's first-visit tip
+	"CarryoutPick", -- client -> server: (target) an order's stack on the carryout rack (pick it up), the rack (put it back) or a customer (hand it over)
 }
 
 local folder: Folder

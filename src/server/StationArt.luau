@@ -287,6 +287,12 @@ StationArt.Layout = {
 		lanes = { -1.4, 1.4 }, -- two pizzas side by side; the -X lane is each oven's first slot
 		decks = { 5.1, 3.2, 1.3 }, -- belt heights: top (slots 1-2), middle (3-4), bottom (5-6)
 	},
+	-- The carryout rack across the cut table's far end (the user, 2026-10-21;
+	-- tools/blender/carryout_rack.py): `tiers` are the box tiers' surfaces (the
+	-- table top, level with the cut table's, and two heated shelves), two stacks
+	-- a tier at `slotsX`; `nextTo`: its centre from the cut table's, along the
+	-- cut table's length. Its -Z faces the cut table, +Z the carryout side.
+	CarryoutRack = { length = 6.3, depth = 3.0, tiers = { 3.2, 4.55, 5.9 }, slotsX = { -1.55, 1.55 }, nextTo = 7.95 },
 	-- Cut table behind the oven exits (the ovens are off its +X end), the oven
 	-- tender on its long side facing the carryout counter.
 	CutTable = {
@@ -879,7 +885,7 @@ end
 -- casters behind the oven exits, the oven tender on its long side (-Z) facing
 -- the carryout counter. Blender meshes when they load (tools/blender/cut_table.py:
 -- the table, a stack of unfolded boxes per size, the rocker trough, the
--- seasoning insert; sides, once on the menu, go in the Small
+-- clear counter (no seasoning insert: the user, 2026-10-21); sides, once on the menu, go in the Small
 -- boxes), else a plain table and stacks. Parts either way: the top blank of
 -- each stack (Blank_<Size>, a Model of PizzaBox panels, each with BoxSize: the
 -- cut minigame cuts the pizza on it, then folds it into the box), the size
@@ -895,9 +901,6 @@ Builders.CutTable = function(m, base)
 		M(m, base, mesh.Dark, CFrame.new(mesh.Dark.at), BLACK, Enum.Material.SmoothPlastic)
 		M(m, base, mesh.Cardboard, CFrame.new(mesh.Cardboard.at), CARDBOARD, Enum.Material.Cardboard)
 		M(m, base, mesh.Blanks, CFrame.new(mesh.Blanks.at), CARDBOARD, Enum.Material.Cardboard, { name = "BoxStacks" })
-		M(m, base, mesh.Bottles, CFrame.new(mesh.Bottles.at), Color3.fromRGB(238, 236, 228), Enum.Material.SmoothPlastic)
-		M(m, base, mesh.Caps, CFrame.new(mesh.Caps.at), GRIP_RED, Enum.Material.Plastic)
-		M(m, base, mesh.Shakers, CFrame.new(mesh.Shakers.at), Color3.fromRGB(230, 215, 170), Enum.Material.Plastic)
 		for _, r in L.rockers do
 			local cf = CFrame.new(r) * CFrame.Angles(0, math.rad(90), 0)
 			M(m, base, mesh.Rocker, cf * CFrame.new(mesh.Rocker.at), STEEL, Enum.Material.Metal)
@@ -937,6 +940,45 @@ Builders.CutTable = function(m, base)
 	end
 	local lt = L.trays.Large
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(lt.X, lt.Y + 0.08, lt.Z), BLACK, nil, { name = "CutLanding", transparency = 1, collide = false })
+end
+
+-- The carryout rack (tools/blender/carryout_rack.py): a stainless table with
+-- heated shelves over it, across the cut table's far end. Blender meshes when
+-- they load, else plain parts. Either way the CarryoutSlot_<n> markers, where
+-- ShopService stacks a waiting order's boxes (tier by tier, -X first). Nothing
+-- in it takes clicks: ShopService puts its own hitbox over it.
+Builders.CarryoutRack = function(m, base)
+	local L = StationArt.Layout.CarryoutRack
+	local top = L.tiers[#L.tiers] + 1.35 -- the heated canopy
+	local mesh = stationMeshes("CarryoutRack")
+	if mesh then
+		M(m, base, mesh.Steel, CFrame.new(mesh.Steel.at), STAINLESS, Enum.Material.Metal, { collide = true, name = "Rack" })
+		M(m, base, mesh.Dark, CFrame.new(mesh.Dark.at), BLACK, Enum.Material.SmoothPlastic)
+	else
+		P(m, base, Vector3.new(L.length, 0.1, L.depth), at(0, L.tiers[1] - 0.05, 0), STAINLESS, Enum.Material.Metal, { collide = true, name = "Rack" })
+		for _, sx in { -1, 1 } do
+			for _, sz in { -1, 1 } do
+				P(m, base, Vector3.new(0.12, L.tiers[1] - 0.1, 0.12), at(sx * (L.length / 2 - 0.12), (L.tiers[1] - 0.1) / 2, sz * (L.depth / 2 - 0.12)), STAINLESS, Enum.Material.Metal)
+			end
+			P(m, base, Vector3.new(0.05, top - L.tiers[1], L.depth - 0.1), at(sx * (L.length / 2 - 0.025), (L.tiers[1] + top) / 2, 0), STAINLESS, Enum.Material.Metal)
+		end
+		for i = 2, #L.tiers do
+			P(m, base, Vector3.new(L.length - 0.1, 0.08, L.depth - 0.1), at(0, L.tiers[i] - 0.04, 0), STAINLESS, Enum.Material.Metal)
+		end
+		P(m, base, Vector3.new(L.length, 0.14, L.depth - 0.1), at(0, top + 0.07, 0), STAINLESS, Enum.Material.Metal)
+	end
+	local n = 0
+	for _, y in L.tiers do
+		for _, x in L.slotsX do
+			n += 1
+			P(m, base, Vector3.new(0.1, 0.1, 0.1), at(x, y, 0), BLACK, nil, { name = "CarryoutSlot_" .. n, transparency = 1, collide = false })
+		end
+	end
+	for _, d in m:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CanQuery = false
+		end
+	end
 end
 
 -- Chrome wire shelving stacked with pizza boxes and insulated delivery bags.

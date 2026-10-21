@@ -3,10 +3,11 @@ table on casters with a square-edged top, solid end panels and back, two full
 shelves underneath, a round middle post at the front. On top: a stack of
 boxes per size lying completely unfolded (the tender folds the top one on its
 stack in the game, slides the pizza in, cuts and shuts it), a recessed trough
-with the rockers between two stacks, a seasoning insert behind the Medium
-stack, clear counter at the far end. (The user: sides go in the Small boxes.)
-Underneath: more blanks, a case of boxes, bins of side-box blanks. (The user,
-2026-10-21: no printer on the top, no trash can.)
+with the rockers between two stacks, clear counter behind the stacks and at
+the far end. (The user: sides go in the Small boxes.) Underneath: more
+blanks, a case of boxes, bins of side-box blanks. (The user, 2026-10-21: no
+printer on the top, no trash can, no seasoning insert with its shakers and
+bottle: such things get designed later.)
 
     blender -b -P tools/blender/cut_table.py -- --render
 
@@ -80,9 +81,6 @@ card = Mesh("Cardboard", rgb(205, 168, 118), rough=0.85)
 blanks = Mesh("Blanks", rgb(205, 168, 118), rough=0.85)
 rocker = Mesh("Rocker", rgb(200, 204, 210), metal=1.0, rough=0.25, instanced=True)
 rocker_grips = Mesh("RockerGrips", rgb(28, 28, 30), rough=0.5, instanced=True)
-bottles = Mesh("Bottles", rgb(238, 236, 228), rough=0.35)
-caps = Mesh("Caps", rgb(200, 35, 35), rough=0.4)
-shakers = Mesh("Shakers", rgb(230, 215, 170), rough=0.4)
 
 
 def tray(m: Mesh, x0, x1, z0, z1, y0, y1, lip=0.03):
@@ -99,11 +97,8 @@ def tray(m: Mesh, x0, x1, z0, z1, y0, y1, lip=0.03):
         m.box((lip, 0.012, z1 - z0), (x_, y1 + 0.006, (z0 + z1) / 2))
 
 
-# -- The top: square-edged, cut round the rocker trough and the seasoning
-# insert (both lined with dropped-in stainless pans).
-# The seasoning insert behind the Medium stack (long side along the table).
-INSERT_Z0 = FRONT + blank(BOX["Medium"])[1] + 0.12
-INSERT = (stacks["Medium"][0] - 0.55, stacks["Medium"][0] + 0.55, INSERT_Z0, INSERT_Z0 + 0.6)  # x0, x1, z0, z1
+# -- The top: square-edged, cut round the rocker trough (lined with a
+# dropped-in stainless pan).
 TROUGH = (TROUGH_X - TROUGH_W / 2, TROUGH_X + TROUGH_W / 2, TROUGH_Z0, TROUGH_Z1)
 
 
@@ -112,7 +107,7 @@ def top_piece(x0, x1, z0, z1):
         steel.box((x1 - x0, TOP_T, z1 - z0), ((x0 + x1) / 2, H - TOP_T / 2, (z0 + z1) / 2))
 
 
-holes = sorted([INSERT, TROUGH])
+holes = [TROUGH]
 xs = [-W / 2]
 for c in holes:
     xs += [c[0], c[1]]
@@ -126,7 +121,6 @@ for i in range(len(xs) - 1):
     else:
         top_piece(x0, x1, -D / 2, D / 2)
 tray(steel, TROUGH[0], TROUGH[1], TROUGH[2], TROUGH[3], H - 0.42, H)
-tray(steel, INSERT[0], INSERT[1], INSERT[2], INSERT[3], H - 0.32, H)
 
 # -- The base: square corner legs on casters, solid end panels and back, two
 # full shelves, a round middle post at the front (and a caster under the back's middle).
@@ -213,18 +207,6 @@ R_HEIGHT = GRIP_Y + R_GRIP_H / 2
 # Two stand in the trough, edge down on its pan, handles up, along its length.
 TROUGH_ROCKERS = [(TROUGH_X + ox, H - 0.4, (TROUGH_Z0 + TROUGH_Z1) / 2) for ox in (-0.14, 0.14)]
 
-# -- The seasoning insert behind the Medium stack: two shakers and a squeeze
-# bottle standing in its pan.
-IZ = (INSERT[2] + INSERT[3]) / 2
-for x_ in (INSERT[0] + 0.2, INSERT[0] + 0.5):
-    shakers.cyl(0.13, 0.42, (x_, H - 0.3 + 0.21, IZ), segs=14)
-    caps.cyl(0.135, 0.06, (x_, H - 0.3 + 0.45, IZ), segs=14)
-    caps.cyl(0.135, 0.04, (x_, H - 0.3 + 0.5, IZ), segs=14, radius2=0.09)
-bx_ = INSERT[0] + 0.85
-bottles.cyl(0.13, 0.55, (bx_, H - 0.3 + 0.275, IZ), segs=14)
-bottles.cyl(0.13, 0.06, (bx_, H - 0.3 + 0.58, IZ), segs=14, radius2=0.07)
-caps.cyl(0.05, 0.14, (bx_, H - 0.3 + 0.68, IZ), segs=10, radius2=0.015)
-
 # -- Underneath: unfolded blanks on the middle shelf; a case of boxes and
 # three sloped bins of side-box blanks on the bottom shelf.
 UNDER = (("Large", -W / 4, 12), ("Medium", W / 4, 12))
@@ -265,13 +247,8 @@ def overlap(a, b, gap=0.0):
 
 FEET = [footprint(s) for s, _ in SIZES]
 trough_r = (TROUGH[0] - 0.03, TROUGH[2] - 0.03, TROUGH[1] + 0.03, TROUGH[3] + 0.03)
-insert_r = (INSERT[0] - 0.03, INSERT[2] - 0.03, INSERT[1] + 0.03, INSERT[3] + 0.03)
-
-
-FAR = (insert_r,)
 check("stacks on the top, front 0.2 in, back short of the edge", all(f[0] > -W / 2 and f[2] < W / 2 and f[1] >= -D / 2 + 0.2 - 1e-9 and f[3] < D / 2 - 0.05 for f in FEET))
-check("stacks clear of each other, the trough and the far end", not any(overlap(a, b) for i, a in enumerate(FEET) for b in FEET[i + 1:]) and not any(overlap(f, r, 0.05) for f in FEET for r in (trough_r,) + FAR))
-check("the insert on the top", all(r[0] > -W / 2 + 0.05 and r[2] < W / 2 - 0.05 and r[1] >= -D / 2 + 0.2 - 1e-9 and r[3] < D / 2 - 0.05 for r in FAR) and not any(overlap(a, b, 0.05) for i, a in enumerate(FAR) for b in FAR[i + 1:]))
+check("stacks clear of each other and the trough", not any(overlap(a, b) for i, a in enumerate(FEET) for b in FEET[i + 1:]) and not any(overlap(f, trough_r, 0.05) for f in FEET))
 check("rockers stand inside the trough, clear of each other", TROUGH_W / 2 - 0.02 > 0.14 + R_GRIP_W / 2 + 0.01 and 0.14 > R_GRIP_W / 2 + 0.01 and R_LEN + 0.12 < TROUGH_Z1 - TROUGH_Z0 - 0.1)
 check("a Large pizza (2.4) fits the Large box's walls", BOX["Large"] - 2 * 0.04 > 2.4)
 check("CutLanding's pizza on the Large stack's base panel", abs(LANDING[1] - (FRONT + PB.tray_from_front(PB.pizza(BOX["Large"])))) < 1e-9)
@@ -316,7 +293,7 @@ for m in (pv, piz, chs, cuts, fold):
 
 kit.finish(
     "cut_table",
-    [steel, dark, card, blanks, rocker, rocker_grips, bottles, caps, shakers],
+    [steel, dark, card, blanks, rocker, rocker_grips],
     [(m.name, (x_, y_ + (m.bounds()[0].y + m.bounds()[1].y) / 2, z_), yaw, 1) for m in (rocker, rocker_grips) for x_, y_, z_, yaw in [(*t, 90) for t in TROUGH_ROCKERS] + [(W / 2 + 6, 2.0 - R_HEIGHT / 2, -6.0, 0)]],
     [
         ("overview", (4.0, 12.0, -16.0), (-0.6, 2.6, 0.2), 32),

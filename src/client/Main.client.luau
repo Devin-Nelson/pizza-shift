@@ -20,9 +20,11 @@ local StationMode = require(script.Parent.StationMode)
 local StationPicks = require(script.Parent.StationPicks)
 local WorkHud = require(script.Parent.WorkHud)
 local OvenBelts = require(script.Parent.OvenBelts)
+local CarryoutPicks = require(script.Parent.CarryoutPicks)
 
 local player = Players.LocalPlayer
 OvenBelts.start()
+task.spawn(CarryoutPicks.start)
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)

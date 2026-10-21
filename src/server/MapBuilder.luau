@@ -719,7 +719,11 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	local CT = StationArt.Layout.CutTable
 	-- (The user's bigger table, 2026-10-21, moved toward the right wall with the
 	-- ovens the same day: the same place relative to their exits.)
-	station("CutTable", at(12.65, 1, -3.4) * FACE_RIGHT, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(3.1, CT.height, -1.55))
+	local cutCF = at(12.65, 1, -3.4) * FACE_RIGHT
+	-- The carryout rack across its far end (the user, 2026-10-21), facing it:
+	-- finished carryout orders wait there for their customers (ShopService).
+	StationArt.Build("CarryoutRack", decor, cutCF * CFrame.new(-StationArt.Layout.CarryoutRack.nextTo, 0, 0) * CFrame.Angles(0, -math.pi / 2, 0))
+	station("CutTable", cutCF, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(3.1, CT.height, -1.55))
 	station("Fridge", at(WI_X + 2, 1, DOOR_Z) * FACE_LEFT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler") -- in the walk-in's door notch
 
 	-- === Lot out back ===

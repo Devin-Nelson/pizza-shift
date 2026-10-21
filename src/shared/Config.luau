@@ -284,6 +284,19 @@ Config.OvenPaints = {
 -- The ready rack at the end of the make-line: finished pizzas wait on its
 -- screens to be loaded. A toppings job only starts if there's a slot for it.
 Config.ReadyRack = { Slots = 15 }
+-- The carryout rack across the cut table's far end (the user, 2026-10-21):
+-- boxed carryout orders wait on it in stacks tagged with the customer's name;
+-- the customer steps up to the counter and says it, and someone carries their
+-- order over. Slots: stacks it holds (two a tier); MaxStack: boxes shown in a
+-- stack; PickupPatience: real seconds a customer waits at the counter.
+Config.Carryout = { Slots = 6, MaxStack = 4, PickupPatience = 150 }
+-- Customers' first names; each gets a last initial ("John P.").
+Config.CustomerNames = {
+	"John", "Maria", "David", "Aisha", "Chris", "Elena", "Marcus", "Grace", "Tyler", "Sofia",
+	"Kevin", "Hannah", "Diego", "Olivia", "Jamal", "Chloe", "Ethan", "Fatima", "Noah", "Lily",
+	"Ryan", "Mei", "Lucas", "Nora", "Brandon", "Isabel", "Owen", "Jasmine", "Victor", "Emma",
+	"Andre", "Hailey", "Mateo", "Rachel", "Derek", "Yuki", "Caleb", "Megan", "Luis", "Paige",
+}
 -- Cut & box: slices per size (cuts = slices / 2), chance of cheese bubbles to
 -- pop, how fast the rocker blade spins (degrees/second) and how long a cut takes.
 Config.Cut = { Slices = { Small = 6, Medium = 8, Large = 8 }, BubbleChance = 0.6, MaxBubbles = 3, SpinSpeed = 220, CutTime = 0.3 }

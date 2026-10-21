@@ -39,6 +39,8 @@ type Customer = {
 	state: string, -- "Queued" | "Waiting" | "Leaving"
 	arrived: number,
 	order: Order?,
+	name: string, -- "John P.": what they say at the counter to collect a carryout order
+	atCounter: number?, -- when they stepped up to the counter, their order on the carryout rack
 }
 
 type PendingOrder = {
@@ -69,6 +71,9 @@ type Order = {
 	stage: string, -- "Making" | "Rack" | "Out" | "Pickup" | "Done"
 	claimedBy: any, -- a Player, or a hired staff member (Crew)
 	lost: boolean?, -- the customer never got it (counted in sales.lostToday)
+	rackSlot: number?, -- boxed carryout: its slot on the carryout rack
+	stack: Model?, -- boxed carryout: its boxes (on the rack, or in someone's hands)
+	carriedBy: Player?, -- boxed carryout: whoever took it off the rack to hand over
 }
 
 -- One pizza an order asked for. It's filled when a finished pizza is loaded
@@ -158,6 +163,8 @@ export type Shop = {
 	crew: { Crew },
 	shift: string?, -- the staff shift now on (Staff.shiftAt)
 	calledOut: { [number]: boolean }, -- member ids who called out of this shift
+	carryout: { [number]: Order }, -- carryout rack slot -> the boxed order waiting there
+	carryQueue: { Order }, -- boxed carryout orders waiting for a free slot
 	alive: boolean,
 }
 
@@ -189,6 +196,8 @@ local stationed: { [Player]: Stay } = {}
 -- following the top pizza (the default).
 local parked: { [Player]: boolean } = {}
 local playerShop: { [Player]: Shop } = {}
+local carrying: { [Player]: Order } = {} -- the carryout order each player has in hand
+local CARRYOUT_REACH = 18 -- how far away a carryout stack, the rack or a customer can be clicked
 local houses: { Part } = {}
 local nextShopId = 0
 
@@ -677,13 +686,39 @@ local function setBubble(c: Customer, text: string)
 	((gui :: BillboardGui):FindFirstChild("Text") :: TextLabel).Text = text
 end
 
+-- A first name and last initial ("John P."), not one already in the lobby.
+local function customerName(shop: Shop): string
+	local name
+	repeat
+		name = randomFrom(Config.CustomerNames) .. " " .. string.char(shop.rng:NextInteger(65, 90)) .. "."
+		local taken = false
+		for _, c in shop.customers do
+			taken = taken or c.name == name
+		end
+	until not taken
+	return name
+end
+
+-- Where the k-th customer collecting a carryout order stands: at the counter
+-- by the carryout warmer, the next ones along it.
+local function counterSpot(shop: Shop, k: number): Vector3
+	local pickup = station(shop, "Pickup")
+	if not pickup then
+		return spot(shop, "Wait1")
+	end
+	return pickup.Position + pickup.CFrame.LookVector * 3.5 - pickup.CFrame.RightVector * (k - 1) * 2.5
+end
+
 local function layoutCustomers(shop: Shop)
-	local q, w = 0, 0
+	local q, w, k = 0, 0, 0
 	for _, c in shop.customers do
 		if c.state == "Queued" then
 			q += 1
 			local base = spot(shop, "Queue" .. math.min(q, 3))
 			c.humanoid:MoveTo(base + Vector3.new(0, 0, math.max(0, q - 3) * 3))
+		elseif c.atCounter then
+			k += 1
+			c.humanoid:MoveTo(counterSpot(shop, k))
 		elseif c.state == "Waiting" then
 			w += 1
 			local base = spot(shop, "Wait" .. ((w - 1) % 3 + 1))
@@ -705,6 +740,8 @@ local function customerLeave(shop: Shop, c: Customer, mood: string)
 		return
 	end
 	c.state = "Leaving"
+	c.atCounter = nil
+	CollectionService:RemoveTag(c.npc, "CarryoutPick")
 	local i = table.find(shop.customers, c)
 	if i then
 		table.remove(shop.customers, i)
@@ -769,6 +806,122 @@ local function makeBoxPart(size: string): Part
 end
 
 ---------------------------------------------------------------------------
+-- Carryout rack (the user, 2026-10-21): a boxed carryout order waits on the
+-- rack as a stack of boxes tagged with its customer's name while they wait at
+-- the counter saying it. Clicking a stack picks it up, clicking its customer
+-- hands it over (anyone else won't take it), clicking the rack puts it back
+-- (client/CarryoutPicks); Register staff hand orders over too.
+---------------------------------------------------------------------------
+
+-- An order's boxes as a stack, the biggest at the bottom (at most MaxStack
+-- shown), its customer's name on a tag on the top box's front. `base`: the
+-- stack's underside; its -Z is the front (the lids read from there).
+local function makeStack(order: Order, base: CFrame): Model
+	local stack = Instance.new("Model")
+	stack.Name = "CarryoutOrder" .. order.id
+	local sizes = {}
+	for _, t in order.tickets do
+		table.insert(sizes, t.item.size)
+	end
+	table.sort(sizes, function(a, b)
+		return (Config.BoxSize[a] or 0) > (Config.BoxSize[b] or 0)
+	end)
+	local n = math.min(#sizes, Config.Carryout.MaxStack)
+	for i = 1, n do
+		local box = makeBoxPart(sizes[i])
+		box.CFrame = base * CFrame.new(0, 0.15 + (i - 1) * 0.3, 0) * BOX_FLAT
+		box.CanQuery = true -- client/CarryoutPicks raycasts at it
+		box.Parent = stack
+	end
+	local width = Config.BoxSize[sizes[n]] or 2.55
+	local tag = Instance.new("Part")
+	tag.Name = "NameTag"
+	tag.Size = Vector3.new(math.min(width - 0.2, 1.9), 0.26, 0.02)
+	tag.CFrame = base * CFrame.new(0, 0.15 + (n - 1) * 0.3, -width / 2 - 0.012)
+	tag.Color = Color3.new(1, 1, 1)
+	tag.Material = Enum.Material.SmoothPlastic
+	tag.Anchored = true
+	tag.CanCollide = false
+	tag.Massless = true
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Front
+	gui.CanvasSize = Vector2.new(190, 26)
+	gui.LightInfluence = 0
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.FontFace = Style.Font.LabelBold
+	label.TextScaled = true
+	label.TextColor3 = Color3.fromRGB(25, 25, 28)
+	label.Text = string.upper(if order.customer then order.customer.name else "#" .. order.id) .. (if #sizes > n then string.format("  (%d)", #sizes) else "")
+	label.Parent = gui
+	gui.Parent = tag
+	tag.Parent = stack
+	return stack
+end
+
+local function tagPick(inst: Instance, kind: string)
+	inst:SetAttribute("CarryoutKind", kind) -- "Stack" | "Rack" | "Customer"
+	CollectionService:AddTag(inst, "CarryoutPick")
+end
+
+-- Builds the order's stack on its rack slot, its tag to the carryout side (the rack's +Z).
+local function stackOnRack(shop: Shop, order: Order)
+	local m = if order.rackSlot then marker(shop, "CarryoutSlot_" .. order.rackSlot) else nil
+	if not m then
+		return
+	end
+	local stack = makeStack(order, m.CFrame * CFrame.Angles(0, math.pi, 0))
+	tagPick(stack, "Stack")
+	stack.Parent = shop.model
+	order.stack = stack
+end
+
+-- Puts a boxed carryout order on a free rack slot (or in line for one); its
+-- customer steps up to the counter and says their name.
+local function rackOrder(shop: Shop, order: Order)
+	local slot
+	for n = 1, Config.Carryout.Slots do
+		if not shop.carryout[n] and marker(shop, "CarryoutSlot_" .. n) then
+			slot = n
+			break
+		end
+	end
+	if not slot then
+		if not table.find(shop.carryQueue, order) then
+			table.insert(shop.carryQueue, order)
+		end
+		return
+	end
+	order.rackSlot = slot
+	shop.carryout[slot] = order
+	stackOnRack(shop, order)
+	local c = order.customer
+	if c and c.state ~= "Leaving" then
+		c.atCounter = os.clock()
+		setBubble(c, "Pickup for " .. c.name .. "!")
+		layoutCustomers(shop)
+	end
+	for _, p in membersOf(shop) do
+		notify(p, string.format("Order #%d for %s is on the carryout rack.", order.id, if c then c.name else "?"), Color3.fromRGB(180, 220, 255))
+	end
+end
+
+-- Out of whoever's hand it was in.
+local function dropFromHands(order: Order)
+	local player = order.carriedBy
+	if player then
+		carrying[player] = nil
+		player:SetAttribute("Carrying", nil)
+		order.carriedBy = nil
+	end
+	if order.stack then
+		order.stack:Destroy()
+		order.stack = nil
+	end
+end
+
+---------------------------------------------------------------------------
 -- Orders and tickets
 ---------------------------------------------------------------------------
 
@@ -807,7 +960,7 @@ local function createOrder(shop: Shop, kind: string, desired: { Item }, desiredH
 	if customer and customer.state == "Queued" then
 		customer.state = "Waiting"
 		customer.order = order
-		setBubble(customer, if kind == "online" then "Picking up online order #" .. order.id else "Order #" .. order.id .. "...")
+		setBubble(customer, (if kind == "online" then "Picking up online order #" .. order.id else "Order #" .. order.id .. "...") .. " - I'm " .. customer.name)
 		layoutCustomers(shop)
 	end
 	updateBoards(shop)
@@ -818,6 +971,20 @@ end
 -- yet carry on through the kitchen as extras.
 local function removeOrder(shop: Shop, order: Order)
 	order.stage = "Done"
+	-- Off the carryout rack (or out of someone's hands); the next in line gets its slot.
+	dropFromHands(order)
+	local q = table.find(shop.carryQueue, order)
+	if q then
+		table.remove(shop.carryQueue, q)
+	end
+	if order.rackSlot then
+		shop.carryout[order.rackSlot] = nil
+		order.rackSlot = nil
+		local nextUp = table.remove(shop.carryQueue, 1)
+		if nextUp then
+			rackOrder(shop, nextUp)
+		end
+	end
 	for _, t in order.tickets do
 		local pie = t.pie
 		if pie and not t.boxed then
@@ -1370,15 +1537,15 @@ local function completeOrder(shop: Shop, order: Order, extra: number, driver: Pl
 	end
 end
 
+-- A boxed carryout order goes onto the carryout rack for its customer.
 local function serveCarryout(shop: Shop, order: Order)
 	local c = order.customer
-	local pickup = station(shop, "Pickup")
 	if order.source == "online" and not c then
 		-- Picked up by someone we never modeled (lobby was full).
 		completeOrder(shop, order, 1, nil)
 		return
 	end
-	if not c or c.state == "Leaving" or not pickup then
+	if not c or c.state == "Leaving" then
 		for worker in order.workers do
 			notify(worker, "Order #" .. order.id .. " is ready but the customer already left.", Color3.fromRGB(255, 160, 100))
 		end
@@ -1386,38 +1553,103 @@ local function serveCarryout(shop: Shop, order: Order)
 		return
 	end
 	order.stage = "Pickup"
+	rackOrder(shop, order)
 	updateBoards(shop)
-	setBubble(c, "That's mine!")
-	-- Boxes stack in the carryout warmer (hitbox center is 0.5 above the counter; shelf at +0.25).
-	local boxes = {}
-	for i = 1, math.min(#order.tickets, 3) do -- up to 3 fit under the warmer's middle shelf
-		local box = makeBoxPart(order.tickets[i].item.size)
-		box.CFrame = pickup.CFrame * CFrame.new(0, -0.1 + (i - 1) * 0.32, 0) * BOX_FLAT
-		box.Parent = shop.model
-		table.insert(boxes, box)
-	end
-	-- The carryout warmer faces the customers, so its LookVector points into the lobby.
-	c.humanoid:MoveTo(pickup.Position + pickup.CFrame.LookVector * 3.5)
+end
 
-	task.delay(3, function()
-		local root = c.npc:FindFirstChild("HumanoidRootPart") :: BasePart?
-		for i, box in boxes do
-			if root and c.state ~= "Leaving" then
-				box.Anchored = false
-				box.CFrame = root.CFrame * CFrame.new(0, -0.3 + (i - 1) * 0.32, -1.6) * BOX_FLAT
-				local weld = Instance.new("WeldConstraint")
-				weld.Part0 = root
-				weld.Part1 = box
-				weld.Parent = box
-				box.Parent = c.npc
-			else
-				box:Destroy()
-			end
+-- Welds a stack of the order's boxes in front of `root` (whoever's carrying it).
+local function stackInHands(order: Order, root: BasePart, parent: Instance): Model
+	local stack = makeStack(order, root.CFrame * CFrame.new(0, -0.7, -1.8))
+	for _, part in stack:GetChildren() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+			part.CanQuery = false
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = root
+			weld.Part1 = part
+			weld.Parent = part
 		end
-		if shop.alive then
-			completeOrder(shop, order, 1, nil)
+	end
+	stack.Parent = parent
+	return stack
+end
+
+-- `player` takes an order off the carryout rack (one at a time).
+local function takeOrder(player: Player, order: Order)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not character or not root or carrying[player] or order.carriedBy or order.claimedBy then
+		return
+	end
+	if order.stack then
+		order.stack:Destroy()
+	end
+	order.carriedBy = player
+	carrying[player] = order
+	player:SetAttribute("Carrying", order.id)
+	order.stack = stackInHands(order, root, character)
+	notify(player, string.format("%s's order - hand it to them at the counter.", if order.customer then order.customer.name else "#" .. order.id))
+end
+
+-- Back on its slot (put back, or whoever had it left).
+local function returnOrder(shop: Shop, order: Order)
+	dropFromHands(order)
+	if shop.alive then
+		stackOnRack(shop, order)
+	end
+end
+
+-- Hands the order to its customer (`by` a player, or staff when nil): they
+-- take the boxes and go, and the order's done.
+local function handOver(shop: Shop, order: Order, by: Player?, quality: number)
+	dropFromHands(order)
+	if by then
+		order.workers[by] = true
+	end
+	local c = order.customer
+	local root = if c then c.npc:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+	if c and root and c.state ~= "Leaving" then
+		stackInHands(order, root, c.npc)
+		CollectionService:RemoveTag(c.npc, "CarryoutPick")
+	end
+	if by then
+		notify(by, string.format("Handed %s their order.", if c then c.name else "the customer"), Color3.fromRGB(120, 255, 160))
+	end
+	completeOrder(shop, order, quality, nil)
+end
+
+-- `player` clicked customer `c` with an order in hand: theirs, they take it;
+-- anyone else's, they say who they are.
+local function giveTo(shop: Shop, player: Player, c: Customer)
+	local order = carrying[player]
+	if not order then
+		return
+	end
+	if order.customer == c then
+		handOver(shop, order, player, 1)
+		return
+	end
+	setBubble(c, "That's not mine - I'm " .. c.name)
+	notify(player, string.format("That's %s's order, not %s's.", if order.customer then order.customer.name else "someone else", c.name), Color3.fromRGB(255, 160, 100))
+	task.delay(3, function()
+		if c.atCounter and c.state ~= "Leaving" then
+			setBubble(c, "Pickup for " .. c.name .. "!")
 		end
 	end)
+end
+
+-- Whatever `player` was carrying goes back on the rack (they left, reset, changed stores).
+local function dropCarry(player: Player)
+	local order = carrying[player]
+	if not order then
+		return
+	end
+	local shop = playerShop[player]
+	if shop then
+		returnOrder(shop, order)
+	else
+		dropFromHands(order)
+	end
 end
 
 -- After a pizza is boxed: is the whole order ready?
@@ -1527,8 +1759,9 @@ local function spawnCustomer(shop: Shop, items: { Item }, online: boolean)
 			end)
 		end
 
-		local c: Customer = { npc = npc, humanoid = humanoid, items = items, state = "Queued", arrived = os.clock(), order = nil }
+		local c: Customer = { npc = npc, humanoid = humanoid, items = items, state = "Queued", arrived = os.clock(), order = nil, name = customerName(shop), atCounter = nil }
 		table.insert(shop.customers, c)
+		tagPick(npc, "Customer") -- with an order in hand you can click any customer: only its own takes it
 		if online then
 			-- Ordered on the app; the tickets are already on the make-line.
 			createOrder(shop, "online", items, nil, table.clone(items), nil, 1, nil, c)
@@ -2064,6 +2297,8 @@ local function releaseCrew(shop: Shop, c: Crew)
 	local what = job.what
 	if what == "Register" then
 		job.entry.claimedBy = nil
+	elseif what == "Handoff" then
+		job.order.claimedBy = nil
 	elseif what == "Dough" then
 		shop.stock.Dough = math.min(Config.Shop.MaxStock, shop.stock.Dough + 1)
 	elseif what == "Sauce" then
@@ -2104,6 +2339,12 @@ local function crewJobAt(shop: Shop, c: Crew, s: string): any?
 			end
 		end
 	elseif s == "Register" then
+		for _, o in shop.carryout do
+			if not o.carriedBy and not o.claimedBy and o.customer and o.customer.atCounter then
+				o.claimedBy = c
+				return { what = "Handoff", order = o }
+			end
+		end
 		for _, e in shop.pending do
 			if not e.claimedBy and (e.kind == "phone" or (e.customer and e.customer.state == "Queued")) then
 				e.claimedBy = c
@@ -2217,6 +2458,12 @@ local function crewFinish(shop: Shop, c: Crew)
 		if table.find(shop.pending, e) and (not e.customer or e.customer.state == "Queued") then
 			removePending(shop, e)
 			createOrder(shop, e.kind, e.items, e.house, table.clone(e.items), e.house, quality, nil, e.customer)
+		end
+	elseif what == "Handoff" then
+		local o = job.order
+		o.claimedBy = nil
+		if o.stage == "Pickup" and o.rackSlot and not o.carriedBy then
+			handOver(shop, o, nil, quality)
 		end
 	elseif what == "Dough" then
 		local _, used = rackCounts(shop)
@@ -3325,10 +3572,16 @@ local function tick(shop: Shop)
 		updateBoards(shop)
 	end
 
-	-- Impatient customers (not ones already collecting their boxes).
+	-- Impatient customers: waiting on their order, or at the counter with it on
+	-- the carryout rack and nobody bringing it (not while it waits for a slot).
 	for _, c in table.clone(shop.customers) do
-		local collecting = c.order ~= nil and c.order.stage == "Pickup"
-		if c.state ~= "Leaving" and not collecting and now - c.arrived > Config.OrderPatience(#c.items) then
+		if c.state == "Leaving" then
+			continue
+		elseif c.atCounter then
+			if now - c.atCounter > Config.Carryout.PickupPatience then
+				customerLeave(shop, c, "Nobody's bringing my order?! >:(")
+			end
+		elseif not (c.order and c.order.stage == "Pickup") and now - c.arrived > Config.OrderPatience(#c.items) then
 			customerLeave(shop, c, "I've waited forever! >:(")
 		end
 	end
@@ -3348,10 +3601,10 @@ local function tick(shop: Shop)
 		end
 	end
 
-	-- Orders whose customer walked out come off the screens; any pizzas already
-	-- made for them carry on as extras.
+	-- Orders whose customer walked out come off the screens (and the carryout
+	-- rack); any pizzas already made for them carry on as extras.
 	for _, o in table.clone(shop.orders) do
-		if o.cancelled and o.stage == "Making" then
+		if o.cancelled and (o.stage == "Making" or o.stage == "Pickup") then
 			removeOrder(shop, o)
 		end
 	end
@@ -3390,6 +3643,8 @@ function ShopService.AddShop(model: Model, name: string, owner: Player?, volume:
 		crew = {},
 		shift = nil,
 		calledOut = {},
+		carryout = {},
+		carryQueue = {},
 		alive = true,
 	}
 	for _, ing in Config.Ingredients do
@@ -3399,6 +3654,22 @@ function ShopService.AddShop(model: Model, name: string, owner: Player?, volume:
 		shop.lanes[slot] = {}
 	end
 	model:SetAttribute("StoreId", shop.id) -- the client matches prompts to the player's StoreId
+	-- The carryout rack: clicking it puts back the order you're carrying.
+	local slot1 = marker(shop, "CarryoutSlot_1")
+	local rack = slot1 and slot1:FindFirstAncestorWhichIsA("Model")
+	if rack then
+		local cf, size = rack:GetBoundingBox()
+		local hit = Instance.new("Part")
+		hit.Name = "CarryoutRackHit"
+		hit.Size = size
+		hit.CFrame = cf
+		hit.Transparency = 1
+		hit.Anchored = true
+		hit.CanCollide = false
+		hit.CanTouch = false
+		tagPick(hit, "Rack")
+		hit.Parent = rack
+	end
 
 	-- A store that opens mid-day shouldn't dump the whole morning's orders at once.
 	local day, hour = GameClock.split(ClockService.WeekHour())
@@ -3485,6 +3756,7 @@ end
 -- is StoreService's call; this keeps the work state in step with it.
 function ShopService.SetMember(player: Player, shop: Shop?)
 	if playerShop[player] ~= shop then
+		dropCarry(player)
 		setParked(player, false)
 		leaveStation(player)
 		ShopService.CancelSession(player)
@@ -3508,6 +3780,37 @@ function ShopService.Init(houseDoors: { Part })
 		end
 	end
 
+	Remotes.CarryoutPick.OnServerEvent:Connect(function(player, target)
+		local shop = playerShop[player]
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if not shop or not root or typeof(target) ~= "Instance" or not target:IsDescendantOf(shop.model) then
+			return
+		end
+		local at = if target:IsA("Model") then target:GetPivot().Position elseif target:IsA("BasePart") then target.Position else nil
+		if not at or (at - root.Position).Magnitude > CARRYOUT_REACH then
+			return
+		end
+		local kind = target:GetAttribute("CarryoutKind")
+		if kind == "Stack" then
+			for _, o in shop.carryout do
+				if o.stack == target then
+					takeOrder(player, o)
+				end
+			end
+		elseif kind == "Rack" then
+			local held = carrying[player]
+			if held then
+				returnOrder(shop, held)
+			end
+		elseif kind == "Customer" then
+			for _, c in shop.customers do
+				if c.npc == target then
+					giveTo(shop, player, c)
+				end
+			end
+		end
+	end)
 	Remotes.MinigameResult.OnServerEvent:Connect(function(player, token, payload)
 		ShopService.FinishMinigame(player, token, payload)
 	end)
@@ -3599,6 +3902,7 @@ function ShopService.Init(houseDoors: { Part })
 
 	local function hookCharacter(player: Player)
 		player.CharacterAdded:Connect(function(character)
+			dropCarry(player)
 			leaveStation(player)
 			ShopService.CancelSession(player)
 			if playerShop[player] then
@@ -3612,6 +3916,7 @@ function ShopService.Init(houseDoors: { Part })
 	end
 	Players.PlayerAdded:Connect(hookCharacter)
 	Players.PlayerRemoving:Connect(function(player)
+		dropCarry(player)
 		stationed[player] = nil
 		parked[player] = nil
 		ShopService.CancelSession(player) -- also releases anything they had claimed
