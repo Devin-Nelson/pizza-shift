@@ -8,8 +8,10 @@ local ClockService = require(script.Parent.ClockService)
 local DataService = require(script.Parent.DataService)
 local MapBuilder = require(script.Parent.MapBuilder)
 local ShopService = require(script.Parent.ShopService)
+local StationArt = require(script.Parent.StationArt)
 local StoreService = require(script.Parent.StoreService)
 
+StationArt.Preload()
 local world = MapBuilder.Build()
 
 ClockService.Init()

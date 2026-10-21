@@ -53,3 +53,18 @@ def to_dough(x: float, z: float):
 def to_sauce(x: float, z: float):
     """Shop (x, z) -> the sauce table's art-local (x, z)."""
     return x - SAUCE_CX, z - SAUCE_CZ
+
+
+# The makeline: StationArt.Layout.MakeLine, art origin at (11.9, 25.4), 17 wide,
+# its front 1.8 ahead of the origin (z 23.6, flush with the sauce table's), its
+# back on the high wall (28.3), its left end against the sauce table (x 3.4).
+MAKELINE_CX, MAKELINE_CZ = 11.9, 25.4
+MAKELINE_W, MAKELINE_FRONT = 17.0, -1.8
+
+
+def to_makeline(x: float, z: float):
+    """Shop (x, z) -> the makeline's art-local (x, z)."""
+    return x - MAKELINE_CX, z - MAKELINE_CZ
+
+
+assert abs(MAKELINE_CX - MAKELINE_W / 2 - MAKELINE_X) < 1e-9 and abs(MAKELINE_CZ + MAKELINE_FRONT - LINE_FRONT_Z) < 1e-9

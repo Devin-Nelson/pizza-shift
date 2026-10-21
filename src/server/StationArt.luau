@@ -24,6 +24,8 @@ local STEEL_DARK = Color3.fromRGB(120, 124, 130)
 local STAINLESS = Color3.fromRGB(140, 145, 152) -- big Metal meshes: STEEL blows out white under the store's lights
 local SAUCE_TUB = Color3.fromRGB(160, 38, 26) -- sauce in the tub, darker than on a pizza
 local GRIP_RED = Color3.fromRGB(200, 35, 35) -- spoodle grips (the user's photo)
+-- Foods on the makeline rail that aren't on the menu (yet): shown, not clickable.
+local SHOW_FOOD = { Onions = Color3.fromRGB(240, 236, 222), Chicken = Color3.fromRGB(225, 205, 170), Sausage = Color3.fromRGB(125, 95, 80) }
 local BLACK = Color3.fromRGB(25, 25, 28)
 local SCREEN = Color3.fromRGB(58, 58, 62) -- pizza screens, dark from use (as in the user's photos)
 local DOUGH = Config.IngredientColors.Dough
@@ -131,6 +133,33 @@ end
 -- Blender meshes (MeshBank): a MeshPart template per mesh id, loaded once per
 -- server (CreateMeshPartAsync yields); false = it failed to load.
 local templates: { [number]: MeshPart | false } = {}
+local loading: { [number]: boolean } = {}
+
+local function template(id: number): MeshPart?
+	while loading[id] do
+		task.wait()
+	end
+	if templates[id] == nil then
+		loading[id] = true
+		local ok, part = pcall(AssetService.CreateMeshPartAsync, AssetService, "rbxassetid://" .. id, { CollisionFidelity = Enum.CollisionFidelity.Box })
+		templates[id] = if ok then part else false
+		loading[id] = nil
+		if not ok then
+			warn(`StationArt: mesh {id} didn't load ({part}), using the code-built art`)
+		end
+	end
+	return templates[id] or nil
+end
+
+-- Starts loading every station mesh at once (at server start), so the first
+-- store to open doesn't wait on them one by one.
+function StationArt.Preload()
+	for _, bank in MeshBank do
+		for _, mesh in bank.meshes do
+			task.spawn(template, mesh.id)
+		end
+	end
+end
 
 -- The station's meshes by name once all are loaded, or nil (none uploaded yet,
 -- or one failed: the station then gets its code-built art).
@@ -139,15 +168,8 @@ local function stationMeshes(kind: string): { [string]: MeshBank.Mesh }?
 	if not bank then
 		return nil
 	end
-	for name, mesh in bank.meshes do
-		if templates[mesh.id] == nil then
-			local ok, part = pcall(AssetService.CreateMeshPartAsync, AssetService, "rbxassetid://" .. mesh.id, { CollisionFidelity = Enum.CollisionFidelity.Box })
-			templates[mesh.id] = if ok then part else false
-			if not ok then
-				warn(`StationArt: {kind} mesh {name} didn't load ({part}), using the code-built art`)
-			end
-		end
-		if not templates[mesh.id] then
+	for _, mesh in bank.meshes do
+		if not template(mesh.id) then
 			return nil
 		end
 	end
@@ -230,10 +252,15 @@ StationArt.Layout = {
 		grateDepth = 2.9, -- a Large is 2.4 across (2.55 on its screen): room to spare front and back
 		boardZ = -0.3, -- center of the grate (where pizzas sit), just behind the front lip
 		boardTop = 3.4, -- flush with the sauce and stretch tables
-		saucedQueueX = -6.5,
-		cheeseX = -2.5,
-		cheesedQueueX = 1.5,
-		toppingsX = 5.5, -- the oven end (+X)
+		-- The user's order (2026-10-20): Cheese first, where the sauced pizza is
+		-- pushed over from the sauce table (-X), in front of the cheese pan; then
+		-- Toppings, centred on the topping pans (tools/blender/makeline.py's
+		-- [layout]). Pizzas waiting for a step sit on its spot (the worker's
+		-- screen hides the others while they work).
+		saucedQueueX = -6.15,
+		cheeseX = -6.15,
+		cheesedQueueX = -2.187,
+		toppingsX = -2.187,
 	},
 	-- Ready rack table at the end of the make-line (screens hold Large pizzas;
 	-- slots are spaced for topped pizzas).
@@ -562,48 +589,68 @@ end
 -- sauced pizzas waiting (SaucedQueue marker), the cheese spot, cheesed pizzas
 -- waiting (CheesedQueue marker), and the toppings spot. Finished pizzas go on
 -- the ready rack, a separate table at the oven end. (Portions are in the
--- stations' tip cards; there are no job aid cards.)
+-- stations' tip cards; there are no job aid cards.) Blender meshes when they
+-- load (MeshBank), else parts; the scales and queue markers are parts either way.
 Builders.MakeLine = function(m, base)
 	local L = StationArt.Layout.MakeLine
 	local w, depth, top = L.width, L.depth, L.boardTop
 	local front = -1.8 -- the cabinet's front face (the makers stand in front of it)
 	local back = front + depth
 	local mid = (front + back) / 2
-	P(m, base, Vector3.new(w, 0.4, depth - 0.2), at(0, 0.2, mid + 0.1), BLACK, Enum.Material.SmoothPlastic) -- kick plate
-	P(m, base, Vector3.new(w, 2.8, depth), at(0, 1.8, mid), STEEL, Enum.Material.Metal, { name = "Cabinet", reflect = 0.05 })
-	-- Front: a door at each end, two drawers in each column between
-	local PANEL = Color3.fromRGB(206, 210, 216)
-	local sections = 5
-	local sw = w / sections
-	for k = 1, sections do
-		local x = -w / 2 + sw * (k - 0.5)
-		if k == 1 or k == sections then
-			P(m, base, Vector3.new(sw - 0.16, 2.5, 0.06), at(x, 1.8, front - 0.03), PANEL, Enum.Material.Metal, { name = "Door" })
-			-- Recessed pull along the top of the door
-			P(m, base, Vector3.new(0.9, 0.14, 0.03), at(x + (if k == 1 then 0.7 else -0.7), 2.8, front - 0.065), BLACK, Enum.Material.SmoothPlastic, { collide = false })
-		else
-			for _, y in { 2.45, 1.15 } do
-				P(m, base, Vector3.new(sw - 0.16, 1.2, 0.06), at(x, y, front - 0.03), PANEL, Enum.Material.Metal, { name = "Drawer" })
-				P(m, base, Vector3.new(1.3, 0.09, 0.09), at(x, y + 0.3, front - 0.15), STEEL, Enum.Material.Metal, { reflect = 0.3, collide = false })
-				for _, sx in { -1, 1 } do
-					P(m, base, Vector3.new(0.08, 0.08, 0.14), at(x + sx * 0.6, y + 0.3, front - 0.1), STEEL, Enum.Material.Metal, { collide = false })
+	local gd = L.grateDepth
+	local mesh = stationMeshes("MakeLine")
+	if mesh then
+		-- The Blender makeline (tools/blender/makeline.py): cabinet, rolled edge,
+		-- grate, rail, pans and canopy; each food its own mesh in its pan (the
+		-- toppings are the clickable Pan_<topping>s).
+		M(m, base, mesh.Steel, CFrame.new(mesh.Steel.at), STAINLESS, Enum.Material.Metal, { collide = true, name = "Cabinet" })
+		M(m, base, mesh.Dark, CFrame.new(mesh.Dark.at), Color3.fromRGB(40, 41, 45), Enum.Material.Metal)
+		M(m, base, mesh.Pans, CFrame.new(mesh.Pans.at), Color3.fromRGB(28, 28, 30), Enum.Material.SmoothPlastic, { name = "Pans" })
+		for key, food in mesh do
+			local ing = string.match(key, "^Food_(.+)$")
+			if ing then
+				local pan = M(m, base, food, CFrame.new(food.at), Config.IngredientColors[ing] or SHOW_FOOD[ing] or DOUGH, Enum.Material.SmoothPlastic, { name = "Pan_" .. ing })
+				if table.find(Config.Toppings, ing) then
+					pan:SetAttribute("Topping", ing)
 				end
 			end
 		end
+	else
+		P(m, base, Vector3.new(w, 0.4, depth - 0.2), at(0, 0.2, mid + 0.1), BLACK, Enum.Material.SmoothPlastic) -- kick plate
+		P(m, base, Vector3.new(w, 2.8, depth), at(0, 1.8, mid), STEEL, Enum.Material.Metal, { name = "Cabinet", reflect = 0.05 })
+		-- Front: a door at each end, two drawers in each column between
+		local PANEL = Color3.fromRGB(206, 210, 216)
+		local sections = 5
+		local sw = w / sections
+		for k = 1, sections do
+			local x = -w / 2 + sw * (k - 0.5)
+			if k == 1 or k == sections then
+				P(m, base, Vector3.new(sw - 0.16, 2.5, 0.06), at(x, 1.8, front - 0.03), PANEL, Enum.Material.Metal, { name = "Door" })
+				-- Recessed pull along the top of the door
+				P(m, base, Vector3.new(0.9, 0.14, 0.03), at(x + (if k == 1 then 0.7 else -0.7), 2.8, front - 0.065), BLACK, Enum.Material.SmoothPlastic, { collide = false })
+			else
+				for _, y in { 2.45, 1.15 } do
+					P(m, base, Vector3.new(sw - 0.16, 1.2, 0.06), at(x, y, front - 0.03), PANEL, Enum.Material.Metal, { name = "Drawer" })
+					P(m, base, Vector3.new(1.3, 0.09, 0.09), at(x, y + 0.3, front - 0.15), STEEL, Enum.Material.Metal, { reflect = 0.3, collide = false })
+					for _, sx in { -1, 1 } do
+						P(m, base, Vector3.new(0.08, 0.08, 0.14), at(x + sx * 0.6, y + 0.3, front - 0.1), STEEL, Enum.Material.Metal, { collide = false })
+					end
+				end
+			end
+		end
+		-- Work surface: a wire grate over a dark well, deep enough for a Large on
+		-- its screen with room to spare, with a stainless front lip. Rod tops sit
+		-- at boardTop, so pizzas rest on the grate.
+		P(m, base, Vector3.new(w - 0.3, 0.2, gd + 0.1), at(0, top - 0.17, L.boardZ), Color3.fromRGB(45, 46, 50), Enum.Material.Metal, { name = "Well", collide = true })
+		local rods = math.floor(gd / 0.125)
+		for i = 0, rods do
+			P(m, base, Vector3.new(w - 0.3, 0.035, 0.035), at(0, top - 0.0175, L.boardZ - gd / 2 + i * gd / rods), STEEL, Enum.Material.Metal, { reflect = 0.2, collide = false })
+		end
+		for i = 0, 10 do
+			P(m, base, Vector3.new(0.05, 0.05, gd - 0.05), at(-w / 2 + 0.3 + i * (w - 0.6) / 10, top - 0.06, L.boardZ), STEEL_DARK, Enum.Material.Metal, { collide = false })
+		end
+		P(m, base, Vector3.new(w, 0.3, 0.08), at(0, top - 0.1, front - 0.04), STEEL, Enum.Material.Metal, { name = "FrontLip" })
 	end
-	-- Work surface: a wire grate over a dark well, deep enough for a Large on
-	-- its screen with room to spare, with a stainless front lip. Rod tops sit
-	-- at boardTop, so pizzas rest on the grate.
-	local gd = L.grateDepth
-	P(m, base, Vector3.new(w - 0.3, 0.2, gd + 0.1), at(0, top - 0.17, L.boardZ), Color3.fromRGB(45, 46, 50), Enum.Material.Metal, { name = "Well", collide = true })
-	local rods = math.floor(gd / 0.125)
-	for i = 0, rods do
-		P(m, base, Vector3.new(w - 0.3, 0.035, 0.035), at(0, top - 0.0175, L.boardZ - gd / 2 + i * gd / rods), STEEL, Enum.Material.Metal, { reflect = 0.2, collide = false })
-	end
-	for i = 0, 10 do
-		P(m, base, Vector3.new(0.05, 0.05, gd - 0.05), at(-w / 2 + 0.3 + i * (w - 0.6) / 10, top - 0.06, L.boardZ), STEEL_DARK, Enum.Material.Metal, { collide = false })
-	end
-	P(m, base, Vector3.new(w, 0.3, 0.08), at(0, top - 0.1, front - 0.04), STEEL, Enum.Material.Metal, { name = "FrontLip" })
 	-- Portion scales at the cheese and toppings spots: a flat plate the pizza
 	-- sits on and a read-out standing to the maker's right (the tip card is on
 	-- the left of the screen), tipped back toward
@@ -616,36 +663,38 @@ Builders.MakeLine = function(m, base)
 		display:SetAttribute("Scale", spot.id)
 		surfaceText(display, Enum.NormalId.Front, "0.00 OZ", Color3.fromRGB(120, 255, 140), Color3.fromRGB(12, 20, 14), Enum.Font.Code)
 	end
-	-- Pan rail behind the grate: one long row of small black pans. Cheese by
-	-- the cheese spot, the toppings in front of the toppings spot, where the
-	-- maker clicks one to pick it up (`Topping` attribute).
-	local railFront = L.boardZ + gd / 2 + 0.05
-	local railZ = railFront + 0.65
-	local railTop = top + 0.25
-	P(m, base, Vector3.new(w, railTop - 3.2, 1.3), at(0, (3.2 + railTop) / 2, railZ), STEEL, Enum.Material.Metal, { name = "Rail" })
-	local fills = { "", "", "Sauce", "", "Cheese", "Cheese", "Cheese", "", "", "Pepperoni", "Ham", "Pineapple", "Peppers", "Mushrooms", "Olives" }
-	local count = #fills
-	local pw = (w - 0.6) / count
-	for i, ing in fills do
-		local x = -w / 2 + 0.3 + pw * (i - 0.5)
-		P(m, base, Vector3.new(pw - 0.08, 0.06, 0.95), at(x, railTop + 0.01, railZ), Color3.fromRGB(28, 28, 30), Enum.Material.SmoothPlastic, { collide = false })
-		local color = Config.IngredientColors[ing]
-		if color then
-			local fill = P(m, base, Vector3.new(pw - 0.2, 0.05, 0.8), at(x, railTop + 0.02, railZ), color, if ing == "Cheese" or ing == "Pineapple" then Enum.Material.Sand else Enum.Material.SmoothPlastic, { collide = false, name = "Pan_" .. ing })
-			if table.find(Config.Toppings, ing) then
-				fill:SetAttribute("Topping", ing)
+	if not mesh then
+		-- Pan rail behind the grate: one long row of small black pans. Cheese by
+		-- the cheese spot, the toppings in front of the toppings spot, where the
+		-- maker clicks one to pick it up (`Topping` attribute).
+		local railFront = L.boardZ + gd / 2 + 0.05
+		local railZ = railFront + 0.65
+		local railTop = top + 0.25
+		P(m, base, Vector3.new(w, railTop - 3.2, 1.3), at(0, (3.2 + railTop) / 2, railZ), STEEL, Enum.Material.Metal, { name = "Rail" })
+		local fills = { "Cheese", "Cheese", "Cheese", "Pepperoni", "Ham", "Pineapple", "Peppers", "Mushrooms", "Olives", "", "", "", "", "", "" }
+		local count = #fills
+		local pw = (w - 0.6) / count
+		for i, ing in fills do
+			local x = -w / 2 + 0.3 + pw * (i - 0.5)
+			P(m, base, Vector3.new(pw - 0.08, 0.06, 0.95), at(x, railTop + 0.01, railZ), Color3.fromRGB(28, 28, 30), Enum.Material.SmoothPlastic, { collide = false })
+			local color = Config.IngredientColors[ing]
+			if color then
+				local fill = P(m, base, Vector3.new(pw - 0.2, 0.05, 0.8), at(x, railTop + 0.02, railZ), color, if ing == "Cheese" or ing == "Pineapple" then Enum.Material.Sand else Enum.Material.SmoothPlastic, { collide = false, name = "Pan_" .. ing })
+				if table.find(Config.Toppings, ing) then
+					fill:SetAttribute("Topping", ing)
+				end
 			end
 		end
+		-- Sloped stainless canopy over the pans, rising to the back ledge
+		local slope = math.rad(-14) -- back edge up
+		local canopyZ = railFront + 1.0
+		P(m, base, Vector3.new(w, 0.06, 1.6), at(0, top + 1.35, canopyZ) * CFrame.Angles(slope, 0, 0), STEEL, Enum.Material.Metal, { name = "Canopy", reflect = 0.15 })
+		P(m, base, Vector3.new(w, 0.22, 0.05), at(0, top + 1.03, railFront + 0.23), STEEL, Enum.Material.Metal, { collide = false })
+		for _, sx in { -1, 1 } do
+			P(m, base, Vector3.new(0.06, 1.15, 1.6), at(sx * (w / 2 - 0.03), top + 0.85, canopyZ), STEEL, Enum.Material.Metal)
+		end
+		P(m, base, Vector3.new(w, 0.08, 0.4), at(0, top + 1.55, back - 0.2), STEEL, Enum.Material.Metal, { name = "BackLedge" })
 	end
-	-- Sloped stainless canopy over the pans, rising to the back ledge
-	local slope = math.rad(-14) -- back edge up
-	local canopyZ = railFront + 1.0
-	P(m, base, Vector3.new(w, 0.06, 1.6), at(0, top + 1.35, canopyZ) * CFrame.Angles(slope, 0, 0), STEEL, Enum.Material.Metal, { name = "Canopy", reflect = 0.15 })
-	P(m, base, Vector3.new(w, 0.22, 0.05), at(0, top + 1.03, railFront + 0.23), STEEL, Enum.Material.Metal, { collide = false })
-	for _, sx in { -1, 1 } do
-		P(m, base, Vector3.new(0.06, 1.15, 1.6), at(sx * (w / 2 - 0.03), top + 0.85, canopyZ), STEEL, Enum.Material.Metal)
-	end
-	P(m, base, Vector3.new(w, 0.08, 0.4), at(0, top + 1.55, back - 0.2), STEEL, Enum.Material.Metal, { name = "BackLedge" })
 	-- Where waiting pizzas sit (ShopService lines them up here)
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(L.saucedQueueX, top, L.boardZ), BLACK, nil, { name = "SaucedQueue", transparency = 1, collide = false })
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(L.cheesedQueueX, top, L.boardZ), BLACK, nil, { name = "CheesedQueue", transparency = 1, collide = false })

@@ -189,6 +189,20 @@ local function hideShared(visual: any, cleanup: { () -> () })
 	end)
 end
 
+-- Pizzas waiting for this step sit on its spot: hide the others too, on this
+-- player's screen, while they work (they'd sit on top of this one).
+local function hideWaiting(data: any, ws: any, stage: string, cleanup: { () -> () })
+	local shop = if typeof(data.station) == "Instance" and data.station.Parent then data.station.Parent.Parent else nil
+	for _, child in (if shop then shop:GetChildren() else {}) do
+		if child:IsA("Model") and child:GetAttribute("PieStage") == stage and child ~= data.visual then
+			local d = child:GetPivot().Position - ws.frame.Position
+			if Vector2.new(d.X, d.Z).Magnitude < 1.5 then
+				hideShared(child, cleanup)
+			end
+		end
+	end
+end
+
 -- Empties the work strip for the next phase (keeps its layout).
 local function clearBody(body: Frame)
 	for _, c in body:GetChildren() do
@@ -715,6 +729,7 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 	end
 	local ws, body, holding = ctx.ws, ctx.body, ctx.holding
 	hideShared(data.visual, ctx.cleanup)
+	hideWaiting(data, ws, "Sauced", ctx.cleanup)
 	local spec = if type(data.spec) == "table" then data.spec else { size = data.size }
 	local pizza = Pizza3D.fromSpec(ws.frame * CFrame.new(0, 0.06, 0), spec, ctx.folder)
 	local R = (Config.PizzaDiameter[spec.size] or 2.4) / 2
@@ -777,6 +792,7 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 	end
 	local ws, body, holding = ctx.ws, ctx.body, ctx.holding
 	hideShared(data.visual, ctx.cleanup)
+	hideWaiting(data, ws, "Cheesed", ctx.cleanup)
 	local spec = if type(data.spec) == "table" then data.spec else { size = data.size }
 	local pizza = Pizza3D.fromSpec(ws.frame * CFrame.new(0, 0.06, 0), spec, ctx.folder)
 	local R = (Config.PizzaDiameter[spec.size] or 2.4) / 2
