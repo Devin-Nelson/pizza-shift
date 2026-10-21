@@ -382,12 +382,6 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- A window on the right wall past the cut table
 	box("Window", HW - 0.6, HW + 0.6, 4, 9, -9.3, -3.9, glass, nil, glassProps)
 
-	-- Dispatch zone behind the oven tender: the bag cabinet (the heat racks went,
-	-- 2026-10-21: the user is designing a dispatch station to replace them)
-	box("BagCabinet", 11.6, 14.0, 1, 6, -15.2, -12.6, Color3.fromRGB(150, 25, 30), Enum.Material.Fabric)
-	local bagSign = part({ Name = "BagSign", Size = Vector3.new(2.4, 0.8, 0.1), CFrame = at(12.8, 6.6, -12.5), Color = BRAND.Charcoal, Parent = decor })
-	screenText(bagSign, Enum.NormalId.Back, "HOT BAGS", BRAND.Gold)
-
 	-- Walk-in cooler against the back wall in the right-hand corner (the user,
 	-- 2026-10-21: all the way back, for room), its door (the Fridge station:
 	-- door + stock tablet, in a notch) on its left side facing the prep table.
