@@ -2,8 +2,8 @@
 each end, two columns of drawers between, a recessed kick plate), the same rolled front edge
 as the sauce table running straight on from it, a wire grate work surface the
 pizzas ride on (flush at 3.4), a refrigerated rail of pans between stainless
-bars with the food modelled in them, and a sloped stainless canopy over the
-pans. The rail, as in the user's store photo, from the sauce table's end (the
+bars with the food modelled in them, and a level stainless canopy over the
+pans (the user, 2026-10-21: not sloped down). The rail, as in the user's store photo, from the sauce table's end (the
 maker's right): the big cheese pan, pepperoni, then columns of two pans (back,
 front): pineapple and ham, onions and green peppers, black olives and
 mushrooms, chicken and sausage; then, sharing the rest of the rail, pasta,
@@ -351,10 +351,10 @@ for sx in (-1, 1):
             (CAKE_Y0 + CAKE_H + 0.03, plain(CAKE_R * 0.86)), (CAKE_Y0 + CAKE_H + 0.05, plain(CAKE_R * 0.55)),
         ], close_top=True, at=(cx + sx * 0.3, 0, cz + sz * 0.25))
 
-# -- The canopy: a sloped stainless lid over the pans, a turned-down front
-# edge, triangular cheeks at the ends, a back panel against the wall.
+# -- The canopy: a level stainless lid over the pans (the user: not sloped
+# down), a turned-down front edge, cheeks at the ends, a back panel against the wall.
 C_F, C_B = RAIL_F + 0.2, BACK - 0.03
-C_YF, C_YB = H + 1.05, H + 1.45
+C_YF = C_YB = H + 1.45
 ang = math.degrees(math.atan2(C_YB - C_YF, C_B - C_F))
 span = math.hypot(C_B - C_F, C_YB - C_YF)
 steel.box((W, 0.04, span), (0, (C_YF + C_YB) / 2, (C_F + C_B) / 2), r=kit.rot("x", -ang))

@@ -43,14 +43,14 @@ local MeshBank: { [string]: Station } = {
 		images = { Screen = 92132235698139 }, -- screen_mesh.png
 	},
 	-- tools/blender/makeline.py (2026-10-20, v2: four sections long, the sides at
-	-- the end of the rail): the rail in the user's order (cheese, pepperoni,
+	-- the end of the rail; v3 2026-10-21: the canopy level): the rail in the user's order (cheese, pepperoni,
 	-- two-pan columns, pasta, wings, SuperCakes); each Food_<x> becomes Pan_<x>.
 	MakeLine = {
-		model = 118863097925482,
+		model = 104204682244129,
 		meshes = {
-			Steel = { id = 121207298904517, size = Vector3.new(13.6, 4.4693, 4.805), at = Vector3.new(0, 2.6346, 0.4975) },
+			Steel = { id = 119201090410040, size = Vector3.new(13.6, 4.47, 4.805), at = Vector3.new(0, 2.635, 0.4975) },
 			Dark = { id = 139564250463947, size = Vector3.new(13.5, 3.22, 4.61), at = Vector3.new(0, 1.61, 0.595) },
-			Pans = { id = 134009774339113, size = Vector3.new(13.0236, 0.3494, 1.1799), at = Vector3.new(-0.015, 3.4903, 1.85) },
+			Pans = { id = 78898056674307, size = Vector3.new(13.0236, 0.3494, 1.1799), at = Vector3.new(-0.015, 3.4903, 1.85) },
 			Food_Cheese = { id = 80526987556222, size = Vector3.new(3.1711, 0.121, 1.0211), at = Vector3.new(-4.875, 3.583, 1.85) },
 			Food_Pepperoni = { id = 134360942290783, size = Vector3.new(0.9541, 0.1367, 1.0182), at = Vector3.new(-2.6721, 3.5855, 1.85) },
 			Food_Ham = { id = 95961204783689, size = Vector3.new(0.9488, 0.1184, 0.4545), at = Vector3.new(-1.58, 3.5751, 1.5695) },
