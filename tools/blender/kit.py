@@ -425,7 +425,8 @@ def finish(station: str, meshes: list[Mesh], placements, cameras, render: bool, 
     placements: [(mesh_name, (x, y, z) bbox centre, yaw_deg, scale)] extra copies
     of instanced meshes, for the preview only (StationArt places the real ones);
     scale is a number or per-axis (x, y, z).
-    cameras: [(file_suffix, eye (x, y, z), target (x, y, z), lens_mm)] in Roblox coords.
+    cameras: [(file_suffix, eye (x, y, z), target (x, y, z), lens_mm[, clip_start])] in Roblox coords
+    (a clip_start past the near side renders a cutaway).
     wall_z: a white tile wall behind the piece (its front face at this z), for context.
     """
     out = os.path.join(OUT_ROOT, station)
@@ -470,9 +471,11 @@ def finish(station: str, meshes: list[Mesh], placements, cameras, render: bool, 
         sx, sy, sz = scale if isinstance(scale, tuple) else (scale, scale, scale)
         cp.matrix_world = Matrix.Translation(rb(*centre)) @ Matrix.Rotation(math.radians(yaw), 4, "Z") @ Matrix.Diagonal((sx, sz, sy, 1)) @ Matrix.Translation(-rb(*c0))
     _stage(wall_z)
-    for suffix, eye, target, lens in cameras:
+    for suffix, eye, target, lens, *clip in cameras:
         cam_data = bpy.data.cameras.new("cam")
         cam_data.lens = lens
+        if clip:
+            cam_data.clip_start = clip[0]
         cam = bpy.data.objects.new("cam", cam_data)
         bpy.context.scene.collection.objects.link(cam)
         e, t = rb(*eye), rb(*target)

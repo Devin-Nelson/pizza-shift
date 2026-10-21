@@ -97,6 +97,25 @@ local MeshBank: { [string]: Station } = {
 		},
 		images = {},
 	},
+	-- tools/blender/ovens.py (2026-10-21): the three stacked ovens after the user's photo,
+	-- the hood with its baffle filters, the painted enclosure (its colour is StationArt's);
+	-- Pulley is instanced (built at the origin, its axle along X).
+	Oven = {
+		model = 132569644728161,
+		meshes = {
+			Body = { id = 114550878824710, size = Vector3.new(6.97, 6.59, 10.36), at = Vector3.new(-0.185, 3.415, 0) },
+			Paint = { id = 78898037468960, size = Vector3.new(7.1, 12.99, 13.0), at = Vector3.new(0, 7.505, 0) },
+			Conveyor = { id = 104332557373788, size = Vector3.new(6.0, 4.07, 14.185), at = Vector3.new(0, 3.165, -0.2925) },
+			Hood = { id = 112995817288106, size = Vector3.new(7.86, 1.3, 13.96), at = Vector3.new(0, 7.3, 0) },
+			Filters = { id = 97551212368341, size = Vector3.new(7.46, 0.7434, 10.3846), at = Vector3.new(0, 7.05, 0) },
+			Dark = { id = 103380927038690, size = Vector3.new(7.36, 6.4333, 13.02), at = Vector3.new(0, 4.1467, 0) },
+			Glass = { id = 75667401908642, size = Vector3.new(0.03, 4.45, 4.8), at = Vector3.new(-3.29, 3.625, 0) },
+			Labels = { id = 108478829086854, size = Vector3.new(0.01, 3.96, 0.24), at = Vector3.new(-3.355, 4.52, 3.425) },
+			Rubber = { id = 104563609693623, size = Vector3.new(5.98, 0.24, 9.8), at = Vector3.new(0, 0.12, 0.04) },
+			Pulley = { id = 70983269327279, size = Vector3.new(5.98, 0.264, 0.264), at = Vector3.new(0, 0, 0) },
+		},
+		images = { Belt = 100820296560923 }, -- belt_mesh.png
+	},
 }
 
 return MeshBank

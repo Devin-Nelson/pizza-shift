@@ -10,6 +10,7 @@
 -- generated art everywhere, franchises included.
 
 local AssetService = game:GetService("AssetService")
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -736,79 +737,123 @@ Builders.ReadyRack = function(m, base)
 	screenRack(m, base, L.rackX, L.rackZ, L.rackWidth, L.rackDepth, L.height, Config.ReadyRack.Slots, L.slotSpacing, "ReadySlot_", 1, if mesh then false else nil)
 end
 
--- Three stacked stainless conveyor ovens, after the user's photos. Pizzas
+-- Three stacked conveyor ovens, after the user's photo (2026-10-21). Pizzas
 -- ride in at +Z (the make-line end) and out at -Z, toward the oven tender at
--- the cut table (LookVector = the exit end), two side by side per oven. Each
--- bake chamber is hollow, with an access door on the kitchen side (-X) whose
--- long window shows the pizzas riding through; vented back, open belt mouths
--- at both ends, a control box by the exit, on casters. Slots 1-2 are the top
--- oven, 3-4 the middle, 5-6 the bottom; in each oven the -X lane comes first.
--- Markers per slot: OvenIn_<n> / OvenOut_<n> (a pizza's center at the start
--- and end of its lane) and OvenMouthIn_<n> / OvenMouthOut_<n> (where the lane
--- enters and leaves the bake chamber).
+-- the cut table (LookVector = the exit end), two side by side per oven. Blender
+-- meshes when they load (tools/blender/ovens.py: one painted front per oven
+-- with a window to watch the pizzas ride through, stainless housings round the
+-- conveyor at both ends, the hood with its baffle filters over the belt ends,
+-- the painted enclosure up to the ceiling), else parts. Either way: the belts
+-- (a wire Texture) and, with the meshes, the pulleys at their ends, tagged
+-- OvenBelt / OvenPulley so the client runs them at the lanes' speed
+-- (client/OvenBelts); a dim lamp in each chamber; the slot markers and tags.
+-- Slots 1-2 are the top oven, 3-4 the middle, 5-6 the bottom; in each oven the
+-- -X lane comes first. Markers per slot: OvenIn_<n> / OvenOut_<n> (a pizza's
+-- center at the start and end of its lane) and OvenMouthIn_<n> /
+-- OvenMouthOut_<n> (where the lane enters and leaves the bake chamber).
+local OVEN_PAINT = Color3.fromRGB(34, 58, 168) -- the user's photo (ovens.py --paint shows the other options)
+local GLASS = Color3.fromRGB(40, 40, 46)
+local BELT_TOP, PULLEY_R = 0.05, 0.12 -- over the deck height; as in tools/blender/ovens.py
+
 Builders.Oven = function(m, base)
 	local L = StationArt.Layout.Oven
 	local W, B, C = L.width, L.belt, L.chamber
-	local bottom = L.decks[#L.decks] - 0.175
-	-- Stand on casters
-	for _, sx in { -1, 1 } do
-		for _, sz in { -1, 1 } do
-			P(m, base, Vector3.new(0.4, bottom - 0.35, 0.4), at(sx * (W / 2 - 0.4), 0.35 + (bottom - 0.35) / 2, sz * (C / 2 - 0.4)), STEEL_DARK, Enum.Material.Metal, { collide = true })
-			P(m, base, Vector3.new(0.18, 0.32, 0.32), at(sx * (W / 2 - 0.4), 0.16, sz * (C / 2 - 0.4)), BLACK, Enum.Material.Rubber, { shape = Enum.PartType.Cylinder })
-		end
-	end
-	local GLASS = Color3.fromRGB(40, 40, 46)
-	for i, y in L.decks do
-		local y0, y1 = y - 0.175, y + 1.375 -- the chamber's floor and roof
-		local hgt = y1 - y0
-		-- Shell: floor (under the belt), roof, and the back wall with vent slots.
-		P(m, base, Vector3.new(W, 0.12, C), at(0, y0 + 0.06, 0), STEEL, Enum.Material.Metal, { name = "DeckFloor", collide = true })
-		P(m, base, Vector3.new(W, 0.125, C), at(0, y1 - 0.0625, 0), STEEL, Enum.Material.Metal, { name = "DeckRoof", reflect = 0.08, collide = true })
-		P(m, base, Vector3.new(0.1, hgt, C), at(W / 2 - 0.05, (y0 + y1) / 2, 0), STEEL, Enum.Material.Metal, { name = "DeckBack", collide = true })
-		for row = 0, 1 do
-			for k = 0, math.floor((C - 2.4) / 1.1) do
-				P(m, base, Vector3.new(0.02, 0.05, 0.7), at(W / 2 + 0.01, y0 + 0.45 + row * 0.55, -C / 2 + 1.2 + k * 1.1), BLACK, Enum.Material.SmoothPlastic, { collide = false })
+	local speed = (B - 2.6) / Config.Oven.BakeTime -- a lane's length (OvenIn to OvenOut) over the bake time, as ShopService moves pizzas
+	local mesh = stationMeshes("Oven")
+	if mesh then
+		M(m, base, mesh.Body, CFrame.new(mesh.Body.at), STAINLESS, Enum.Material.Metal, { collide = true, name = "Body" })
+		M(m, base, mesh.Paint, CFrame.new(mesh.Paint.at), OVEN_PAINT, Enum.Material.SmoothPlastic, { name = "Paint", reflect = 0.05 })
+		M(m, base, mesh.Conveyor, CFrame.new(mesh.Conveyor.at), Color3.fromRGB(160, 164, 170), Enum.Material.Metal)
+		M(m, base, mesh.Hood, CFrame.new(mesh.Hood.at), STAINLESS, Enum.Material.Metal, { name = "Hood" })
+		M(m, base, mesh.Filters, CFrame.new(mesh.Filters.at), STEEL, Enum.Material.Metal)
+		M(m, base, mesh.Dark, CFrame.new(mesh.Dark.at), BLACK, Enum.Material.SmoothPlastic)
+		M(m, base, mesh.Glass, CFrame.new(mesh.Glass.at), GLASS, Enum.Material.SmoothPlastic, { name = "Window", transparency = 0.6 })
+		M(m, base, mesh.Labels, CFrame.new(mesh.Labels.at), Color3.fromRGB(235, 110, 30), Enum.Material.SmoothPlastic)
+		M(m, base, mesh.Rubber, CFrame.new(mesh.Rubber.at), BLACK, Enum.Material.Rubber)
+		for _, y in L.decks do
+			for _, sz in { -1, 1 } do
+				local pulley = M(m, base, mesh.Pulley, CFrame.new(0, y + BELT_TOP - PULLEY_R, sz * (B / 2 - PULLEY_R)) * CFrame.new(mesh.Pulley.at), Color3.fromRGB(175, 178, 184), Enum.Material.Metal, { name = "Pulley" })
+				pulley:SetAttribute("Base", pulley.CFrame)
+				pulley:SetAttribute("Spin", speed / PULLEY_R)
+				CollectionService:AddTag(pulley, "OvenPulley")
 			end
 		end
-		-- Ends: a bezel over each belt mouth; the mouth itself is open.
-		for _, sz in { -1, 1 } do
-			P(m, base, Vector3.new(W, hgt - 0.55, 0.1), at(0, y0 + 0.55 + (hgt - 0.55) / 2, sz * (C / 2 - 0.05)), STEEL, Enum.Material.Metal, { collide = true })
+	else
+		local bottom = L.decks[#L.decks] - 0.175
+		-- Stand on casters
+		for _, sx in { -1, 1 } do
+			for _, sz in { -1, 1 } do
+				P(m, base, Vector3.new(0.4, bottom - 0.35, 0.4), at(sx * (W / 2 - 0.4), 0.35 + (bottom - 0.35) / 2, sz * (C / 2 - 0.4)), STEEL_DARK, Enum.Material.Metal, { collide = true })
+				P(m, base, Vector3.new(0.18, 0.32, 0.32), at(sx * (W / 2 - 0.4), 0.16, sz * (C / 2 - 0.4)), BLACK, Enum.Material.Rubber, { shape = Enum.PartType.Cylinder })
+			end
 		end
-		-- Kitchen side: the access door, with a long window to watch the pizzas go by and a handle.
-		local fx = -W / 2 + 0.04
-		local winBottom, winTop = y + 0.1, y + 0.8
-		P(m, base, Vector3.new(0.08, winBottom - y0, C), at(fx, (y0 + winBottom) / 2, 0), STEEL, Enum.Material.Metal, { name = "Door", collide = true })
-		P(m, base, Vector3.new(0.08, y1 - winTop, C), at(fx, (winTop + y1) / 2, 0), STEEL, Enum.Material.Metal, { name = "Door", collide = true })
-		for _, sz in { -1, 1 } do
-			P(m, base, Vector3.new(0.08, winTop - winBottom, 1.0), at(fx, (winBottom + winTop) / 2, sz * (C / 2 - 0.5)), STEEL, Enum.Material.Metal, { collide = true })
+		for _, y in L.decks do
+			local y0, y1 = y - 0.175, y + 1.375 -- the chamber's floor and roof
+			local hgt = y1 - y0
+			-- Shell: floor (under the belt), roof, and the back wall with vent slots.
+			P(m, base, Vector3.new(W, 0.12, C), at(0, y0 + 0.06, 0), STEEL, Enum.Material.Metal, { name = "DeckFloor", collide = true })
+			P(m, base, Vector3.new(W, 0.125, C), at(0, y1 - 0.0625, 0), STEEL, Enum.Material.Metal, { name = "DeckRoof", reflect = 0.08, collide = true })
+			P(m, base, Vector3.new(0.1, hgt, C), at(W / 2 - 0.05, (y0 + y1) / 2, 0), STEEL, Enum.Material.Metal, { name = "DeckBack", collide = true })
+			for row = 0, 1 do
+				for k = 0, math.floor((C - 2.4) / 1.1) do
+					P(m, base, Vector3.new(0.02, 0.05, 0.7), at(W / 2 + 0.01, y0 + 0.45 + row * 0.55, -C / 2 + 1.2 + k * 1.1), BLACK, Enum.Material.SmoothPlastic, { collide = false })
+				end
+			end
+			-- Ends: a bezel over each belt mouth; the mouth itself is open.
+			for _, sz in { -1, 1 } do
+				P(m, base, Vector3.new(W, hgt - 0.55, 0.1), at(0, y0 + 0.55 + (hgt - 0.55) / 2, sz * (C / 2 - 0.05)), STEEL, Enum.Material.Metal, { collide = true })
+			end
+			-- Kitchen side: the access door, with a long window to watch the pizzas go by and a handle.
+			local fx = -W / 2 + 0.04
+			local winBottom, winTop = y + 0.1, y + 0.8
+			P(m, base, Vector3.new(0.08, winBottom - y0, C), at(fx, (y0 + winBottom) / 2, 0), STEEL, Enum.Material.Metal, { name = "Door", collide = true })
+			P(m, base, Vector3.new(0.08, y1 - winTop, C), at(fx, (winTop + y1) / 2, 0), STEEL, Enum.Material.Metal, { name = "Door", collide = true })
+			for _, sz in { -1, 1 } do
+				P(m, base, Vector3.new(0.08, winTop - winBottom, 1.0), at(fx, (winBottom + winTop) / 2, sz * (C / 2 - 0.5)), STEEL, Enum.Material.Metal, { collide = true })
+			end
+			P(m, base, Vector3.new(0.04, winTop - winBottom, C - 2.0), at(fx, (winBottom + winTop) / 2, 0), GLASS, Enum.Material.SmoothPlastic, { name = "Window", transparency = 0.6, collide = true })
+			-- Raised steel frame around the window
+			for _, wy in { winBottom, winTop } do
+				P(m, base, Vector3.new(0.1, 0.07, C - 1.86), at(fx - 0.04, wy, 0), STEEL, Enum.Material.Metal, { reflect = 0.25, collide = false })
+			end
+			for _, sz in { -1, 1 } do
+				P(m, base, Vector3.new(0.1, winTop - winBottom + 0.07, 0.07), at(fx - 0.04, (winBottom + winTop) / 2, sz * (C / 2 - 1.0)), STEEL, Enum.Material.Metal, { reflect = 0.25, collide = false })
+			end
+			P(m, base, Vector3.new(0.1, 0.1, C - 3.2), at(fx - 0.24, winTop + 0.24, 0), STEEL, Enum.Material.Metal, { name = "Handle", reflect = 0.3, collide = false })
+			for _, sz in { -1, 1 } do
+				P(m, base, Vector3.new(0.24, 0.07, 0.07), at(fx - 0.12, winTop + 0.24, sz * (C / 2 - 1.7)), STEEL, Enum.Material.Metal, { collide = false })
+			end
+			-- Control box beside the exit
+			local control = P(m, base, Vector3.new(0.9, 1.1, 1.3), at(W / 2 + 0.45, y + 0.5, -C / 2 - 0.9), Color3.fromRGB(232, 232, 228), Enum.Material.SmoothPlastic, { name = "OvenControl", collide = true })
+			surfaceText(control, Enum.NormalId.Front, string.format("OVEN CONTROL\n510 F   %d:%02d", Config.Oven.BakeTime // 60, Config.Oven.BakeTime % 60), Color3.fromRGB(40, 40, 46))
+			for _, sx in { -1, 1 } do
+				P(m, base, Vector3.new(0.12, 0.25, B), at(sx * (W / 2 - 0.35), y + 0.05, 0), STEEL_DARK, Enum.Material.Metal, { collide = false })
+			end
 		end
-		P(m, base, Vector3.new(0.04, winTop - winBottom, C - 2.0), at(fx, (winBottom + winTop) / 2, 0), GLASS, Enum.Material.SmoothPlastic, { name = "Window", transparency = 0.6, collide = true })
-		-- Raised steel frame around the window
-		for _, wy in { winBottom, winTop } do
-			P(m, base, Vector3.new(0.1, 0.07, C - 1.86), at(fx - 0.04, wy, 0), STEEL, Enum.Material.Metal, { reflect = 0.25, collide = false })
+		-- Exhaust hood + duct to the roof
+		local top = L.decks[1] + 1.375
+		P(m, base, Vector3.new(W + 1.5, 1, C + 3), at(0, top + 0.9, 0), STEEL, Enum.Material.Metal, { name = "Hood" })
+		P(m, base, Vector3.new(2.2, 14 - top, 2.2), at(0, top + 1.4 + (14 - top) / 2, 0), STEEL, Enum.Material.Metal, { name = "Duct" })
+	end
+	for i, y in L.decks do
+		-- The belt: its wire a Texture top and bottom (clear between the wires), between the pulleys.
+		local belt = P(m, base, Vector3.new(W - 0.8, 0.03, B - 4 * PULLEY_R), at(0, y + BELT_TOP - 0.015, 0), BLACK, nil, { name = "Belt", transparency = 1, collide = false })
+		for _, face in { Enum.NormalId.Top, Enum.NormalId.Bottom } do
+			local wire = Instance.new("Texture")
+			wire.Texture = "rbxassetid://" .. MeshBank.Oven.images.Belt
+			wire.Face = face
+			wire.StudsPerTileU, wire.StudsPerTileV = 0.3, 0.3
+			wire.Parent = belt
 		end
-		for _, sz in { -1, 1 } do
-			P(m, base, Vector3.new(0.1, winTop - winBottom + 0.07, 0.07), at(fx - 0.04, (winBottom + winTop) / 2, sz * (C / 2 - 1.0)), STEEL, Enum.Material.Metal, { reflect = 0.25, collide = false })
-		end
-		P(m, base, Vector3.new(0.1, 0.1, C - 3.2), at(fx - 0.24, winTop + 0.24, 0), STEEL, Enum.Material.Metal, { name = "Handle", reflect = 0.3, collide = false })
-		for _, sz in { -1, 1 } do
-			P(m, base, Vector3.new(0.24, 0.07, 0.07), at(fx - 0.12, winTop + 0.24, sz * (C / 2 - 1.7)), STEEL, Enum.Material.Metal, { collide = false })
-		end
+		belt:SetAttribute("BeltSpeed", speed)
+		CollectionService:AddTag(belt, "OvenBelt")
 		-- A dim, plain interior light so the window isn't just dark.
-		local lamp = P(m, base, Vector3.new(0.2, 0.05, 0.2), at(0, y1 - 0.2, 0), BLACK, nil, { transparency = 1, collide = false })
+		local lamp = P(m, base, Vector3.new(0.2, 0.05, 0.2), at(0, y + 1.175, 0), BLACK, nil, { transparency = 1, collide = false })
 		local light = Instance.new("PointLight")
 		light.Color = Color3.fromRGB(255, 238, 215)
 		light.Brightness = 0.5
 		light.Range = 5
 		light.Parent = lamp
-		-- Control box beside the exit
-		local control = P(m, base, Vector3.new(0.9, 1.1, 1.3), at(W / 2 + 0.45, y + 0.5, -C / 2 - 0.9), Color3.fromRGB(232, 232, 228), Enum.Material.SmoothPlastic, { name = "OvenControl", collide = true })
-		surfaceText(control, Enum.NormalId.Front, string.format("OVEN CONTROL\n510 F   %d:%02d", Config.Oven.BakeTime // 60, Config.Oven.BakeTime % 60), Color3.fromRGB(40, 40, 46))
-		-- Wire belt running through, sticking out both ends, with side rails
-		P(m, base, Vector3.new(W - 0.8, 0.1, B), at(0, y, 0), Color3.fromRGB(90, 90, 95), Enum.Material.DiamondPlate, { collide = false, name = "Belt" })
-		for _, sx in { -1, 1 } do
-			P(m, base, Vector3.new(0.12, 0.25, B), at(sx * (W / 2 - 0.35), y + 0.05, 0), STEEL_DARK, Enum.Material.Metal, { collide = false })
-		end
 		for j, lx in L.lanes do
 			local slot = (i - 1) * #L.lanes + j
 			local function mark(name: string, z: number)
@@ -818,18 +863,14 @@ Builders.Oven = function(m, base)
 			mark("OvenMouthIn_", C / 2)
 			mark("OvenMouthOut_", -C / 2)
 			mark("OvenOut_", -B / 2 + 1.3)
-			-- Slot numbers under both belt ends, matching: the exit's face the
-			-- tender (-Z), the entrance's face the loader (+Z).
-			local outTag = P(m, base, Vector3.new(0.5, 0.22, 0.05), at(lx, y - 0.1, -B / 2 - 0.03), Color3.new(1, 1, 1), nil, { collide = false })
+			-- Slot numbers under both belt ends (clear of the exit shelf), matching:
+			-- the exit's face the tender (-Z), the entrance's face the loader (+Z).
+			local outTag = P(m, base, Vector3.new(0.5, 0.22, 0.05), at(lx, y - 0.17, -B / 2 - 0.03), Color3.new(1, 1, 1), nil, { collide = false })
 			surfaceText(outTag, Enum.NormalId.Front, tostring(slot), Config.Brand.Red)
-			local inTag = P(m, base, Vector3.new(0.5, 0.22, 0.05), at(lx, y - 0.1, B / 2 + 0.03), Color3.new(1, 1, 1), nil, { collide = false })
+			local inTag = P(m, base, Vector3.new(0.5, 0.22, 0.05), at(lx, y - 0.17, B / 2 + 0.03), Color3.new(1, 1, 1), nil, { collide = false })
 			surfaceText(inTag, Enum.NormalId.Back, tostring(slot), Config.Brand.Red)
 		end
 	end
-	-- Exhaust hood + duct to the roof
-	local top = L.decks[1] + 1.375
-	P(m, base, Vector3.new(W + 1.5, 1, C + 3), at(0, top + 0.9, 0), STEEL, Enum.Material.Metal, { name = "Hood" })
-	P(m, base, Vector3.new(2.2, 14 - top, 2.2), at(0, top + 1.4 + (14 - top) / 2, 0), STEEL, Enum.Material.Metal, { name = "Duct" })
 end
 
 -- Cut table, after the user's photos (2026-10-21): a stainless table on

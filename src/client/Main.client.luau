@@ -19,8 +19,10 @@ local Prompts = require(script.Parent.Prompts)
 local StationMode = require(script.Parent.StationMode)
 local StationPicks = require(script.Parent.StationPicks)
 local WorkHud = require(script.Parent.WorkHud)
+local OvenBelts = require(script.Parent.OvenBelts)
 
 local player = Players.LocalPlayer
+OvenBelts.start()
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
