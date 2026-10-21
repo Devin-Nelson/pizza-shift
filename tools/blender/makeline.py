@@ -1,17 +1,18 @@
-"""Makeline, after the user's photos: a stainless refrigerated base (doors at both
-ends, a drawer bank between, a recessed kick plate), the same rolled front edge
+"""Makeline, after the user's photos: a stainless refrigerated base (a door at
+each end, two columns of drawers between, a recessed kick plate), the same rolled front edge
 as the sauce table running straight on from it, a wire grate work surface the
 pizzas ride on (flush at 3.4), a refrigerated rail of pans between stainless
 bars with the food modelled in them, and a sloped stainless canopy over the
 pans. The rail, as in the user's store photo, from the sauce table's end (the
 maker's right): the big cheese pan, pepperoni, then columns of two pans (back,
 front): pineapple and ham, onions and green peppers, black olives and
-mushrooms, chicken and sausage; the rest of the rail (the condenser end) holds
-nothing. The Cheese spot is the first on the line (where the sauced pizza is
+mushrooms, chicken and sausage; then, sharing the rest of the rail, pasta,
+wings and SuperCakes (a made-up dessert: little chocolate cakes in fluted
+cups). The Cheese spot is the first on the line (where the sauced pizza is
 pushed over), in front of the cheese; Toppings next, in front of the toppings.
 Each food is its own mesh: StationArt names them Pan_<food>, and gives the
 game's toppings the Topping attribute (the toppings minigame clicks them;
-onions, chicken and sausage aren't on the menu yet).
+onions, chicken, sausage, pasta, wings and SuperCakes aren't on the menu yet).
 
     blender -b -P tools/blender/makeline.py -- --render
 
@@ -46,16 +47,20 @@ RAIL_F, RAIL_B = BOARD_Z + GRATE_DEPTH / 2 + 0.05, 2.5  # 1.2 .. 2.5
 RAIL_TOP = H + 0.25
 BAR = 0.06  # divider bars between pans
 SLOT0 = -W / 2 + 0.3
-PW = (W - 0.6) / 15  # slot pitch
+PW = (17.0 - 0.6) / 15  # slot pitch: the pans the user approved on the first, 17-wide line
 OPEN_F, OPEN_B = RAIL_F + 0.1, RAIL_B - 0.1  # pan openings (z)
 PAN_DEPTH = 0.32  # bottoms (and their wall thickness) clear of the cabinet top (H - 0.1)
 # Columns from the sauce end: (slots wide, the foods in it back to front).
 RAIL = [(3, ("Cheese",)), (1, ("Pepperoni",)), (1, ("Pineapple", "Ham")), (1, ("Onions", "Peppers")), (1, ("Olives", "Mushrooms")), (1, ("Chicken", "Sausage"))]
-USED = sum(n for n, _ in RAIL)  # the rest of the rail is closed
+SIDES = sum(n for n, _ in RAIL)  # where the pizza foods end and the sides begin
+REST = (W - 0.6) / PW - SIDES  # pasta, wings and SuperCakes share what's left
+RAIL += [(REST / 3, ("Pasta",)), (REST / 3, ("Wings",)), (REST / 3, ("SuperCakes",))]
+USED = sum(n for n, _ in RAIL)
 COLORS = {  # Config.IngredientColors, and StationArt's for the foods not on the menu
     "Cheese": rgb(255, 225, 120), "Pepperoni": rgb(165, 35, 35), "Ham": rgb(240, 160, 160), "Pineapple": rgb(255, 230, 80),
     "Peppers": rgb(50, 150, 50), "Mushrooms": rgb(200, 185, 160), "Olives": rgb(35, 35, 35),
     "Onions": rgb(240, 236, 222), "Chicken": rgb(225, 205, 170), "Sausage": rgb(125, 95, 80),
+    "Pasta": rgb(240, 208, 130), "Wings": rgb(200, 120, 60), "SuperCakes": rgb(72, 40, 26),
 }
 TOPPINGS = ("Pepperoni", "Ham", "Pineapple", "Peppers", "Mushrooms", "Olives")  # Config.Toppings
 
@@ -68,7 +73,7 @@ def bound_x(i: int) -> float:
 # The spots: Cheese first, as close to the sauce end as its scale read-out (to
 # the maker's right) allows; Toppings centred on the topping pans.
 CHEESE_X = -W / 2 + 0.1 + 1.0 / 2 + 1.75  # the read-out (1.0 wide, 1.75 right of the spot) just on the line
-TOPPINGS_X = (bound_x(RAIL[0][0]) + bound_x(USED)) / 2
+TOPPINGS_X = (bound_x(RAIL[0][0]) + bound_x(SIDES)) / 2
 
 kit.reset()
 steel = Mesh("Steel", rgb(140, 145, 152), metal=1.0, rough=0.28)
@@ -81,7 +86,7 @@ food = {k: Mesh("Food_" + k, c, rough=0.5) for k, c in COLORS.items()}
 BODY_F = FRONT + 0.1
 steel.box((W, H - 0.1 - 0.4, BACK - BODY_F), (0, 0.4 + (H - 0.5) / 2, (BODY_F + BACK) / 2))
 dark.box((W - 0.1, 0.4, BACK - BODY_F - 0.15), (0, 0.2, (BODY_F + 0.15 + BACK) / 2))
-SECTIONS = 5
+SECTIONS = 4
 sw = W / SECTIONS
 for k in range(1, SECTIONS + 1):
     x = -W / 2 + sw * (k - 0.5)
@@ -286,6 +291,66 @@ scatter("Chicken", lambda: block(rng.uniform(0.07, 0.11), 0.04, rng.uniform(0.05
 surf = mound("Sausage", TOP - 0.05, 0.03)
 scatter("Sausage", lambda: lump(rng.uniform(0.03, 0.045)), 50, 0.06, surf)
 
+
+def penne():
+    """A short pasta tube, lying on its side."""
+    tmp = ring(0.034, 0.021, rng.uniform(0.15, 0.19), segs=8)
+    bmesh.ops.rotate(tmp, verts=tmp.verts[:], cent=(0, 0, 0), matrix=Matrix.Rotation(math.pi / 2, 3, "X"))
+    return tmp
+
+
+def turned(profile, squash: float = 1.0, segs: int = 10):
+    """A solid turned along Blender x: profile [(x, radius)], its height squashed."""
+    tmp = bmesh.new()
+    rings = [[tmp.verts.new((x, r * math.cos(math.tau * k / segs), r * squash * math.sin(math.tau * k / segs))) for k in range(segs)] for x, r in profile]
+    for a, b in zip(rings, rings[1:]):
+        for k in range(segs):
+            j = (k + 1) % segs
+            tmp.faces.new((a[k], a[j], b[j], b[k]))
+    tmp.faces.new(rings[0][::-1])
+    tmp.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(tmp, faces=tmp.faces[:])
+    return tmp
+
+
+DRUMETTE = [(-0.17, 0.03), (-0.155, 0.06), (-0.11, 0.08), (-0.04, 0.075), (0.03, 0.052), (0.09, 0.038), (0.13, 0.042), (0.16, 0.036), (0.17, 0.018)]
+FLAT = [(-0.15, 0.025), (-0.13, 0.06), (-0.07, 0.078), (0.0, 0.08), (0.07, 0.078), (0.13, 0.06), (0.15, 0.025)]
+
+
+def wing():
+    """A wing: a drumette (a meaty end, a narrow bone end) or a flat (an oval)."""
+    k = rng.uniform(0.9, 1.1)
+    prof = [(x * k, r * k) for x, r in (DRUMETTE if rng.random() < 0.5 else FLAT)]
+    return turned(prof, 0.85 if prof[0][0] < -0.16 else 0.6)
+
+
+# Pasta: penne heaped like the toppings.
+surf = mound("Pasta", TOP - 0.05, 0.03)
+scatter("Pasta", penne, 75, 0.1, surf)
+# Wings: piled on a low bed of more wings.
+surf = mound("Wings", TOP - 0.12, 0.03)
+scatter("Wings", wing, 38, 0.2, surf, (0.0, 0.09), tilt=0.3)
+# SuperCakes: four little cakes standing in the pan, each in a fluted cup with
+# a domed top.
+cx, cz, hw, hd = inside_at("SuperCakes", RAIL_TOP)
+CAKE_Y0, CAKE_H, CAKE_R = RAIL_TOP - PAN_DEPTH + 0.02, 0.24, 0.205
+
+
+def fluted(rad: float, depth: float = 0.03, n: int = 96):
+    return [(rad * (1 + depth * math.cos(12 * a)) * math.cos(a), rad * (1 + depth * math.cos(12 * a)) * math.sin(a)) for a in (math.tau * k / n for k in range(n))]
+
+
+def plain(rad: float, n: int = 96):
+    return fluted(rad, 0.0, n)
+
+
+for sx in (-1, 1):
+    for sz in (-1, 1):
+        kit.loft(food["SuperCakes"], [
+            (CAKE_Y0, fluted(CAKE_R - 0.03)), (CAKE_Y0 + CAKE_H, fluted(CAKE_R)),
+            (CAKE_Y0 + CAKE_H + 0.03, plain(CAKE_R * 0.86)), (CAKE_Y0 + CAKE_H + 0.05, plain(CAKE_R * 0.55)),
+        ], close_top=True, at=(cx + sx * 0.3, 0, cz + sz * 0.25))
+
 # -- The canopy: a sloped stainless lid over the pans, a turned-down front
 # edge, triangular cheeks at the ends, a back panel against the wall.
 C_F, C_B = RAIL_F + 0.2, BACK - 0.03
@@ -320,7 +385,7 @@ for name, m in food.items():
     check(f"{name} stays inside its pan (margin {worst:.3f}), at most a hair over the rim ({top - RAIL_TOP:.3f})", worst > 0 and top < RAIL_TOP + 0.02)
 check("pans clear of the cabinet top", min(y for _, y, _ in verts(pans)) > H - 0.1)
 all_steel = verts(steel) + verts(dark) + verts(pans)
-check("nothing past the sauce table (x -8.5) or the far end (8.5)", all(-W / 2 - 1e-4 <= x <= W / 2 + 1e-4 for x, _, _ in all_steel))
+check(f"nothing past the sauce table (x {-W / 2}) or the far end ({W / 2})", all(-W / 2 - 1e-4 <= x <= W / 2 + 1e-4 for x, _, _ in all_steel))
 check("nothing into the high wall (z 2.9)", all(z <= BACK + 1e-4 for _, _, z in all_steel))
 check("the grate's first rod clears the rolled edge", GR_F - 0.0175 > FRONT + BULL)
 R, PLATE, DISPLAY = 1.2, 1.35, (1.75, 0.5)  # a Large's radius, the scale plate's half-width, the read-out's offset and half-width
@@ -331,6 +396,7 @@ check("the Cheese and Toppings pizzas don't overlap", TOPPINGS_X - CHEESE_X >= 2
 check("the Toppings read-out sits between the two pizzas", CHEESE_X + R < TOPPINGS_X - DISPLAY[0] - DISPLAY[1] and TOPPINGS_X - DISPLAY[0] + DISPLAY[1] < TOPPINGS_X - R + 0.06)
 check("the cheese pan is behind the Cheese spot", abs(pan_rects["Cheese"][0] - CHEESE_X) < pan_rects["Cheese"][2] / 2)
 check("every topping pan is in the Toppings camera (within 2.8 of the spot)", all(abs(pan_rects[t][0] - TOPPINGS_X) + PW / 2 < 2.8 for t in TOPPINGS))
+check("the rail is filled to the far end", abs(bound_x(USED) - (W / 2 - 0.3)) < 1e-6)
 print(f"[layout] cheeseX {CHEESE_X:.3f} toppingsX {TOPPINGS_X:.3f}")
 
 # -- Preview only: pizzas at the Cheese and Toppings spots; the sauce table
@@ -349,7 +415,7 @@ for x, layers in ((CHEESE_X, 2), (TOPPINGS_X, 3)):
             a, rr = k * 2.4, 0.3 + 0.5 * ((k * 7) % 5) / 4
             kit.loft(pep, [(H + 0.07, kit.rounded_rect(0.2, 0.2, 0.1, 3)), (H + 0.085, kit.rounded_rect(0.2, 0.2, 0.1, 3))], close_top=True, at=(x + rr * math.cos(a), 0, BOARD_Z + rr * math.sin(a)))
 walls = Mesh("WallsPreview", rgb(235, 235, 232), rough=0.7)
-walls.box((26, 5.1, 0.6), (-3, 2.55, BACK + 0.3))
+walls.box((26, 5.1, 0.6), (-1.3, 2.55, BACK + 0.3))
 for m in (piz, red, chs, pep, walls):
     kit.preview(m)
 sauce_at = LY.to_makeline(LY.SAUCE_CX, LY.SAUCE_CZ)
@@ -377,9 +443,10 @@ kit.finish(
     [steel, dark, pans] + list(food.values()),
     [],
     [
-        ("overview", (-4.5, 9.0, -11.0), (-2.5, 2.6, 0.5), 30),
-        ("pans", (-3.6, 6.4, -2.0), (-3.6, 3.6, 1.85), 32),
-        ("rail", (-3.6, 9.5, -0.4), (-3.6, 3.6, 1.85), 34),
+        ("overview", (-2.8, 9.0, -11.0), (-0.8, 2.6, 0.5), 30),
+        ("pans", (-1.9, 6.4, -2.0), (-1.9, 3.6, 1.85), 32),
+        ("sides", (4.6, 6.0, -1.6), (4.6, 3.6, 1.85), 32),
+        ("end", (11.0, 6.5, -7.0), (5.5, 2.4, 0.5), 32),
         ("junction", (-6.0, 5.4, -5.6), (-8.5, 3.0, -1.6), 30),
         ("cheesecam", (CHEESE_X, H + 2.9, BOARD_Z - 1.75), (CHEESE_X, H, BOARD_Z), 28),
         ("toppingscam", (TOPPINGS_X, H + 2.6, BOARD_Z - 2.2), (TOPPINGS_X, H, BOARD_Z), 28),

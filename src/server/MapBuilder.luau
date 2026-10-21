@@ -343,7 +343,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 
 	-- === Kitchen ===
 	-- Kitchen display (KDS) hung over the makeline, facing the makers (ShopService writes to it)
-	local kds = part({ Name = "TicketBoard", Size = Vector3.new(15, 3, 0.3), CFrame = at(11.9, 9.6, 27.8), Color = Color3.fromRGB(10, 10, 12), Parent = decor })
+	local kds = part({ Name = "TicketBoard", Size = Vector3.new(15, 3, 0.3), CFrame = at(10.2, 9.6, 27.8), Color = Color3.fromRGB(10, 10, 12), Parent = decor })
 	local kdsGui = Instance.new("SurfaceGui")
 	kdsGui.Name = "Tickets"
 	kdsGui.Face = Enum.NormalId.Front -- Front is -Z: toward the makers
@@ -715,7 +715,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	local ST, SL, ML = StationArt.Layout.StretchTable, StationArt.Layout.SauceTable, StationArt.Layout.MakeLine
 	local stretchCF = at(-5.4, 1, 16.25) * FACE_RIGHT
 	local sauceCF = at(0.568, 1, 25.95) -- the sauce table: from the corner table (x -2.264) to the makeline, front flush with it (z 23.6)
-	local makeCF = at(11.9, 1, 25.4)
+	local makeCF = at(10.2, 1, 25.4) -- from the sauce table (x 3.4) to x 17
 	StationArt.Build("StretchTable", decor, stretchCF)
 	StationArt.Build("SauceTable", decor, sauceCF)
 	StationArt.Build("MakeLine", decor, makeCF)

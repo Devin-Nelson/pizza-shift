@@ -55,11 +55,12 @@ def to_sauce(x: float, z: float):
     return x - SAUCE_CX, z - SAUCE_CZ
 
 
-# The makeline: StationArt.Layout.MakeLine, art origin at (11.9, 25.4), 17 wide,
-# its front 1.8 ahead of the origin (z 23.6, flush with the sauce table's), its
-# back on the high wall (28.3), its left end against the sauce table (x 3.4).
-MAKELINE_CX, MAKELINE_CZ = 11.9, 25.4
-MAKELINE_W, MAKELINE_FRONT = 17.0, -1.8
+# The makeline: StationArt.Layout.MakeLine, art origin at (10.2, 25.4), 13.6
+# wide (four 3.4 sections: the user, 2026-10-20), its front 1.8 ahead of the
+# origin (z 23.6, flush with the sauce table's), its back on the high wall
+# (28.3), its left end against the sauce table (x 3.4).
+MAKELINE_CX, MAKELINE_CZ = 10.2, 25.4
+MAKELINE_W, MAKELINE_FRONT = 13.6, -1.8
 
 
 def to_makeline(x: float, z: float):

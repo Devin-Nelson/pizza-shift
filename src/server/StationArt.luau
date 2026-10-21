@@ -25,7 +25,14 @@ local STAINLESS = Color3.fromRGB(140, 145, 152) -- big Metal meshes: STEEL blows
 local SAUCE_TUB = Color3.fromRGB(160, 38, 26) -- sauce in the tub, darker than on a pizza
 local GRIP_RED = Color3.fromRGB(200, 35, 35) -- spoodle grips (the user's photo)
 -- Foods on the makeline rail that aren't on the menu (yet): shown, not clickable.
-local SHOW_FOOD = { Onions = Color3.fromRGB(240, 236, 222), Chicken = Color3.fromRGB(225, 205, 170), Sausage = Color3.fromRGB(125, 95, 80) }
+local SHOW_FOOD = {
+	Onions = Color3.fromRGB(240, 236, 222),
+	Chicken = Color3.fromRGB(225, 205, 170),
+	Sausage = Color3.fromRGB(125, 95, 80),
+	Pasta = Color3.fromRGB(240, 208, 130),
+	Wings = Color3.fromRGB(200, 120, 60),
+	SuperCakes = Color3.fromRGB(72, 40, 26),
+}
 local BLACK = Color3.fromRGB(25, 25, 28)
 local SCREEN = Color3.fromRGB(58, 58, 62) -- pizza screens, dark from use (as in the user's photos)
 local DOUGH = Config.IngredientColors.Dough
@@ -247,7 +254,7 @@ StationArt.Layout = {
 		tub = Vector3.new(1.982, 0, 1.44),
 	},
 	MakeLine = {
-		width = 17,
+		width = 13.6, -- four sections: a door, two drawer columns, a door (the user)
 		depth = 4.7, -- front face at z -1.8
 		grateDepth = 2.9, -- a Large is 2.4 across (2.55 on its screen): room to spare front and back
 		boardZ = -0.3, -- center of the grate (where pizzas sit), just behind the front lip
@@ -257,10 +264,10 @@ StationArt.Layout = {
 		-- Toppings, centred on the topping pans (tools/blender/makeline.py's
 		-- [layout]). Pizzas waiting for a step sit on its spot (the worker's
 		-- screen hides the others while they work).
-		saucedQueueX = -6.15,
-		cheeseX = -6.15,
-		cheesedQueueX = -2.187,
-		toppingsX = -2.187,
+		saucedQueueX = -4.45,
+		cheeseX = -4.45,
+		cheesedQueueX = -0.487,
+		toppingsX = -0.487,
 	},
 	-- Ready rack table at the end of the make-line (screens hold Large pizzas;
 	-- slots are spaced for topped pizzas).
@@ -620,7 +627,7 @@ Builders.MakeLine = function(m, base)
 		P(m, base, Vector3.new(w, 2.8, depth), at(0, 1.8, mid), STEEL, Enum.Material.Metal, { name = "Cabinet", reflect = 0.05 })
 		-- Front: a door at each end, two drawers in each column between
 		local PANEL = Color3.fromRGB(206, 210, 216)
-		local sections = 5
+		local sections = 4
 		local sw = w / sections
 		for k = 1, sections do
 			local x = -w / 2 + sw * (k - 0.5)
@@ -671,7 +678,7 @@ Builders.MakeLine = function(m, base)
 		local railZ = railFront + 0.65
 		local railTop = top + 0.25
 		P(m, base, Vector3.new(w, railTop - 3.2, 1.3), at(0, (3.2 + railTop) / 2, railZ), STEEL, Enum.Material.Metal, { name = "Rail" })
-		local fills = { "Cheese", "Cheese", "Cheese", "Pepperoni", "Ham", "Pineapple", "Peppers", "Mushrooms", "Olives", "", "", "", "", "", "" }
+		local fills = { "Cheese", "Cheese", "Cheese", "Pepperoni", "Ham", "Pineapple", "Peppers", "Mushrooms", "Olives", "", "", "" }
 		local count = #fills
 		local pw = (w - 0.6) / count
 		for i, ing in fills do
