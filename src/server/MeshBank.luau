@@ -91,7 +91,6 @@ local MeshBank: { [string]: Station } = {
 			Bottles = { id = 127042004448027, size = Vector3.new(0.2535, 0.61, 0.26), at = Vector3.new(2.1121, 3.205, 2.5943) },
 			Caps = { id = 82427795308953, size = Vector3.new(0.8292, 0.33, 0.27), at = Vector3.new(1.7451, 3.485, 2.5943) },
 			Shakers = { id = 103106550156809, size = Vector3.new(0.5535, 0.42, 0.26), at = Vector3.new(1.6121, 3.11, 2.5943) },
-			Trash = { id = 99931970717427, size = Vector3.new(1.44, 2.24, 1.3804), at = Vector3.new(0, 1.12, 4.05) },
 			Rocker = { id = 107227853656891, size = Vector3.new(3.4, 0.625, 0.206), at = Vector3.new(0, 0.3125, 0) },
 			RockerGrips = { id = 133911230277363, size = Vector3.new(3.52, 0.17, 0.19), at = Vector3.new(0, 0.595, 0) },
 		},

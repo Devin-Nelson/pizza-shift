@@ -876,7 +876,7 @@ end
 -- casters behind the oven exits, the oven tender on its long side (-Z) facing
 -- the carryout counter. Blender meshes when they load (tools/blender/cut_table.py:
 -- the table, a stack of unfolded boxes per size, the rocker trough, the
--- seasoning insert, the trash can; sides, once on the menu, go in the Small
+-- seasoning insert; sides, once on the menu, go in the Small
 -- boxes), else a plain table and stacks. Parts either way: the top blank of
 -- each stack (Blank_<Size>, a Model of PizzaBox panels, each with BoxSize: the
 -- cut minigame cuts the pizza on it, then folds it into the box), the size
@@ -895,7 +895,6 @@ Builders.CutTable = function(m, base)
 		M(m, base, mesh.Bottles, CFrame.new(mesh.Bottles.at), Color3.fromRGB(238, 236, 228), Enum.Material.SmoothPlastic)
 		M(m, base, mesh.Caps, CFrame.new(mesh.Caps.at), GRIP_RED, Enum.Material.Plastic)
 		M(m, base, mesh.Shakers, CFrame.new(mesh.Shakers.at), Color3.fromRGB(230, 215, 170), Enum.Material.Plastic)
-		M(m, base, mesh.Trash, CFrame.new(mesh.Trash.at), Color3.fromRGB(70, 72, 78), Enum.Material.Plastic, { collide = true, name = "Trash" })
 		for _, r in L.rockers do
 			local cf = CFrame.new(r) * CFrame.Angles(0, math.rad(90), 0)
 			M(m, base, mesh.Rocker, cf * CFrame.new(mesh.Rocker.at), STEEL, Enum.Material.Metal)

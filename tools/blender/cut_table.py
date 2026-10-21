@@ -5,8 +5,8 @@ boxes per size lying completely unfolded (the tender folds the top one on its
 stack in the game, slides the pizza in, cuts and shuts it), a recessed trough
 with the rockers between two stacks, a seasoning insert behind the Medium
 stack, clear counter at the far end. (The user: sides go in the Small boxes.)
-Underneath: more blanks, a case of boxes, bins of side-box blanks. A trash
-can on the counter side. (The user, 2026-10-21: no printer on the top.)
+Underneath: more blanks, a case of boxes, bins of side-box blanks. (The user,
+2026-10-21: no printer on the top, no trash can.)
 
     blender -b -P tools/blender/cut_table.py -- --render
 
@@ -83,7 +83,6 @@ rocker_grips = Mesh("RockerGrips", rgb(28, 28, 30), rough=0.5, instanced=True)
 bottles = Mesh("Bottles", rgb(238, 236, 228), rough=0.35)
 caps = Mesh("Caps", rgb(200, 35, 35), rough=0.4)
 shakers = Mesh("Shakers", rgb(230, 215, 170), rough=0.4)
-trash = Mesh("Trash", rgb(70, 72, 78), rough=0.6)
 
 
 def tray(m: Mesh, x0, x1, z0, z1, y0, y1, lip=0.03):
@@ -246,13 +245,6 @@ for bx in BINS:
 CASE = (3.1, 3.4, 0.62, 3.0)  # x, w, h, d
 card.box((CASE[1], CASE[2], CASE[3]), (CASE[0], SHELVES[0] + 0.02 + CASE[2] / 2, 0.0), bevel=0.02)
 
-# -- The trash can on the counter side.
-TX, TZ, TR, TH = 0.0, D / 2 + 0.9, 0.65, 2.2
-kit.loft(trash, [(0.0, kit.rounded_rect(2 * TR * 0.9, 2 * TR * 0.9, TR * 0.9, 8)), (TH, kit.rounded_rect(2 * TR, 2 * TR, TR, 8))], close_bottom=True, at=(TX, 0, TZ), thickness=0.03)
-kit.tube(trash, [(TX + TR * math.cos(math.tau * k / 32), TZ + TR * math.sin(math.tau * k / 32)) for k in range(33)], TH, 0.04, segs=8)
-for sx in (-1, 1):
-    trash.box((0.08, 0.12, 0.35), (TX + sx * (TR + 0.03), TH - 0.25, TZ))
-
 # -- Clearances: nothing may clip (the user). Fails the build if anything does.
 
 
@@ -286,7 +278,6 @@ check("CutLanding's pizza on the Large stack's base panel", abs(LANDING[1] - (FR
 check("shelf stacks under the top, inside the panels, clear of the post", all(SHELVES[1] + 0.02 + BLANK * c < H - TOP_T - 0.05 for _, _, c in UNDER) and all(abs(sx_) + blank(BOX[s])[0] / 2 < W / 2 - 0.05 and abs(sx_ - POST_X) - blank(BOX[s])[0] / 2 > 0.1 and blank(BOX[s])[1] < D - 0.2 for s, sx_, _ in UNDER))
 check("bottom shelf: bins and the case under the middle shelf, clear of the post and each other", max(BINS) + BIN_W / 2 < POST_X - 0.1 and min(BINS) - BIN_W / 2 > -W / 2 + 0.05 and all(b - a > BIN_W for a, b in zip(BINS, BINS[1:])) and CASE[0] - CASE[1] / 2 > POST_X + 0.1 and CASE[0] + CASE[1] / 2 < W / 2 - 0.05 and SHELVES[0] + 0.02 + max(CASE[2], BIN_H) < SHELVES[1] - 0.1)
 check("wheels under the bottom shelf", 2 * WHEEL_R < SHELVES[0] - 0.05)
-check("trash clear of the table's back", TZ - TR - 0.04 > D / 2 + 0.05)
 print(f"[layout] rockers {[(round(x_, 3), round(y_, 3), round(z_, 3)) for x_, y_, z_ in TROUGH_ROCKERS]}")
 print(f"[layout] W {W}; stacks { {s: (round(c[0], 3), round(c[1], 3), round(c[3], 3)) for s, c in stacks.items()} }; landing ({LANDING[0]:.3f}, {LANDING[1]:.3f})")
 
@@ -325,7 +316,7 @@ for m in (pv, piz, chs, cuts, fold):
 
 kit.finish(
     "cut_table",
-    [steel, dark, card, blanks, rocker, rocker_grips, bottles, caps, shakers, trash],
+    [steel, dark, card, blanks, rocker, rocker_grips, bottles, caps, shakers],
     [(m.name, (x_, y_ + (m.bounds()[0].y + m.bounds()[1].y) / 2, z_), yaw, 1) for m in (rocker, rocker_grips) for x_, y_, z_, yaw in [(*t, 90) for t in TROUGH_ROCKERS] + [(W / 2 + 6, 2.0 - R_HEIGHT / 2, -6.0, 0)]],
     [
         ("overview", (4.0, 12.0, -16.0), (-0.6, 2.6, 0.2), 32),

@@ -388,19 +388,21 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	local bagSign = part({ Name = "BagSign", Size = Vector3.new(2.4, 0.8, 0.1), CFrame = at(12.8, 6.6, -12.5), Color = BRAND.Charcoal, Parent = decor })
 	screenText(bagSign, Enum.NormalId.Back, "HOT BAGS", BRAND.Gold)
 
-	-- Walk-in cooler: the Fridge station is its front's right end (door + stock
-	-- tablet), clear of the heat racks.
+	-- Walk-in cooler against the back wall in the right-hand corner (the user,
+	-- 2026-10-21: all the way back, for room), its door (the Fridge station:
+	-- door + stock tablet, in a notch) on its left side facing the prep table.
 	local walkIn = Color3.fromRGB(205, 210, 216)
-	box("WalkIn", 5.75, 14, 1, 11, -31.4, -16.2, walkIn, Enum.Material.Metal)
-	box("WalkIn", 14, HW - 0.5, 1, 11, -31.4, -20.2, walkIn, Enum.Material.Metal)
-	box("WalkIn", 20, HW - 0.5, 1, 11, -20.2, -16.2, walkIn, Enum.Material.Metal)
+	local WI_X, WI_Z0, WI_Z1, DOOR_Z = 5.75, BACK + 0.5, BACK + 15.7, BACK + 11.7 -- its left side, back, front; the door's centre
+	box("WalkIn", WI_X + 4, HW - 0.5, 1, 11, WI_Z0, WI_Z1, walkIn, Enum.Material.Metal)
+	box("WalkIn", WI_X, WI_X + 4, 1, 11, WI_Z0, DOOR_Z - 3, walkIn, Enum.Material.Metal)
+	box("WalkIn", WI_X, WI_X + 4, 1, 11, DOOR_Z + 3, WI_Z1, walkIn, Enum.Material.Metal)
 	box("HandSink", 2.9, 5.0, 3.0, 3.6, -17.6, -15.4, steel, Enum.Material.Metal)
 	box("HandSinkBase", 3.4, 4.5, 1, 3.0, -17.2, -15.8, steel, Enum.Material.Metal)
 
 	-- Back of house where the restrooms were (the user dropped them): the
 	-- office in the back-left corner, the 3-compartment sink on the left wall,
-	-- dish rack, prep table, mop sink and water heater, dry storage, tray
-	-- storage and back storage along the back.
+	-- dish rack, prep table, mop sink and water heater, dry storage along the
+	-- back (the back storage shelf and the dough tray stacks went, 2026-10-21).
 	local function wall(name: string, x0: number, x1: number, z0: number, z1: number)
 		box(name, x0, x1, 1, 11, z0, z1, wallColor, Enum.Material.Plaster)
 	end
@@ -452,15 +454,6 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	for i = 0, 3 do
 		box("DryShelf", -10.8, -5.2, 1.3 + i * 2.2, 1.45 + i * 2.2, BACK + 0.5, BACK + 3.0, steel, Enum.Material.DiamondPlate)
 		box("Cases", -10.5, -5.5, 1.45 + i * 2.2, 2.6 + i * 2.2, BACK + 0.7, BACK + 2.8, Color3.fromRGB(180, 140, 90), Enum.Material.Cardboard, { CanCollide = false })
-	end
-	for k = 0, 6 do
-		for i = 0, 5 do
-			box("TrayStack", 3.4 + k * 2.9, 5.8 + k * 2.9, 1 + i * 0.36, 1.34 + i * 0.36, BACK + 1.0, BACK + 4.0, Color3.fromRGB(45, 125, 215), Enum.Material.Plastic)
-		end
-	end
-	for i = 0, 3 do
-		box("BackStorage", 12.4, HW - 0.5, 1.3 + i * 2.2, 1.45 + i * 2.2, -41.0, -38.2, steel, Enum.Material.DiamondPlate)
-		box("Cases", 12.8, HW - 0.8, 1.45 + i * 2.2, 2.4 + i * 2.2, -40.7, -38.5, Color3.fromRGB(230, 205, 120), Enum.Material.Cardboard, { CanCollide = false })
 	end
 
 	-- === Finishes and decor (the look pass) ===
@@ -734,7 +727,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- ovens the same day: the same place relative to their exits.)
 	station("CutTable", at(12.65, 1, -3.4) * FACE_RIGHT, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(3.1, CT.height, -1.55))
 	station("DeliveryRack", at(8.1, 1, -13.4) * FACE_FRONT, Vector3.new(6, 7, 2.2), "Heat Rack", "Heat Rack", nil, Vector3.new(0, 3.6, -1.1))
-	station("Fridge", at(17, 1, -18.2) * FACE_FRONT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler")
+	station("Fridge", at(WI_X + 2, 1, DOOR_Z) * FACE_LEFT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler") -- in the walk-in's door notch
 
 	-- === Lot out back ===
 	part({ Name = "ParkingLot", Size = Vector3.new(36, 0.2, 28), CFrame = at(0, 0.1, -68), Color = Color3.fromRGB(55, 55, 60), Material = Enum.Material.Asphalt, CanCollide = false, Parent = decor })
