@@ -68,4 +68,15 @@ def to_makeline(x: float, z: float):
     return x - MAKELINE_CX, z - MAKELINE_CZ
 
 
+# The ready rack's table (user, 2026-10-20): square, at the makeline's end, as
+# deep as the line (front flush with it, back on the high wall).
+READY_W = SAUCE_DEPTH
+READY_CX, READY_CZ = MAKELINE_CX + MAKELINE_W / 2 + READY_W / 2, (LINE_FRONT_Z + BACK_WALL_Z) / 2
+
+
+def to_ready(x: float, z: float):
+    """Shop (x, z) -> the ready table's art-local (x, z)."""
+    return x - READY_CX, z - READY_CZ
+
+
 assert abs(MAKELINE_CX - MAKELINE_W / 2 - MAKELINE_X) < 1e-9 and abs(MAKELINE_CZ + MAKELINE_FRONT - LINE_FRONT_Z) < 1e-9

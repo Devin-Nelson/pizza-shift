@@ -724,10 +724,11 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	local makeWork = Vector3.new(0, ML.boardTop, ML.boardZ)
 	station("Cheese", makeCF * CFrame.new(ML.cheeseX, 0, 0), Vector3.new(3, 4, 3.6), "Cheese", "Make-Line", nil, makeWork)
 	station("Toppings", makeCF * CFrame.new(ML.toppingsX, 0, 0), Vector3.new(3, 4, 3.6), "Toppings", "Make-Line", nil, makeWork)
-	-- The ready rack beside the oven entrance: the topper turns around to load.
+	-- The ready rack at the makeline's end, flush with it (the user, 2026-10-20).
 	local RR = StationArt.Layout.ReadyRack
-	StationArt.Build("ReadyRack", decor, at(15.3, 1, 15.4) * FACE_FRONT)
-	station("Load", at(15.3, 1, 15.4) * FACE_FRONT, Vector3.new(RR.width, 8, RR.depth), "Load Oven", "Ready Rack", nil, Vector3.new(0, RR.height + 2.3, 0.1 - RR.rackDepth / 2))
+	local readyCF = at(19.35, 1, 25.95)
+	StationArt.Build("ReadyRack", decor, readyCF)
+	station("Load", readyCF, Vector3.new(RR.width, 8, RR.depth), "Load Oven", "Ready Rack", nil, Vector3.new(RR.rackX, RR.height + 2.3, RR.rackZ - RR.rackDepth / 2))
 	-- Cut table behind the oven exits; the oven tender faces the carryout counter.
 	local CT = StationArt.Layout.CutTable
 	station("CutTable", at(3.1, 1, -1.5) * FACE_RIGHT, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(1.2, CT.height, -0.3))

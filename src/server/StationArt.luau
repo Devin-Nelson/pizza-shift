@@ -269,9 +269,10 @@ StationArt.Layout = {
 		cheesedQueueX = -0.487,
 		toppingsX = -0.487,
 	},
-	-- Ready rack table at the end of the make-line (screens hold Large pizzas;
-	-- slots are spaced for topped pizzas).
-	ReadyRack = { width = 3.6, depth = 3.2, height = 3.4, rackWidth = 2.9, rackDepth = 2.8, slotSpacing = 0.3 },
+	-- The ready rack (the user, 2026-10-20): a square table at the makeline's
+	-- end, as deep as the line, the rack at its back (tools/blender/ready_rack.py's
+	-- [layout]); screens hold Large pizzas, slots spaced for topped pizzas.
+	ReadyRack = { width = 4.7, depth = 4.7, height = 3.4, rackX = 0, rackZ = 0.915, rackWidth = 2.6, rackDepth = 2.2, slotSpacing = 0.3 },
 	-- Three stacked conveyor ovens, running along Z: in at +Z (the make-line
 	-- end), out at -Z (LookVector: toward the oven tender at the cut table).
 	Oven = {
@@ -707,16 +708,23 @@ Builders.MakeLine = function(m, base)
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(L.cheesedQueueX, top, L.boardZ), BLACK, nil, { name = "CheesedQueue", transparency = 1, collide = false })
 end
 
--- The ready rack: a small stainless table at the end of the make-line, by the
--- oven entrance, with a pizza-screen rack on it like the dough racks.
--- Finished pizzas wait on its screens (Config.ReadyRack.Slots of them,
--- ReadySlot_<n> markers, top first) until someone loads them.
+-- The ready rack: a square stainless table at the makeline's end with the
+-- dough racks' 15-screen rack at its back. Finished pizzas wait on its screens
+-- (Config.ReadyRack.Slots of them, ReadySlot_<n> markers, top first) until
+-- someone loads them. Blender meshes when they load (MeshBank), else parts.
 Builders.ReadyRack = function(m, base)
 	local L = StationArt.Layout.ReadyRack
-	steelTable(m, base, L.width, L.depth, L.height)
-	screenRack(m, base, 0, 0.1, L.rackWidth, L.rackDepth, L.height, Config.ReadyRack.Slots, L.slotSpacing, "ReadySlot_", 1)
-	local tag = P(m, base, Vector3.new(2.0, 0.32, 0.04), at(0, L.height - 0.25, -L.depth / 2 - 0.08), BLACK, nil, { collide = false })
-	surfaceText(tag, Enum.NormalId.Front, "READY TO LOAD", Color3.fromRGB(255, 190, 60), BLACK)
+	local mesh = stationMeshes("ReadyRack")
+	if mesh then
+		M(m, base, mesh.Steel, CFrame.new(mesh.Steel.at), STAINLESS, Enum.Material.Metal, { collide = true, name = "Table" })
+		M(m, base, mesh.Rubber, CFrame.new(mesh.Rubber.at), BLACK, Enum.Material.Rubber)
+		M(m, base, mesh.Racks, CFrame.new(mesh.Racks.at), CHROME, Enum.Material.Metal, { name = "Racks" })
+	else
+		steelTable(m, base, L.width, L.depth, L.height)
+		local tag = P(m, base, Vector3.new(2.0, 0.32, 0.04), at(0, L.height - 0.25, -L.depth / 2 - 0.08), BLACK, nil, { collide = false })
+		surfaceText(tag, Enum.NormalId.Front, "READY TO LOAD", Color3.fromRGB(255, 190, 60), BLACK)
+	end
+	screenRack(m, base, L.rackX, L.rackZ, L.rackWidth, L.rackDepth, L.height, Config.ReadyRack.Slots, L.slotSpacing, "ReadySlot_", 1, if mesh then false else nil)
 end
 
 -- Three stacked stainless conveyor ovens, after the user's photos. Pizzas

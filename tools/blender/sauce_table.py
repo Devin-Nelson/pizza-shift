@@ -279,29 +279,9 @@ for dx_, dz_, r in DRIPS:
 # rests on it, the big ones overhanging) and dips at the front tip. Slot
 # heights as in StationArt's screenRack (with RACK_LIFT). The posts stand clear
 # of a Large screen's rim.
-PW, LX, BACK_POST = 0.9, 0.75, 0.9  # post and ledge half-widths (a Small screen is 0.89 in radius), posts behind centre
 top_rail = H + 0.2 + RACK_LIFT + (SLOTS - 1) * SPACING
-y_top = top_rail + 0.12
-r = 0.02
-rack, feet = Mesh("_rack", (0, 0, 0, 1)), Mesh("_feet", (0, 0, 0, 1))
-zb, zf = BACK_POST, -0.85
-base = [(-0.9, -1.0), (0.9, -1.0), (0.9, zb + 0.05), (-0.9, zb + 0.05)]
-for (ax, az), (bx_, bz_) in zip(base, base[1:] + base[:1]):
-    rack.rod((ax, H + 0.025, az), (bx_, H + 0.025, bz_), 0.025, segs=6)
-rack.rod((-0.9, H + 0.025, 0), (0.9, H + 0.025, 0), 0.025, segs=6)
-for sx in (-1, 1):
-    rack.rod((sx * PW, H + 0.02, zb), (sx * PW, y_top, zb), 0.03, segs=8)
-    feet.box((0.1, 0.03, 0.1), (sx * 0.9, H + 0.015, -1.0))
-    feet.box((0.1, 0.03, 0.1), (sx * 0.9, H + 0.015, zb + 0.05))
-arch = [(-PW * math.cos(math.pi * i / 8), y_top + 0.3 * math.sin(math.pi * i / 8), zb) for i in range(9)]
-for a, b in zip(arch, arch[1:]):
-    rack.rod(a, b, 0.03, segs=8, caps=False)
-for i in range(SLOTS):
-    y = top_rail - i * SPACING
-    for sx in (-1, 1):
-        path = [(sx * PW, y, zb), (sx * PW, y, zb - 0.45), (sx * LX, y, zb - 0.6), (sx * LX, y, zf + 0.1), (sx * LX, y - 0.05, zf)]
-        for a, b in zip(path, path[1:]):
-            rack.rod(a, b, r, segs=6, caps=False)
+BACK_POST = kit.RACK_BACK_POST
+rack, feet = kit.wire_rack(H, top_rail, SLOTS, SPACING)
 for cx, cz in RACKS:
     racks.merge(rack, at=(cx, 0, cz), r=kit.rot("y", RACK_YAW))
     rubber.merge(feet, at=(cx, 0, cz), r=kit.rot("y", RACK_YAW))

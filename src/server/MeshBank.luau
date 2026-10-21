@@ -67,6 +67,17 @@ local MeshBank: { [string]: Station } = {
 		},
 		images = {},
 	},
+	-- tools/blender/ready_rack.py (2026-10-20): the 15-screen rack (the sauce
+	-- corner's) on a square table at the makeline's end.
+	ReadyRack = {
+		model = 122219228222871,
+		meshes = {
+			Steel = { id = 96352011086121, size = Vector3.new(4.7, 3.85, 4.77), at = Vector3.new(0, 1.925, -0.035) },
+			Rubber = { id = 96085232879241, size = Vector3.new(1.9, 0.03, 2.05), at = Vector3.new(0, 3.415, 0.89) },
+			Racks = { id = 136438712389020, size = Vector3.new(1.86, 4.8499, 2), at = Vector3.new(0, 5.825, 0.89) },
+		},
+		images = {},
+	},
 }
 
 return MeshBank

@@ -382,6 +382,43 @@ def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
+# The tall wire pizza-screen rack (the user's photo; the sauce corner's skin
+# racks and the ready rack): a wire base on the counter, two back posts joined
+# by an arch, and per slot a wire each side that runs forward from the post,
+# steps in (so every screen size rests on it, the big ones overhanging) and
+# dips at the front tip. Its centre is a screen's; its front is -Z.
+RACK_POST, RACK_LEDGE, RACK_BACK_POST = 0.9, 0.75, 0.9  # post and ledge half-widths (a Small screen is 0.89 in radius), posts behind centre
+RACK_BASE = (-1.0, RACK_BACK_POST + 0.05)  # its base's front and back (z)
+
+
+def wire_rack(h: float, top_rail: float, slots: int, spacing: float):
+    """One rack at the origin on a counter at height h, its top slot's wires at top_rail:
+    (wire, feet) meshes to merge where the racks go. Slot heights as in StationArt's screenRack."""
+    PW, LX = RACK_POST, RACK_LEDGE
+    y_top = top_rail + 0.12
+    r = 0.02
+    rack, feet = Mesh("_rack", (0, 0, 0, 1)), Mesh("_feet", (0, 0, 0, 1))
+    zb, zf = RACK_BACK_POST, -0.85
+    base = [(-0.9, RACK_BASE[0]), (0.9, RACK_BASE[0]), (0.9, RACK_BASE[1]), (-0.9, RACK_BASE[1])]
+    for (ax, az), (bx_, bz_) in zip(base, base[1:] + base[:1]):
+        rack.rod((ax, h + 0.025, az), (bx_, h + 0.025, bz_), 0.025, segs=6)
+    rack.rod((-0.9, h + 0.025, 0), (0.9, h + 0.025, 0), 0.025, segs=6)
+    for sx in (-1, 1):
+        rack.rod((sx * PW, h + 0.02, zb), (sx * PW, y_top, zb), 0.03, segs=8)
+        feet.box((0.1, 0.03, 0.1), (sx * 0.9, h + 0.015, RACK_BASE[0]))
+        feet.box((0.1, 0.03, 0.1), (sx * 0.9, h + 0.015, RACK_BASE[1]))
+    arch = [(-PW * math.cos(math.pi * i / 8), y_top + 0.3 * math.sin(math.pi * i / 8), zb) for i in range(9)]
+    for a, b in zip(arch, arch[1:]):
+        rack.rod(a, b, 0.03, segs=8, caps=False)
+    for i in range(slots):
+        y = top_rail - i * spacing
+        for sx in (-1, 1):
+            path = [(sx * PW, y, zb), (sx * PW, y, zb - 0.45), (sx * LX, y, zb - 0.6), (sx * LX, y, zf + 0.1), (sx * LX, y - 0.05, zf)]
+            for a, b in zip(path, path[1:]):
+                rack.rod(a, b, r, segs=6, caps=False)
+    return rack, feet
+
+
 def finish(station: str, meshes: list[Mesh], placements, cameras, render: bool, wall_z: float | None = None):
     """Export the meshes, write the manifest, and render previews.
 
