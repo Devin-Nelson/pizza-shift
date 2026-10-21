@@ -81,6 +81,7 @@ local Style = load("src/shared/Style.luau", { script = { Parent = { Config = CON
 local TicketRows = load("src/shared/TicketRows.luau", { script = { Parent = {} }, game = game })
 local Staff = load("src/shared/Staff.luau", { script = { Parent = { Config = CONFIG } }, game = game })
 local Follow = load("src/shared/Follow.luau", { script = { Parent = {} }, game = game })
+local PizzaBox = load("src/shared/PizzaBox.luau", { script = { Parent = {} }, game = game })
 
 local specs: { { string | () -> () } } = {}
 local function spec(name: string, fn: () -> ())
@@ -782,6 +783,46 @@ spec("a server that lost the save never overwrites it", function()
 	A.Save(pa)
 	eq(db.u_7.Coins, 150, "still refused after B let go")
 	eq(db.u_7.Lock, nil, "released")
+end)
+
+-------------------------------------------------------------------- pizza box
+spec("a box blank lies flat with no panels overlapping, and shuts with the lid on the walls", function()
+	local W, T = PizzaBox.Wall, PizzaBox.Thick
+	for size, bs in Config.BoxSize do
+		local panels = PizzaBox.panels(bs)
+		local flat = PizzaBox.pose(panels, roblox.CFrame.new(), 0)
+		local rects = {}
+		for i, p in panels do
+			local cf = flat[i]
+			near(cf.Position.Y, -T / 2, size .. " " .. p.name .. " lies flat")
+			assert(math.abs(cf.UpVector.Y) > 0.999, size .. " " .. p.name .. " faces up")
+			local half = (cf.RightVector * p.width / 2 + cf.LookVector * p.length / 2)
+			rects[i] = { cf.Position.X - math.abs(half.X), cf.Position.Z - math.abs(half.Z), cf.Position.X + math.abs(half.X), cf.Position.Z + math.abs(half.Z), p.name }
+		end
+		for i = 1, #rects do
+			for j = i + 1, #rects do
+				local a, b = rects[i], rects[j]
+				local ox = math.min(a[3], b[3]) - math.max(a[1], b[1])
+				local oz = math.min(a[4], b[4]) - math.max(a[2], b[2])
+				assert(ox < 1e-6 or oz < 1e-6, string.format("%s blank: %s and %s overlap", size, a[5], b[5]))
+			end
+		end
+		local minZ = math.huge
+		for i in panels do
+			minZ = math.min(minZ, rects[i][2])
+		end
+		near(minZ, -PizzaBox.trayFromFront(bs), size .. " blank's front edge")
+		local shut = PizzaBox.pose(panels, roblox.CFrame.new(), PizzaBox.Time)
+		for i, p in panels do
+			local pos = shut[i].Position
+			assert(math.abs(pos.X) <= bs / 2 + 2 * T + 1e-3 and math.abs(pos.Z) <= bs / 2 + T + 1e-3, size .. " " .. p.name .. " stays inside the shut box")
+			assert(pos.Y > -T - 1e-3 and pos.Y < W + T, size .. " " .. p.name .. " is between the base and the lid")
+			if p.name == "Lid" then
+				near(pos.Y, W + T / 2, size .. " lid rests on the walls")
+				assert(math.abs(shut[i].UpVector.Y) > 0.999, size .. " lid lies flat")
+			end
+		end
+	end
 end)
 
 -------------------------------------------------------------------------- run

@@ -731,7 +731,8 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	station("Load", readyCF, Vector3.new(RR.width, 8, RR.depth), "Load Oven", "Ready Rack", nil, Vector3.new(RR.rackX, RR.height + 2.3, RR.rackZ - RR.rackDepth / 2))
 	-- Cut table behind the oven exits; the oven tender faces the carryout counter.
 	local CT = StationArt.Layout.CutTable
-	station("CutTable", at(3.1, 1, -1.5) * FACE_RIGHT, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(1.2, CT.height, -0.3))
+	-- (The user's bigger table, 2026-10-21: its front and oven end where they were; the work spot too.)
+	station("CutTable", at(1.85, 1, -3.4) * FACE_RIGHT, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(3.1, CT.height, -1.55))
 	station("DeliveryRack", at(8.1, 1, -13.4) * FACE_FRONT, Vector3.new(6, 7, 2.2), "Heat Rack", "Heat Rack", nil, Vector3.new(0, 3.6, -1.1))
 	station("Fridge", at(17, 1, -18.2) * FACE_FRONT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler")
 

@@ -17,6 +17,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Pizza3D = require(ReplicatedStorage.Shared.Pizza3D)
+local PizzaBox = require(ReplicatedStorage.Shared.PizzaBox)
 local Style = require(ReplicatedStorage.Shared.Style)
 local Loading = require(script.Parent.Loading)
 local StationMode = require(script.Parent.StationMode)
@@ -47,10 +48,6 @@ local ACTION = "PizzaMinigameInput"
 local STEEL = Color3.fromRGB(200, 204, 210)
 -- The key hint on action buttons (none on touch-only devices).
 local KEY_HINT: string? = if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then nil else "SPACE"
--- A closed box's printed lid is built standing on edge and laid flat with this,
--- so the print is the part's Front face, whose "up" points away from the
--- worker (a Top-face print reads upside down from the front).
-local BOX_FLAT = CFrame.Angles(math.rad(90), 0, 0)
 
 local active: { dock: Frame, folder: Folder, cleanup: { () -> () }, conns: { RBXScriptConnection } }? = nil
 
@@ -953,14 +950,21 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		Ui.text(string.upper(text), F.Label, S.Body, { TextColor3 = C.CreamDim, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 28), LayoutOrder = order, Parent = body })
 	end
 
-	-- The open boxes on the table (from the station art).
-	local boxes: { [string]: BasePart } = {}
+	-- The flat box blank on top of each stack (from the station art: a Model of
+	-- PizzaBox panels, each with BoxSize). The pizza is cut on one, then it folds.
+	local blanks: { [string]: Model } = {}
 	local boxParts: { Instance } = {}
 	for _, p in station:GetDescendants() do
-		if p:IsA("BasePart") and type(p:GetAttribute("BoxSize")) == "string" then
-			boxes[p:GetAttribute("BoxSize") :: string] = p
+		if p:IsA("BasePart") and type(p:GetAttribute("BoxSize")) == "string" and p.Parent and p.Parent:IsA("Model") then
+			blanks[p:GetAttribute("BoxSize") :: string] = p.Parent :: Model
 			table.insert(boxParts, p)
 		end
+	end
+	-- The top-centre of a blank's base panel: where the pizza sits, and the box's root.
+	local function trayFrame(size: string): CFrame?
+		local blank = blanks[size]
+		local base = blank and blank:FindFirstChild("Base")
+		return if base and base:IsA("BasePart") then base.CFrame * CFrame.new(0, PizzaBox.Thick / 2, 0) else nil
 	end
 	local outline = Instance.new("Highlight")
 	outline.FillTransparency = 1
@@ -1015,56 +1019,64 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		end
 	end
 
-	-- 3) CLOSE THE LID ------------------------------------------------------
-	local function closeLid()
+	-- 3) FOLD THE BOX ------------------------------------------------------
+	-- The cut pizza lies on the flat blank: hide the table's blank here and fold
+	-- our own copy round it (side walls, front and back with their corner tabs,
+	-- the inner layers, then the lid with its flaps).
+	local function foldBox()
 		newPhase()
 		stage = "close"
-		note("Closing", 1)
-		local box = boxes[chosenBox]
-		local bs = Config.BoxSize[chosenBox] or (d + 0.15)
-		-- Hide the table's open lid locally and swing our own copy shut from the same spot.
-		local artLid = box and box.Parent and box.Parent:FindFirstChild("Lid_" .. chosenBox) :: BasePart?
-		if artLid then
-			artLid.LocalTransparencyModifier = 1
-			table.insert(cleanup, function()
-				artLid.LocalTransparencyModifier = 0
-			end)
+		note("Boxing", 1)
+		local blank = blanks[chosenBox]
+		local root = trayFrame(chosenBox) or CFrame.new(center) * rot
+		if blank then
+			for _, part in blank:GetChildren() do
+				if part:IsA("BasePart") then
+					part.LocalTransparencyModifier = 1
+					table.insert(cleanup, function()
+						part.LocalTransparencyModifier = 0
+					end)
+				end
+			end
 		end
-		-- Standing on edge (see BOX_FLAT) so the Front-face print reads right way up once shut.
-		local lid = localPart(ctx.folder, "BoxLid", Vector3.new(bs, bs, 0.04), Color3.fromRGB(225, 200, 160), Enum.Material.Cardboard)
-		local printed = Instance.new("SurfaceGui")
-		printed.Face = Enum.NormalId.Front -- the printed outside: face-up once closed
-		printed.CanvasSize = Vector2.new(200, 200)
-		local brand = Instance.new("TextLabel")
-		brand.Size = UDim2.fromScale(1, 1)
-		brand.BackgroundColor3 = Color3.fromRGB(205, 168, 118)
-		brand.BorderSizePixel = 0
-		brand.FontFace = F.Heading
-		brand.TextScaled = true
-		brand.TextColor3 = Config.Brand.Red
-		brand.Text = (string.upper(Config.GameName):gsub(" ", "\n"))
-		brand.Parent = printed
-		printed.Parent = lid
-		local baseCF = if box then box.CFrame else CFrame.new(center) * rot
-		local wall = if box then (tonumber(box:GetAttribute("WallHeight")) or 0.2) else 0.2
-		local hinge = baseCF * CFrame.new(0, wall - 0.025, bs / 2) -- back edge of the tray
-		local angle = Instance.new("NumberValue")
-		angle.Value = if artLid then (tonumber(artLid:GetAttribute("OpenAngle")) or 180) else 180
-		angle.Parent = ctx.folder -- cleaned up with the minigame
+		local panels = PizzaBox.panels(Config.BoxSize[chosenBox] or (d + 0.15))
+		local parts: { BasePart } = {}
+		for i, panel in panels do
+			parts[i] = localPart(ctx.folder, "Box" .. panel.name, PizzaBox.size(panel), Color3.fromRGB(205, 168, 118), Enum.Material.Cardboard)
+			if panel.name == "Lid" then
+				-- The printed outside: the lid's underside while open, its top once shut.
+				local printed = Instance.new("SurfaceGui")
+				printed.Face = Enum.NormalId.Bottom
+				printed.CanvasSize = Vector2.new(200, 200)
+				local brand = Instance.new("TextLabel")
+				brand.Size = UDim2.fromScale(1, 1)
+				brand.BackgroundColor3 = Color3.fromRGB(205, 168, 118)
+				brand.BorderSizePixel = 0
+				brand.FontFace = F.Heading
+				brand.TextScaled = true
+				brand.TextColor3 = Config.Brand.Red
+				brand.Text = (string.upper(Config.GameName):gsub(" ", "\n"))
+				brand.Parent = printed
+				printed.Parent = parts[i]
+			end
+		end
+		local t = Instance.new("NumberValue")
+		t.Parent = ctx.folder -- cleaned up with the minigame
 		local pizzaShown = true
-		local function placeLid()
-			lid.CFrame = hinge * CFrame.Angles(math.rad(angle.Value), 0, 0) * CFrame.new(0, 0, -bs / 2) * BOX_FLAT
-			-- The pizza (cut lines and toppings stand taller than the box walls) is
-			-- shut inside from here on; hide it so nothing pokes through the lid.
-			if pizzaShown and angle.Value < 12 then
+		local function place()
+			for i, cf in PizzaBox.pose(panels, root, t.Value) do
+				parts[i].CFrame = cf
+			end
+			-- Shut inside from here on: hide it so nothing pokes through the lid.
+			if pizzaShown and t.Value > PizzaBox.Time - 0.1 then
 				pizzaShown = false
 				pizza:Destroy()
 			end
 		end
-		placeLid()
-		angle.Changed:Connect(placeLid)
-		TweenService:Create(angle, TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { Value = 0 }):Play()
-		task.delay(0.9, function()
+		place()
+		t.Changed:Connect(place)
+		TweenService:Create(t, TweenInfo.new(PizzaBox.Time, Enum.EasingStyle.Linear), { Value = PizzaBox.Time }):Play()
+		task.delay(PizzaBox.Time + 0.35, function()
 			if active then
 				Minigames3D.Close()
 				finish({ angles = angles, popped = popped, box = chosenBox })
@@ -1091,12 +1103,19 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 			squares[i] = Ui.box(C.Tile, { Size = UDim2.fromOffset(14, 14), LayoutOrder = i, Parent = record }, { Ui.new("UIStroke", { Color = C.Line, Thickness = 1 }) })
 		end
 		local button = actionButton(body, "Cut", 3, 130, KEY_HINT)
+		-- The cut table's rocker (its pivot the lowest point of the edge), else parts.
+		local template = ReplicatedStorage:FindFirstChild("Rocker")
+		local rocker: Model? = if template and template:IsA("Model") then template:Clone() else nil
 		local bladeLen = d * 1.12
-		local blade = localPart(ctx.folder, "Rocker", Vector3.new(bladeLen, 0.24, 0.035), STEEL, Enum.Material.Metal)
-		blade.Reflectance = 0.25
+		local blade: BasePart? = nil
 		local handles = {}
-		for _, sx in { -1, 1 } do
-			table.insert(handles, { part = localPart(ctx.folder, "Handle", Vector3.new(0.45, 0.13, 0.13), Color3.fromRGB(30, 30, 30), Enum.Material.Plastic, Enum.PartType.Cylinder), side = sx })
+		if rocker then
+			rocker.Parent = ctx.folder
+		else
+			blade = localPart(ctx.folder, "Rocker", Vector3.new(bladeLen, 0.24, 0.035), STEEL, Enum.Material.Metal)
+			for _, sx in { -1, 1 } do
+				table.insert(handles, { part = localPart(ctx.folder, "Handle", Vector3.new(0.45, 0.13, 0.13), Color3.fromRGB(30, 30, 30), Enum.Material.Plastic, Enum.PartType.Cylinder), side = sx })
+			end
 		end
 		local yaw = 0
 		local phase, phaseT, cutYaw = "hover", 0, 0
@@ -1116,9 +1135,13 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 			end
 			local c = center + Vector3.new(0, top + height, 0)
 			local cf = CFrame.new(c) * rot * CFrame.Angles(0, math.rad(if phase == "hover" then yaw else cutYaw), 0) * CFrame.Angles(0, 0, math.rad(roll))
-			blade.CFrame = cf
-			for _, h in handles do
-				h.part.CFrame = cf * CFrame.new(h.side * (bladeLen / 2 + 0.2), 0.08, 0)
+			if rocker then
+				rocker:PivotTo(cf * CFrame.new(0, -0.12, 0)) -- the edge where the parts' blade had its bottom
+			elseif blade then
+				blade.CFrame = cf
+				for _, h in handles do
+					h.part.CFrame = cf * CFrame.new(h.side * (bladeLen / 2 + 0.2), 0.08, 0)
+				end
 			end
 		end)
 		local function press()
@@ -1140,11 +1163,15 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 			if #angles >= cuts then
 				task.delay(Config.Cut.CutTime + 0.25, function()
 					if active then
-						blade:Destroy()
+						if rocker then
+							rocker:Destroy()
+						elseif blade then
+							blade:Destroy()
+						end
 						for _, h in handles do
 							h.part:Destroy()
 						end
-						closeLid()
+						foldBox()
 					end
 				end)
 			end
@@ -1153,16 +1180,16 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		bindPress(ctx, press)
 	end
 
-	-- 1) BOX IT: click the right box (and another one to move it) --------------
+	-- 1) BOX IT: click the right size's stack (and another one to move it) ----
 	local function putIn(size: string)
-		local box = boxes[size]
-		if not box or stage ~= "box" then
+		local tray = trayFrame(size)
+		if not tray or stage ~= "box" then
 			return
 		end
 		local first = chosenBox == ""
 		chosenBox = size
-		local landing = box.Position + Vector3.new(0, 0.025 + 0.06, 0)
-		center = landing - Vector3.new(0, 0.06, 0)
+		center = tray.Position
+		local landing = center + Vector3.new(0, 0.06, 0)
 		ws:closeUp(center)
 		TweenService:Create(pizza.crust, TweenInfo.new(0.45, Enum.EasingStyle.Quad), { CFrame = CFrame.new(landing) * rot * Pizza3D.FLAT }):Play()
 		placeBubbles()
@@ -1183,7 +1210,7 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 			return
 		end
 		local result = rayAt(boxParts)
-		outline.Adornee = if result then result.Instance else nil
+		outline.Adornee = if result then result.Instance.Parent else nil
 		outline.Enabled = result ~= nil
 	end))
 	ctx.track(UserInputService.InputBegan:Connect(function(input, processed)

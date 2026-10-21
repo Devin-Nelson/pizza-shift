@@ -15,6 +15,7 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
 local Style = require(game:GetService("ReplicatedStorage").Shared.Style)
+local PizzaBox = require(game:GetService("ReplicatedStorage").Shared.PizzaBox)
 local MeshBank = require(script.Parent.MeshBank)
 
 local StationArt = {}
@@ -284,7 +285,15 @@ StationArt.Layout = {
 	},
 	-- Cut table behind the oven exits (the ovens are off its +X end), the oven
 	-- tender on its long side facing the carryout counter.
-	CutTable = { width = 9, depth = 3.8, height = 3.2 },
+	CutTable = {
+		width = 12.8,
+		depth = 6.3,
+		height = 3.2,
+		-- tools/blender/cut_table.py's [layout]: each stack's tray (its top
+		-- blank's base panel) centre, at the stack's top; the trough's rockers.
+		trays = { Small = Vector3.new(4.878, 3.68, -1.628), Medium = Vector3.new(1.812, 3.74, -1.456), Large = Vector3.new(-2.246, 3.8, -1.285) },
+		rockers = { Vector3.new(-0.271, 2.8, -0.8), Vector3.new(0.009, 2.8, -0.8) },
+	},
 }
 
 -- POS terminal on a cash drawer, sitting on the counter. Worker is at -Z.
@@ -823,122 +832,70 @@ Builders.Oven = function(m, base)
 	P(m, base, Vector3.new(2.2, 14 - top, 2.2), at(0, top + 1.4 + (14 - top) / 2, 0), STEEL, Enum.Material.Metal, { name = "Duct" })
 end
 
--- Cut table behind the oven exits, modeled on a real chain's cut station: a
--- stainless table with pizza boxes folded open flat (tray in front, lid lying
--- open behind it), seasoning shakers, a rocker blade in its holder, a label
--- printer. The ovens are off its +X end; the oven tender stands on its long
--- side (-Z) facing the carryout counter. Around it, after the user's cut-table
--- guide: the Ready & Set shelf with the dispatch screens past its far end, the
--- caddie at the rear corner beside the tender, a pan organizer by the oven
--- exits, a trash can, and a metrics screen hanging above.
--- Box_<Size> parts carry BoxSize + WallHeight; Lid_<Size> carries OpenAngle so
--- the cut minigame can swing the same lid shut. CutLanding: where a pizza
--- pulled off the belt sits while someone works it.
-local BOX_WALL = 0.2
-
--- Lid hinged at the back of the tray; angle 0 = closed over the box, 180 = flat behind.
-local function lidCFrame(boxCenter: CFrame, bs: number, angle: number): CFrame
-	return boxCenter * CFrame.new(0, BOX_WALL - 0.025, bs / 2) * CFrame.Angles(math.rad(angle), 0, 0) * CFrame.new(0, 0, -bs / 2)
-end
+-- Cut table, after the user's photos (2026-10-21): a stainless table on
+-- casters behind the oven exits, the oven tender on its long side (-Z) facing
+-- the carryout counter. Blender meshes when they load (tools/blender/cut_table.py:
+-- the table, a stack of unfolded boxes per size, the rocker trough, the
+-- seasoning insert, the side-box rack, the printer, the trash can), else a
+-- plain table and stacks. Parts either way: the top blank of each stack
+-- (Blank_<Size>, a Model of PizzaBox panels, each with BoxSize: the cut
+-- minigame cuts the pizza on it, then folds it into the box), the size tags,
+-- and CutLanding, where a pulled pizza waits while someone works it.
+local CARDBOARD = Color3.fromRGB(205, 168, 118)
 
 Builders.CutTable = function(m, base)
 	local L = StationArt.Layout.CutTable
 	local h, w, d = L.height, L.width, L.depth
-	steelTable(m, base, w, d, h)
-	local cardboard = Color3.fromRGB(205, 168, 118)
-	local inside = Color3.fromRGB(225, 200, 160)
-
-	-- Open boxes, small to large from the oven end, front edges lined up at the cutter's edge.
-	local x = w / 2 - 0.8
-	local frontEdge = -d / 2 + 0.2
-	for _, size in Config.Sizes do
-		local bs = Config.BoxSize[size]
-		local cx = x - bs / 2
-		x -= bs + 0.2
-		local cz = frontEdge + bs / 2
-		local boxBase = P(m, base, Vector3.new(bs, 0.05, bs), at(cx, h + 0.025, cz), inside, Enum.Material.Cardboard, { name = "Box_" .. size })
-		boxBase:SetAttribute("BoxSize", size)
-		boxBase:SetAttribute("WallHeight", BOX_WALL)
-		for _, side in { { 0, -1 }, { 1, 0 }, { -1, 0 } } do
-			P(m, base, Vector3.new(if side[1] ~= 0 then 0.04 else bs, BOX_WALL, if side[2] ~= 0 then 0.04 else bs), at(cx + side[1] * bs / 2, h + BOX_WALL / 2, cz + side[2] * bs / 2), cardboard, Enum.Material.Cardboard, { collide = false })
+	local mesh = stationMeshes("CutTable")
+	if mesh then
+		M(m, base, mesh.Steel, CFrame.new(mesh.Steel.at), STAINLESS, Enum.Material.Metal, { collide = true, name = "Table" })
+		M(m, base, mesh.Dark, CFrame.new(mesh.Dark.at), BLACK, Enum.Material.SmoothPlastic)
+		M(m, base, mesh.Cardboard, CFrame.new(mesh.Cardboard.at), CARDBOARD, Enum.Material.Cardboard)
+		M(m, base, mesh.Blanks, CFrame.new(mesh.Blanks.at), CARDBOARD, Enum.Material.Cardboard, { name = "BoxStacks" })
+		M(m, base, mesh.Wire, CFrame.new(mesh.Wire.at), CHROME, Enum.Material.Metal)
+		M(m, base, mesh.Bottles, CFrame.new(mesh.Bottles.at), Color3.fromRGB(238, 236, 228), Enum.Material.SmoothPlastic)
+		M(m, base, mesh.Caps, CFrame.new(mesh.Caps.at), GRIP_RED, Enum.Material.Plastic)
+		M(m, base, mesh.Shakers, CFrame.new(mesh.Shakers.at), Color3.fromRGB(230, 215, 170), Enum.Material.Plastic)
+		M(m, base, mesh.Trash, CFrame.new(mesh.Trash.at), Color3.fromRGB(70, 72, 78), Enum.Material.Plastic, { collide = true, name = "Trash" })
+		for _, r in L.rockers do
+			local cf = CFrame.new(r) * CFrame.Angles(0, math.rad(90), 0)
+			M(m, base, mesh.Rocker, cf * CFrame.new(mesh.Rocker.at), STEEL, Enum.Material.Metal)
+			M(m, base, mesh.RockerGrips, cf * CFrame.new(mesh.RockerGrips.at), BLACK, Enum.Material.SmoothPlastic)
 		end
-		-- Lid lying open behind the tray, sloping from the hinge down to the table.
-		local openAngle = 180 + math.deg(math.asin(math.clamp((BOX_WALL - 0.03) / bs, 0, 1)))
-		local lid = P(m, base, Vector3.new(bs, 0.04, bs), lidCFrame(at(cx, h + 0.025, cz), bs, openAngle), inside, Enum.Material.Cardboard, { collide = false, name = "Lid_" .. size })
-		lid:SetAttribute("OpenAngle", openAngle)
-		-- Printed outside of the lid (faces down while open).
-		surfaceText(lid, Enum.NormalId.Top, (string.upper(Config.GameName):gsub(" ", "\n")), Config.Brand.Red, cardboard)
-		-- Size printed on the tray's front edge
-		local sizeTag = P(m, base, Vector3.new(0.45, 0.16, 0.03), at(cx, h + 0.1, frontEdge - 0.03), Color3.new(1, 1, 1))
-		surfaceText(sizeTag, Enum.NormalId.Front, string.sub(size, 1, 1), Config.Brand.Red)
-	end
-	-- Where a pulled pizza waits on the table (by the oven end, behind the boxes)
-	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(w / 2 - 1.4, h + 0.08, 1.25), BLACK, nil, { name = "CutLanding", transparency = 1, collide = false })
-
-	-- Far end: rocker blade standing in a stainless holder, seasoning shakers, label printer.
-	P(m, base, Vector3.new(1.0, 0.9, 0.5), at(-w / 2 + 0.9, h + 0.45, 1.6), STEEL, Enum.Material.Metal, { name = "BladeHolder", reflect = 0.15 })
-	P(m, base, Vector3.new(0.05, 0.6, 2.4), at(-w / 2 + 0.9, h + 1.05, 1.6) * CFrame.Angles(0, math.rad(90), 0), STEEL, Enum.Material.Metal, { reflect = 0.3 })
-	for _, sx in { -1, 1 } do
-		P(m, base, Vector3.new(0.18, 0.5, 0.18), up(-w / 2 + 0.9 + sx * 1.3, h + 1.15, 1.6), BLACK, Enum.Material.Plastic, { shape = Enum.PartType.Cylinder })
-	end
-	for i, zOff in { 0.2, 0.55 } do
-		P(m, base, Vector3.new(0.75, 0.32, 0.32), up(-w / 2 + 0.6 + i * 0.4, h + 0.375, zOff), Color3.fromRGB(230, 215, 170), Enum.Material.Plastic, { shape = Enum.PartType.Cylinder, collide = false })
-		P(m, base, Vector3.new(0.12, 0.34, 0.34), up(-w / 2 + 0.6 + i * 0.4, h + 0.78, zOff), Color3.fromRGB(200, 40, 40), Enum.Material.Plastic, { shape = Enum.PartType.Cylinder, collide = false })
-	end
-	P(m, base, Vector3.new(0.9, 0.55, 0.9), at(-0.6, h + 0.275, 1.4), Color3.fromRGB(28, 28, 32), Enum.Material.SmoothPlastic, { name = "LabelPrinter" })
-	-- A few flat boxes ready to fold, behind the box line
-	for j = 0, 3 do
-		P(m, base, Vector3.new(1.2, 0.05, 1.2), at(0.9, h + 0.03 + j * 0.055, 1.35), cardboard, Enum.Material.Cardboard, { collide = false })
-	end
-
-	-- Under the table: white storage bins and a tall stack of flat boxes
-	for i, bx in { -3.2, -0.8 } do
-		P(m, base, Vector3.new(2.0, 1.1, d - 1.2), at(bx, 1.55, 0), Color3.fromRGB(240, 240, 238), Enum.Material.Plastic, { name = "Bin" .. i })
-	end
-	for j = 0, 9 do
-		P(m, base, Vector3.new(2.4, 0.05, 2.4), at(2.6, 1.03 + j * 0.055, 0), cardboard, Enum.Material.Cardboard, { collide = false })
-	end
-
-	-- Ready & Set: a stainless shelf past the far end, its two screens (the
-	-- dispatch board and the cut-table screen) facing the tender.
-	local rx = -w / 2 - 0.85
-	P(m, base, Vector3.new(1.5, h, d), at(rx, h / 2, 0), STEEL, Enum.Material.Metal, { name = "ReadySet" })
-	P(m, base, Vector3.new(1.5, 0.1, d), at(rx, h + 1.9, 0), STEEL, Enum.Material.Metal, { collide = false })
-	for _, sz in { -1, 1 } do
-		P(m, base, Vector3.new(0.12, 1.9, 0.12), at(rx, h + 0.95, sz * (d / 2 - 0.1)), STEEL_DARK, Enum.Material.Metal, { collide = false })
-	end
-	for i, sz in { -0.95, 0.95 } do
-		local screen = P(m, base, Vector3.new(1.6, 1.0, 0.1), at(rx + 0.1, h + 2.55, sz) * CFrame.Angles(0, math.rad(if i == 1 then 30 else 10), 0), BLACK, Enum.Material.Glass, { collide = false })
-		surfaceText(screen, Enum.NormalId.Front, if i == 1 then "DISPATCH\nREADY 0" else "CUT TABLE\n0 IN OVEN", Color3.fromRGB(120, 230, 255), Color3.fromRGB(15, 22, 32), Enum.Font.Code)
-	end
-	-- Caddie: a small wire cart of side boxes, tools and sauce bottles, beside the tender
-	local cx, cz = -w / 2 + 0.6, -d / 2 - 1.3
-	for _, y in { 0.4, 1.6, 2.8 } do
-		P(m, base, Vector3.new(2.2, 0.08, 1.7), at(cx, y, cz), Color3.fromRGB(215, 218, 222), Enum.Material.DiamondPlate, { collide = y == 0.4 })
-	end
-	for _, sx in { -1, 1 } do
-		for _, sz in { -1, 1 } do
-			P(m, base, Vector3.new(3.2, 0.1, 0.1), up(cx + sx * 1.05, 1.6, cz + sz * 0.8), Color3.fromRGB(215, 218, 222), Enum.Material.Metal, { shape = Enum.PartType.Cylinder, collide = false })
+		-- The cut minigame's own rocker (the client clones it; pivot = the edge's lowest point).
+		if not ReplicatedStorage:FindFirstChild("Rocker") then
+			local rocker = Instance.new("Model")
+			rocker.Name = "Rocker"
+			for _, part in { M(rocker, CFrame.identity, mesh.Rocker, CFrame.new(mesh.Rocker.at), STEEL, Enum.Material.Metal), M(rocker, CFrame.identity, mesh.RockerGrips, CFrame.new(mesh.RockerGrips.at), BLACK, Enum.Material.SmoothPlastic) } do
+				part.CanQuery = false
+			end
+			rocker.WorldPivot = CFrame.identity
+			rocker.Parent = ReplicatedStorage
+		end
+	else
+		steelTable(m, base, w, d, h)
+		for size, t in L.trays do
+			local bs = Config.BoxSize[size]
+			local bw, bd = PizzaBox.blankSize(bs)
+			local below = t.Y - h - PizzaBox.Thick
+			P(m, base, Vector3.new(bw, below, bd), at(t.X, h + below / 2, t.Z - PizzaBox.trayFromFront(bs) + bd / 2), CARDBOARD, Enum.Material.Cardboard, { collide = false })
 		end
 	end
-	for k = 0, 3 do
-		P(m, base, Vector3.new(0.22, 0.6, 0.22), up(cx - 0.75 + k * 0.5, 3.15, cz), ({ Color3.fromRGB(240, 240, 235), Color3.fromRGB(200, 40, 40), Color3.fromRGB(60, 150, 70), Color3.fromRGB(110, 60, 160) })[k + 1], Enum.Material.Plastic, { shape = Enum.PartType.Cylinder, collide = false })
+	-- The top blank of each stack, lying flat on it; its size on the front edge below.
+	for size, t in L.trays do
+		local blank = Instance.new("Model")
+		blank.Name = "Blank_" .. size
+		local panels = PizzaBox.panels(Config.BoxSize[size])
+		for i, cf in PizzaBox.pose(panels, base * CFrame.new(t), 0) do
+			local panel = P(blank, CFrame.identity, PizzaBox.size(panels[i]), cf, CARDBOARD, Enum.Material.Cardboard, { collide = false, name = panels[i].name })
+			panel:SetAttribute("BoxSize", size)
+		end
+		blank.Parent = m
+		local tag = P(m, base, Vector3.new(0.5, 0.11, 0.02), at(t.X, h - 0.075, -d / 2 - 0.011), Color3.new(1, 1, 1), nil, { collide = false })
+		surfaceText(tag, Enum.NormalId.Front, string.sub(size, 1, 1), Config.Brand.Red)
 	end
-	for j = 0, 5 do
-		P(m, base, Vector3.new(1.6, 0.05, 1.4), at(cx, 1.68 + j * 0.06, cz), cardboard, Enum.Material.Cardboard, { collide = false })
-	end
-	-- Pan organizer by the oven exits: screens and pans standing in slots
-	local ox, oz = w / 2 + 0.9, 0.6
-	P(m, base, Vector3.new(1.2, 0.2, 2.4), at(ox, 0.1, oz), STEEL_DARK, Enum.Material.Metal, { name = "PanOrganizer" })
-	for k = 0, 6 do
-		P(m, base, Vector3.new(0.025, 2.4, 2.4), at(ox - 0.45 + k * 0.15, 1.4, oz), SCREEN, Enum.Material.DiamondPlate, { shape = Enum.PartType.Cylinder, collide = false })
-	end
-	-- Trash can on the counter side
-	P(m, base, Vector3.new(2.2, 1.3, 1.3), up(0, 1.1, d / 2 + 0.9), Color3.fromRGB(70, 72, 78), Enum.Material.Plastic, { shape = Enum.PartType.Cylinder, name = "Trash" })
-	-- Metrics screen hanging over the table, facing the tender
-	local tv = P(m, base, Vector3.new(4.2, 2.2, 0.15), at(0, h + 6.2, d / 2), BLACK, Enum.Material.Glass, { collide = false, name = "MetricsScreen" })
-	surfaceText(tv, Enum.NormalId.Front, "LOAD 0:00   OVEN 0   OUT 0", Color3.fromRGB(120, 255, 140), Color3.fromRGB(12, 16, 22), Enum.Font.Code)
-	P(m, base, Vector3.new(0.12, 14 - h - 7.3, 0.12), at(0, (h + 7.3 + 14) / 2, d / 2), STEEL_DARK, Enum.Material.Metal, { collide = false })
+	local lt = L.trays.Large
+	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(lt.X, lt.Y + 0.08, lt.Z), BLACK, nil, { name = "CutLanding", transparency = 1, collide = false })
 end
 
 -- Chrome wire shelving stacked with pizza boxes and insulated delivery bags.
