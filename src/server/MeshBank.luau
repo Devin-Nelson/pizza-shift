@@ -43,27 +43,29 @@ local MeshBank: { [string]: Station } = {
 		images = { Screen = 92132235698139 }, -- screen_mesh.png
 	},
 	-- tools/blender/makeline.py (2026-10-20, v2: four sections long, the sides at
-	-- the end of the rail; v3 2026-10-21: the canopy level): the rail in the user's order (cheese, pepperoni,
-	-- two-pan columns, pasta, wings, SuperCakes); each Food_<x> becomes Pan_<x>.
+	-- the end of the rail; v3 2026-10-21: the canopy level; v4 the same day: the
+	-- rail tilted 12 degrees toward the maker, deeper pans, toppings in distinct
+	-- shapes): the rail in the user's order (cheese, pepperoni, two-pan columns,
+	-- pasta, wings, SuperCakes); each Food_<x> becomes Pan_<x>.
 	MakeLine = {
-		model = 104204682244129,
+		model = 108145247018578,
 		meshes = {
-			Steel = { id = 119201090410040, size = Vector3.new(13.6, 4.47, 4.805), at = Vector3.new(0, 2.635, 0.4975) },
+			Steel = { id = 88001767392537, size = Vector3.new(13.6, 4.47, 4.805), at = Vector3.new(0, 2.635, 0.4975) },
 			Dark = { id = 139564250463947, size = Vector3.new(13.5, 3.22, 4.61), at = Vector3.new(0, 1.61, 0.595) },
-			Pans = { id = 78898056674307, size = Vector3.new(13.0236, 0.3494, 1.1799), at = Vector3.new(-0.015, 3.4903, 1.85) },
-			Food_Cheese = { id = 80526987556222, size = Vector3.new(3.1711, 0.121, 1.0211), at = Vector3.new(-4.875, 3.583, 1.85) },
-			Food_Pepperoni = { id = 134360942290783, size = Vector3.new(0.9541, 0.1367, 1.0182), at = Vector3.new(-2.6721, 3.5855, 1.85) },
-			Food_Ham = { id = 95961204783689, size = Vector3.new(0.9488, 0.1184, 0.4545), at = Vector3.new(-1.58, 3.5751, 1.5695) },
-			Food_Pineapple = { id = 98352388310135, size = Vector3.new(0.9488, 0.1252, 0.4454), at = Vector3.new(-1.58, 3.5693, 2.135) },
-			Food_Peppers = { id = 136849721956291, size = Vector3.new(0.9488, 0.1011, 0.4454), at = Vector3.new(-0.4867, 3.5647, 1.565) },
-			Food_Mushrooms = { id = 134110855147219, size = Vector3.new(0.9488, 0.135, 0.4454), at = Vector3.new(0.6067, 3.5666, 1.565) },
-			Food_Olives = { id = 101154435965875, size = Vector3.new(0.9502, 0.0989, 0.4468), at = Vector3.new(0.6067, 3.5709, 2.135) },
-			Food_Onions = { id = 134488195753543, size = Vector3.new(0.9488, 0.1166, 0.4454), at = Vector3.new(-0.4867, 3.5648, 2.135) },
-			Food_Chicken = { id = 128491866423818, size = Vector3.new(0.9488, 0.1374, 0.4454), at = Vector3.new(1.7, 3.5682, 2.135) },
-			Food_Sausage = { id = 107782271686167, size = Vector3.new(0.9488, 0.1158, 0.4454), at = Vector3.new(1.7, 3.5622, 1.565) },
-			Food_Pasta = { id = 87562673718788, size = Vector3.new(1.2732, 0.1632, 1.0189), at = Vector3.new(2.9556, 3.5683, 1.8517) },
-			Food_Wings = { id = 136504995861624, size = Vector3.new(1.2535, 0.2582, 0.9958), at = Vector3.new(4.3733, 3.5169, 1.85) },
-			Food_SuperCakes = { id = 93512345599977, size = Vector3.new(1.0223, 0.29, 0.9223), at = Vector3.new(5.7911, 3.495, 1.85) },
+			Pans = { id = 117669986535126, size = Vector3.new(13.0236, 0.6221, 1.3986), at = Vector3.new(-0.015, 3.6624, 1.9579) },
+			Food_Cheese = { id = 111865207733545, size = Vector3.new(3.1754, 0.3227, 1.2446), at = Vector3.new(-4.8772, 3.7306, 1.9808) },
+			Food_Pepperoni = { id = 107430096140018, size = Vector3.new(0.9516, 0.3541, 1.2495), at = Vector3.new(-2.6733, 3.736, 1.9792) },
+			Food_Ham = { id = 73380718118385, size = Vector3.new(0.9592, 0.2256, 0.5595), at = Vector3.new(-1.5852, 3.6627, 1.6451) },
+			Food_Pineapple = { id = 103196281069608, size = Vector3.new(0.9488, 0.1922, 0.5595), at = Vector3.new(-1.58, 3.7905, 2.3249) },
+			Food_Peppers = { id = 100088188118312, size = Vector3.new(0.9488, 0.2008, 0.5595), at = Vector3.new(-0.4867, 3.6503, 1.6451) },
+			Food_Mushrooms = { id = 94484222743201, size = Vector3.new(0.9488, 0.2036, 0.5593), at = Vector3.new(0.6067, 3.6512, 1.6451) },
+			Food_Olives = { id = 124659134627992, size = Vector3.new(0.9502, 0.1862, 0.5607), at = Vector3.new(0.6067, 3.7918, 2.3238) },
+			Food_Onions = { id = 124745815739754, size = Vector3.new(0.9488, 0.2093, 0.563), at = Vector3.new(-0.4867, 3.799, 2.3231) },
+			Food_Chicken = { id = 97602196121791, size = Vector3.new(0.9488, 0.1993, 0.5591), at = Vector3.new(1.7, 3.7934, 2.3248) },
+			Food_Sausage = { id = 112067666275949, size = Vector3.new(0.9488, 0.207, 0.5591), at = Vector3.new(1.7, 3.643, 1.645) },
+			Food_Pasta = { id = 85608303207996, size = Vector3.new(1.2732, 0.3479, 1.2389), at = Vector3.new(2.9556, 3.7229, 1.9848) },
+			Food_Wings = { id = 125522273225283, size = Vector3.new(1.2535, 0.3767, 1.2196), at = Vector3.new(4.3733, 3.6719, 1.9995) },
+			Food_SuperCakes = { id = 130894694988917, size = Vector3.new(1.0223, 0.4485, 0.9218), at = Vector3.new(5.7911, 3.6525, 1.9804) },
 		},
 		images = {},
 	},

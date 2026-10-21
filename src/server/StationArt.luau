@@ -29,12 +29,15 @@ local GRIP_RED = Color3.fromRGB(200, 35, 35) -- spoodle grips (the user's photo)
 -- Foods on the makeline rail that aren't on the menu (yet): shown, not clickable.
 local SHOW_FOOD = {
 	Onions = Color3.fromRGB(240, 236, 222),
-	Chicken = Color3.fromRGB(225, 205, 170),
+	Chicken = Color3.fromRGB(196, 146, 92), -- grilled, so it isn't mistaken for mushrooms
 	Sausage = Color3.fromRGB(125, 95, 80),
 	Pasta = Color3.fromRGB(240, 208, 130),
 	Wings = Color3.fromRGB(200, 120, 60),
 	SuperCakes = Color3.fromRGB(72, 40, 26),
 }
+-- Foods in the makeline's pans that look different raw: shredded mozzarella is
+-- paler than melted (and not the pineapple's yellow).
+local PAN_FOOD = { Cheese = Color3.fromRGB(245, 232, 180) }
 local BLACK = Color3.fromRGB(25, 25, 28)
 local SCREEN = Color3.fromRGB(58, 58, 62) -- pizza screens, dark from use (as in the user's photos)
 local DOUGH = Config.IngredientColors.Dough
@@ -627,7 +630,7 @@ Builders.MakeLine = function(m, base)
 		for key, food in mesh do
 			local ing = string.match(key, "^Food_(.+)$")
 			if ing then
-				local pan = M(m, base, food, CFrame.new(food.at), Config.IngredientColors[ing] or SHOW_FOOD[ing] or DOUGH, Enum.Material.SmoothPlastic, { name = "Pan_" .. ing })
+				local pan = M(m, base, food, CFrame.new(food.at), PAN_FOOD[ing] or Config.IngredientColors[ing] or SHOW_FOOD[ing] or DOUGH, Enum.Material.SmoothPlastic, { name = "Pan_" .. ing })
 				if table.find(Config.Toppings, ing) then
 					pan:SetAttribute("Topping", ing)
 				end

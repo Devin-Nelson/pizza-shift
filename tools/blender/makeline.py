@@ -2,8 +2,9 @@
 each end, two columns of drawers between, a recessed kick plate), the same rolled front edge
 as the sauce table running straight on from it, a wire grate work surface the
 pizzas ride on (flush at 3.4), a refrigerated rail of pans between stainless
-bars with the food modelled in them, and a level stainless canopy over the
-pans (the user, 2026-10-21: not sloped down). The rail, as in the user's store photo, from the sauce table's end (the
+bars with the food modelled in them, tilted up toward the maker so they see
+into the pans, and a level stainless canopy over the pans (the user,
+2026-10-21: not sloped down). The rail, as in the user's store photo, from the sauce table's end (the
 maker's right): the big cheese pan, pepperoni, then columns of two pans (back,
 front): pineapple and ham, onions and green peppers, black olives and
 mushrooms, chicken and sausage; then, sharing the rest of the rail, pasta,
@@ -43,8 +44,9 @@ GRATE_DEPTH, BOARD_Z = 2.9, -0.3
 BULL = 0.07  # the rolled front edge, as on the sauce table
 
 # The rail behind the grate: slots between stainless bars, from the sauce end.
-RAIL_F, RAIL_B = BOARD_Z + GRATE_DEPTH / 2 + 0.05, 2.5  # 1.2 .. 2.5
-RAIL_TOP = H + 0.25
+RAIL_F, RAIL_B = BOARD_Z + GRATE_DEPTH / 2 + 0.05, 2.75  # 1.2 .. 2.75 (deeper pans: the user, 2026-10-21)
+RAIL_TOP = H + 0.25  # the rail's front top edge, which it tilts about
+TILT = 12  # degrees: the rail's back raised so the pans face the maker (the user: "slant the rail upward slightly")
 BAR = 0.06  # divider bars between pans
 SLOT0 = -W / 2 + 0.3
 PW = (17.0 - 0.6) / 15  # slot pitch: the pans the user approved on the first, 17-wide line
@@ -57,9 +59,9 @@ REST = (W - 0.6) / PW - SIDES  # pasta, wings and SuperCakes share what's left
 RAIL += [(REST / 3, ("Pasta",)), (REST / 3, ("Wings",)), (REST / 3, ("SuperCakes",))]
 USED = sum(n for n, _ in RAIL)
 COLORS = {  # Config.IngredientColors, and StationArt's for the foods not on the menu
-    "Cheese": rgb(255, 225, 120), "Pepperoni": rgb(165, 35, 35), "Ham": rgb(240, 160, 160), "Pineapple": rgb(255, 230, 80),
+    "Cheese": rgb(245, 232, 180), "Pepperoni": rgb(165, 35, 35), "Ham": rgb(240, 160, 160), "Pineapple": rgb(255, 230, 80),
     "Peppers": rgb(50, 150, 50), "Mushrooms": rgb(200, 185, 160), "Olives": rgb(35, 35, 35),
-    "Onions": rgb(240, 236, 222), "Chicken": rgb(225, 205, 170), "Sausage": rgb(125, 95, 80),
+    "Onions": rgb(240, 236, 222), "Chicken": rgb(196, 146, 92), "Sausage": rgb(125, 95, 80),
     "Pasta": rgb(240, 208, 130), "Wings": rgb(200, 120, 60), "SuperCakes": rgb(72, 40, 26),
 }
 TOPPINGS = ("Pepperoni", "Ham", "Pineapple", "Peppers", "Mushrooms", "Olives")  # Config.Toppings
@@ -79,6 +81,7 @@ kit.reset()
 steel = Mesh("Steel", rgb(140, 145, 152), metal=1.0, rough=0.28)
 dark = Mesh("Dark", rgb(40, 41, 45), metal=0.3, rough=0.6)
 pans = Mesh("Pans", rgb(28, 28, 30), rough=0.4)
+rail = Mesh("Rail", rgb(140, 145, 152))  # the rail's top bars: tilted with the pans, then merged into Steel
 food = {k: Mesh("Food_" + k, c, rough=0.5) for k, c in COLORS.items()}
 
 # -- Cabinet: body, doors at the ends, two drawers in each column between,
@@ -120,21 +123,20 @@ for i in range(11):
 
 # -- The rail: a stainless housing rising behind the grate, bars round and
 # between the pan openings, a centre bar in each two-pan column, a solid top
-# over the unused (condenser) end.
+# over the unused (condenser) end. Built level, then tilted (see "Tilt").
 steel.box((W, RAIL_TOP - H + 0.1, 0.05), (0, (H - 0.1 + RAIL_TOP) / 2, RAIL_F + 0.025))
-steel.box((W, RAIL_TOP - H + 0.1, 0.05), (0, (H - 0.1 + RAIL_TOP) / 2, RAIL_B - 0.025))
-steel.box((W, 0.03, OPEN_F - RAIL_F), (0, RAIL_TOP - 0.015, (RAIL_F + OPEN_F) / 2))
-steel.box((W, 0.03, RAIL_B - OPEN_B), (0, RAIL_TOP - 0.015, (OPEN_B + RAIL_B) / 2))
-steel.box((0.3, 0.03, OPEN_B - OPEN_F), (-W / 2 + 0.15, RAIL_TOP - 0.015, (OPEN_F + OPEN_B) / 2))
+rail.box((W, 0.03, OPEN_F - RAIL_F), (0, RAIL_TOP - 0.015, (RAIL_F + OPEN_F) / 2))
+rail.box((W, 0.03, RAIL_B - OPEN_B), (0, RAIL_TOP - 0.015, (OPEN_B + RAIL_B) / 2))
+rail.box((0.3, 0.03, OPEN_B - OPEN_F), (-W / 2 + 0.15, RAIL_TOP - 0.015, (OPEN_F + OPEN_B) / 2))
 end_x = bound_x(USED) + BAR / 2
-steel.box((W / 2 - end_x, 0.03, OPEN_B - OPEN_F), ((end_x + W / 2) / 2, RAIL_TOP - 0.015, (OPEN_F + OPEN_B) / 2))
+rail.box((W / 2 - end_x, 0.03, OPEN_B - OPEN_F), ((end_x + W / 2) / 2, RAIL_TOP - 0.015, (OPEN_F + OPEN_B) / 2))
 MID_Z = (OPEN_F + OPEN_B) / 2
 slot = 0
 for n, foods in RAIL:
     slot += n
-    steel.box((BAR, 0.03, OPEN_B - OPEN_F), (bound_x(slot), RAIL_TOP - 0.015, MID_Z))
+    rail.box((BAR, 0.03, OPEN_B - OPEN_F), (bound_x(slot), RAIL_TOP - 0.015, MID_Z))
     if len(foods) == 2:
-        steel.box((PW - BAR, 0.03, 0.04), (bound_x(slot - 0.5), RAIL_TOP - 0.015, MID_Z))
+        rail.box((PW - BAR, 0.03, 0.04), (bound_x(slot - 0.5), RAIL_TOP - 0.015, MID_Z))
 
 # -- Pans: inserts, tapered, a lip resting on the bars. Full depth for the
 # cheese and pepperoni, two to a column for the rest.
@@ -254,7 +256,39 @@ def slab(prof, t):
 
 def mushroom_slice():
     """A cut through a mushroom: the cap's round top and the stem below."""
-    return slab([(0.09 * math.cos(math.pi * k / 8), 0.075 * math.sin(math.pi * k / 8)) for k in range(9)] + [(-0.09, -0.012), (-0.03, -0.012), (-0.03, -0.07), (0.03, -0.07), (0.03, -0.012), (0.09, -0.012)], 0.022)
+    k = rng.uniform(1.05, 1.25)
+    return slab([(k * 0.09 * math.cos(math.pi * a / 8), k * 0.075 * math.sin(math.pi * a / 8)) for a in range(9)] + [(k * x, k * y) for x, y in ((-0.09, -0.012), (-0.03, -0.012), (-0.03, -0.07), (0.03, -0.07), (0.03, -0.012), (0.09, -0.012))], 0.024)
+
+
+def arc(r_out: float, r_in: float, deg: float, t: float, segs: int = 6):
+    """A curved piece: a sector of a ring (an onion sliver, a pepper strip, a pineapple tidbit)."""
+    a0 = -math.radians(deg) / 2
+    pts = [(r_out * math.cos(a0 + math.radians(deg) * k / segs), r_out * math.sin(a0 + math.radians(deg) * k / segs)) for k in range(segs + 1)]
+    pts += [(r_in * math.cos(a0 + math.radians(deg) * k / segs), r_in * math.sin(a0 + math.radians(deg) * k / segs)) for k in range(segs, -1, -1)]
+    tmp = slab(pts, t)
+    bmesh.ops.translate(tmp, vec=(-(r_out + r_in) / 2, 0, 0), verts=tmp.verts[:])
+    return tmp
+
+
+def shred(length: float, r: float = 0.011):
+    """A strand of shredded cheese: a thin three-sided tube, curled."""
+    tmp = bmesh.new()
+    k = rng.uniform(-3.0, 3.0)
+    rings = [[tmp.verts.new((x, r * math.cos(math.tau * j / 3) + k * x * x, r * math.sin(math.tau * j / 3))) for j in range(3)] for x in (-length / 2, -length / 6, length / 6, length / 2)]
+    for a, b in zip(rings, rings[1:]):
+        for j in range(3):
+            tmp.faces.new((a[j], a[(j + 1) % 3], b[(j + 1) % 3], b[j]))
+    tmp.faces.new(rings[0][::-1])
+    tmp.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(tmp, faces=tmp.faces[:])
+    return tmp
+
+
+def chunk(sx: float, sy: float, sz: float):
+    """A chunk of grilled chicken: a block with its edges rounded off."""
+    tmp = block(sx, sy, sz)
+    bmesh.ops.bevel(tmp, geom=tmp.verts[:] + tmp.edges[:], offset=0.012, segments=1, affect="EDGES", profile=0.5, clamp_overlap=True)
+    return tmp
 
 
 def ham_slice():
@@ -267,29 +301,29 @@ def ham_slice():
 
 
 TOP = RAIL_TOP - 0.06
-# Cheese: shredded mozzarella heaped in the big pan.
+# Cheese: long curled strands of shredded mozzarella heaped in the big pan.
 surf = mound("Cheese", TOP - 0.03, 0.045)
-scatter("Cheese", lambda: block(rng.uniform(0.09, 0.16), 0.016, 0.018), 420, 0.09, surf, (0.0, 0.02))
-# Pepperoni: slices, shingled.
+scatter("Cheese", lambda: shred(rng.uniform(0.14, 0.24)), 400, 0.12, surf, (0.0, 0.025), tilt=0.3)
+# Pepperoni: big round slices, shingled.
 surf = mound("Pepperoni", TOP - 0.04, 0.035)
-scatter("Pepperoni", lambda: disc(0.1, 0.02), 46, 0.11, surf, (0.005, 0.045))
+scatter("Pepperoni", lambda: disc(0.12, 0.024, 16), 64, 0.135, surf, (0.005, 0.05), tilt=0.35)
 # The two-pan columns: back pans first, as in the user's photo.
 surf = mound("Pineapple", TOP - 0.05, 0.03)
-scatter("Pineapple", lambda: block(rng.uniform(0.08, 0.1), 0.05, 0.06), 34, 0.07, surf)
+scatter("Pineapple", lambda: arc(0.12, 0.045, 38, 0.05, 3), 62, 0.1, surf)  # tidbits: little fan wedges
 surf = mound("Ham", TOP - 0.05, 0.03)
-scatter("Ham", ham_slice, 22, 0.13, surf, (0.005, 0.03), tilt=0.3)
+scatter("Ham", ham_slice, 28, 0.13, surf, (0.005, 0.03), tilt=0.3)
 surf = mound("Onions", TOP - 0.05, 0.03)
-scatter("Onions", lambda: block(*(rng.uniform(0.04, 0.06) for _ in range(3))), 60, 0.05, surf)
+scatter("Onions", lambda: arc(0.095, 0.078, rng.uniform(70, 120), 0.03), 96, 0.1, surf)  # curved slivers
 surf = mound("Peppers", TOP - 0.05, 0.03)
-scatter("Peppers", lambda: block(rng.uniform(0.06, 0.1), 0.022, 0.04), 55, 0.07, surf)
+scatter("Peppers", lambda: arc(0.11, 0.088, rng.uniform(40, 70), 0.035), 84, 0.1, surf)  # curved strips
 surf = mound("Olives", TOP - 0.045, 0.03)
-scatter("Olives", lambda: ring(0.05, 0.022, 0.022), 30, 0.075, surf)
+scatter("Olives", lambda: ring(0.058, 0.026, 0.03, 12), 66, 0.08, surf)  # sliced rings
 surf = mound("Mushrooms", TOP - 0.05, 0.03)
-scatter("Mushrooms", mushroom_slice, 22, 0.1, surf)
+scatter("Mushrooms", mushroom_slice, 46, 0.12, surf)
 surf = mound("Chicken", TOP - 0.05, 0.03)
-scatter("Chicken", lambda: block(rng.uniform(0.07, 0.11), 0.04, rng.uniform(0.05, 0.07)), 30, 0.08, surf)
+scatter("Chicken", lambda: chunk(rng.uniform(0.09, 0.13), 0.05, rng.uniform(0.06, 0.08)), 46, 0.1, surf)
 surf = mound("Sausage", TOP - 0.05, 0.03)
-scatter("Sausage", lambda: lump(rng.uniform(0.03, 0.045)), 50, 0.06, surf)
+scatter("Sausage", lambda: lump(rng.uniform(0.035, 0.05)), 80, 0.07, surf)
 
 
 def penne():
@@ -326,7 +360,7 @@ def wing():
 
 # Pasta: penne heaped like the toppings.
 surf = mound("Pasta", TOP - 0.05, 0.03)
-scatter("Pasta", penne, 75, 0.1, surf)
+scatter("Pasta", penne, 75, 0.12, surf)
 # Wings: piled on a low bed of more wings.
 surf = mound("Wings", TOP - 0.12, 0.03)
 scatter("Wings", wing, 38, 0.2, surf, (0.0, 0.09), tilt=0.3)
@@ -361,7 +395,7 @@ steel.box((W, 0.04, span), (0, (C_YF + C_YB) / 2, (C_F + C_B) / 2), r=kit.rot("x
 steel.box((W, 0.16, 0.04), (0, C_YF - 0.07, C_F + 0.01))
 steel.box((W, C_YB - RAIL_TOP + 0.02, 0.05), (0, (RAIL_TOP + C_YB) / 2, BACK - 0.025))
 for sx in (-1, 1):
-    cheek = [(RAIL_F + 0.02, RAIL_TOP), (BACK - 0.05, RAIL_TOP), (BACK - 0.05, C_YB - 0.02), (C_F, C_YF - 0.02)]
+    cheek = [(RAIL_F, H - 0.1), (BACK - 0.05, H - 0.1), (BACK - 0.05, C_YB - 0.02), (C_F, C_YF - 0.02), (RAIL_F, RAIL_TOP)]
     steel.prism([(z, y) for z, y in cheek], sx * (W / 2) - (0.06 if sx > 0 else 0), sx * (W / 2) + (0.06 if sx < 0 else 0))
 
 # -- Clearances: nothing may clip (the user). Fails the build if anything does.
@@ -398,6 +432,26 @@ check("the cheese pan is behind the Cheese spot", abs(pan_rects["Cheese"][0] - C
 check("every topping pan is in the Toppings camera (within 2.8 of the spot)", all(abs(pan_rects[t][0] - TOPPINGS_X) + PW / 2 < 2.8 for t in TOPPINGS))
 check("the rail is filled to the far end", abs(bound_x(USED) - (W / 2 - 0.3)) < 1e-6)
 print(f"[layout] cheeseX {CHEESE_X:.3f} toppingsX {TOPPINGS_X:.3f}")
+
+# -- Tilt: the rail's top, the pans and their food turn about its front top
+# edge, the back raised TILT degrees (the user: so the maker sees into the
+# pans); the rail's back wall rises to meet the top. (The food-in-pan checks
+# above ran level.)
+for m in [rail, pans] + list(food.values()):
+    bmesh.ops.rotate(m.bm, verts=m.bm.verts[:], cent=rb(0, RAIL_TOP, RAIL_F), matrix=Matrix.Rotation(math.radians(-TILT), 3, "X"))
+ZB = RAIL_F + (RAIL_B - RAIL_F) * math.cos(math.radians(TILT))
+YB = RAIL_TOP + (RAIL_B - RAIL_F) * math.sin(math.radians(TILT))
+steel.box((W, YB - H + 0.1, 0.05), (0, (H - 0.1 + YB) / 2, ZB - 0.025))
+tilted = verts(rail) + verts(pans) + [v for m in food.values() for v in verts(m)]
+check("the tilted pans still clear the cabinet top", min(y for _, y, _ in verts(pans)) > H - 0.1)
+check("the tilted rail stays in front of the canopy's back panel and cheeks' backs", max(z for _, _, z in tilted) < BACK - 0.05)
+check("the tilted food clears the canopy's front lip", max(y for _, y, _ in tilted) < C_YF - 0.16 - 0.05)
+ZR = RAIL_F + (OPEN_B - RAIL_F) * math.cos(math.radians(TILT))
+YR = RAIL_TOP + (OPEN_B - RAIL_F) * math.sin(math.radians(TILT))
+for cam, (ey, ez) in (("Cheese", (H + 2.9, BOARD_Z - 1.75)), ("Toppings", (H + 2.6, BOARD_Z - 2.2))):
+    y_at_lip = ey + (YR - ey) * (C_F - ez) / (ZR - ez)
+    check(f"the {cam} camera sees the pans' back edges under the canopy's lip ({y_at_lip:.2f} < {C_YF - 0.16:.2f})", y_at_lip < C_YF - 0.16)
+steel.merge(rail)
 
 # -- Preview only: pizzas at the Cheese and Toppings spots; the sauce table
 # (its meshes) on the left, the high wall behind.
@@ -445,6 +499,7 @@ kit.finish(
     [
         ("overview", (-2.8, 9.0, -11.0), (-0.8, 2.6, 0.5), 30),
         ("pans", (-1.9, 6.4, -2.0), (-1.9, 3.6, 1.85), 32),
+        ("rail", (TOPPINGS_X - 0.6, H + 1.9, BOARD_Z - 0.6), (TOPPINGS_X - 0.6, RAIL_TOP + 0.15, 2.0), 34),
         ("sides", (4.6, 6.0, -1.6), (4.6, 3.6, 1.85), 32),
         ("end", (11.0, 6.5, -7.0), (5.5, 2.4, 0.5), 32),
         ("junction", (-6.0, 5.4, -5.6), (-8.5, 3.0, -1.6), 30),
