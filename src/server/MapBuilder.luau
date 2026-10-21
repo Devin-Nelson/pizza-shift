@@ -148,7 +148,6 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 		return part(props)
 	end
 
-	local FACE_FRONT = CFrame.Angles(0, math.pi, 0) -- worker toward the shop front (+Z)
 	local FACE_RIGHT = CFrame.Angles(0, -math.pi / 2, 0) -- worker toward +X
 	local FACE_LEFT = CFrame.Angles(0, math.pi / 2, 0) -- worker toward -X
 
@@ -163,8 +162,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- Floors: red quarry tile in the kitchen, wood-look planks in the L-shaped lobby.
 	box("Floor", -HW, HW, 0, 1, BACK, FRONT, Color3.fromRGB(128, 66, 52), Enum.Material.CeramicTiles)
 	box("LobbyFloor", -HW, HW, 1, 1.05, 28.9, FRONT, wood, Enum.Material.WoodPlanks, { CanCollide = false })
-	box("LobbyFloor", -HW, -10.6, 1, 1.05, -9.9, 28.9, wood, Enum.Material.WoodPlanks, { CanCollide = false })
-	box("LobbyFloor", -10.6, -8.4, 1, 1.05, 9.9, 28.9, wood, Enum.Material.WoodPlanks, { CanCollide = false }) -- in front of the dough show glass
+	box("LobbyFloor", -HW, -8.4, 1, 1.05, -9.9, 28.9, wood, Enum.Material.WoodPlanks, { CanCollide = false }) -- the side lobby, up to the counter and the dough show glass
 	box("LobbyFloor", -8.4, -2.4, 1, 1.05, 23.2, 28.9, wood, Enum.Material.WoodPlanks, { CanCollide = false }) -- the angled corner (the kitchen half is under the sauce table)
 	box("Mat", -23.3, -18.7, 1.05, 1.1, 38.5, 41.6, BRAND.Charcoal, Enum.Material.Carpet, { CanCollide = false })
 
@@ -202,7 +200,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- Light panels in the drop ceiling: warm over the lobby, neutral white in the
 	-- kitchen; with Future lighting they cast soft shadows.
 	for _, pos in { Vector2.new(-16, 34), Vector2.new(2, 35), Vector2.new(16, 35), Vector2.new(-17, 14), Vector2.new(-17, -3), Vector2.new(0, 21), Vector2.new(13, 21), Vector2.new(-2, 8), Vector2.new(10, 1), Vector2.new(7, -11), Vector2.new(-1, -25), Vector2.new(-14, -30), Vector2.new(-14, -16), Vector2.new(12, -40), Vector2.new(-10, -42) } do
-		local lobby = pos.Y > 28.9 or (pos.X < -10.6 and pos.Y > -9.9)
+		local lobby = pos.Y > 28.9 or (pos.X < -8.4 and pos.Y > -9.9)
 		local panel = part({ Name = "LightPanel", Size = Vector3.new(6, 0.2, 3), CFrame = at(pos.X, h + 0.38, pos.Y), Color = Color3.fromRGB(255, 252, 240), Material = Enum.Material.Neon, CanCollide = false, Parent = decor })
 		local light = Instance.new("SurfaceLight")
 		light.Face = Enum.NormalId.Bottom
@@ -216,18 +214,20 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 
 	-- === Lobby ===
 	-- Carryout counter facing the side lobby: the register, a second POS, the
-	-- carryout warmer at its back end, menu boards hanging above.
-	box("Counter", -10.6, -6.8, 1, 5, -3.6, 9.9, BRAND.Charcoal)
-	box("CounterFace", -10.65, -10.6, 2.8, 4, -3.6, 9.9, BRAND.Red)
-	box("CounterTop", -10.8, -6.6, 5, 5.4, -3.8, 10.1, Color3.fromRGB(235, 235, 232), Enum.Material.Marble)
-	StationArt.Build("Register", decor, at(-8.2, 5.4, 3.0) * FACE_RIGHT)
+	-- carryout warmer at its back end, menu boards hanging above. Its face is in
+	-- line with the dough show's low wall beside the slap table (the user,
+	-- 2026-10-21: "even with the slap table").
+	box("Counter", -8.6, -4.8, 1, 5, -3.6, 9.9, BRAND.Charcoal)
+	box("CounterFace", -8.65, -8.6, 2.8, 4, -3.6, 9.9, BRAND.Red)
+	box("CounterTop", -8.8, -4.6, 5, 5.4, -3.8, 9.8, Color3.fromRGB(235, 235, 232), Enum.Material.Marble)
+	StationArt.Build("Register", decor, at(-6.2, 5.4, 3.0) * FACE_RIGHT)
 	local menuItems = {
 		{ "PIZZAS", "Build your own:\nsize + up to 3\ntoppings" },
 		{ "SIZES", string.format("Small $%d\nMedium $%d\nLarge $%d", Config.SizePrice.Small, Config.SizePrice.Medium, Config.SizePrice.Large) },
 		{ "TOPPINGS", table.concat(Config.Toppings, "\n") },
 	}
 	for i, item in menuItems do
-		local board = part({ Name = "MenuScreen" .. i, Size = Vector3.new(0.3, 3.6, 4.2), CFrame = at(-11.2, 10.7, 9.4 - (i - 1) * 4.5), Color = Color3.fromRGB(15, 15, 18), Parent = decor })
+		local board = part({ Name = "MenuScreen" .. i, Size = Vector3.new(0.3, 3.6, 4.2), CFrame = at(-9.2, 10.7, 9.4 - (i - 1) * 4.5), Color = Color3.fromRGB(15, 15, 18), Parent = decor })
 		local gui = Instance.new("SurfaceGui")
 		gui.Face = Enum.NormalId.Left -- -X: the side lobby
 		gui.CanvasSize = Vector2.new(360, 300)
@@ -256,13 +256,13 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 		body.Parent = bg
 		gui.Parent = board
 	end
-	local orderHere = part({ Name = "OrderHere", Size = Vector3.new(0.1, 0.9, 4), CFrame = at(-11.2, 9.6, 7.4), Color = BRAND.Red, Parent = decor })
+	local orderHere = part({ Name = "OrderHere", Size = Vector3.new(0.1, 0.9, 4), CFrame = at(-9.2, 9.6, 7.4), Color = BRAND.Red, Parent = decor })
 	screenText(orderHere, Enum.NormalId.Left, "ORDER HERE", Color3.new(1, 1, 1))
 	-- Kitchen wall behind the counter's end, with the staff door, and the side lobby's back wall
-	box("LobbyBackWall", -HW, -10.4, 1, 1 + h, -10.3, -9.9, tile, Enum.Material.CeramicTiles)
-	box("StaffWall", -11, -10.4, 1, 1 + h, -9.9, -8.6, tile, Enum.Material.CeramicTiles)
-	box("StaffWall", -11, -10.4, 1, 1 + h, -5.4, -3.6, tile, Enum.Material.CeramicTiles)
-	box("StaffWall", -11, -10.4, 9, 1 + h, -8.6, -5.4, tile, Enum.Material.CeramicTiles)
+	box("LobbyBackWall", -HW, -8.4, 1, 1 + h, -10.3, -9.9, tile, Enum.Material.CeramicTiles)
+	box("StaffWall", -9, -8.4, 1, 1 + h, -9.9, -8.6, tile, Enum.Material.CeramicTiles)
+	box("StaffWall", -9, -8.4, 1, 1 + h, -5.4, -3.6, tile, Enum.Material.CeramicTiles)
+	box("StaffWall", -9, -8.4, 9, 1 + h, -8.6, -5.4, tile, Enum.Material.CeramicTiles)
 
 	-- Order tracker TV on the right lobby wall (ShopService writes to it)
 	local tracker = part({ Name = "TrackerScreen", Size = Vector3.new(0.3, 4.4, 8), CFrame = at(HW - 0.65, 9.5, 35), Color = Color3.fromRGB(10, 10, 12), Parent = decor })
@@ -382,8 +382,8 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- A window on the right wall past the cut table
 	box("Window", HW - 0.6, HW + 0.6, 4, 9, -9.3, -3.9, glass, nil, glassProps)
 
-	-- Dispatch zone behind the oven tender: a second heat rack and the bag cabinet
-	StationArt.Build("DeliveryRack", decor, at(1.9, 1, -13.4) * FACE_FRONT)
+	-- Dispatch zone behind the oven tender: the bag cabinet (the heat racks went,
+	-- 2026-10-21: the user is designing a dispatch station to replace them)
 	box("BagCabinet", 11.6, 14.0, 1, 6, -15.2, -12.6, Color3.fromRGB(150, 25, 30), Enum.Material.Fabric)
 	local bagSign = part({ Name = "BagSign", Size = Vector3.new(2.4, 0.8, 0.1), CFrame = at(12.8, 6.6, -12.5), Color = BRAND.Charcoal, Parent = decor })
 	screenText(bagSign, Enum.NormalId.Back, "HOT BAGS", BRAND.Gold)
@@ -499,7 +499,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 		beam.Parent = can
 	end
 	for z = -2, 22, 4 do
-		downlight(-10.8, z, Color3.fromRGB(255, 220, 180))
+		downlight(-8.8, z, Color3.fromRGB(255, 220, 180))
 	end
 	-- The dough show soffit along the makeline wall, facing the front lobby
 	box("MakelineSoffit", -2.4, HW - 0.5, soffitY, h + 0.4, 28.9, 31.2, BRAND.Red, Enum.Material.SmoothPlastic, { CanCollide = false })
@@ -512,7 +512,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- Hanging dough show sign on the glass (photo: a red banner over the trays)
 	local banner = part({ Name = "DoughBanner", Size = Vector3.new(0.12, 1.3, 4.4), CFrame = at(-8.75, 7.7, 19.2), Color = BRAND.Red, Parent = decor })
 	screenText(banner, Enum.NormalId.Left, "HAND-TOSSED\nFRESH DOUGH", Color3.new(1, 1, 1), BRAND.Red, Enum.Font.FredokaOne)
-	local pickupSign = part({ Name = "PickupSign", Size = Vector3.new(0.12, 1.1, 3.6), CFrame = at(-11.3, 9.3, -0.9), Color = BRAND.Charcoal, Parent = decor })
+	local pickupSign = part({ Name = "PickupSign", Size = Vector3.new(0.12, 1.1, 3.6), CFrame = at(-9.3, 9.3, -0.9), Color = BRAND.Charcoal, Parent = decor })
 	screenText(pickupSign, Enum.NormalId.Left, "PICK UP HERE", BRAND.Gold, BRAND.Charcoal, Enum.Font.FredokaOne)
 
 	-- Chalk wall down the side lobby, above the booths, framed in wood
@@ -700,8 +700,8 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	end
 
 	-- Carryout counter: the register, and the carryout warmer facing the side lobby.
-	station("Register", at(-8.2, 5.4, 7.4) * FACE_RIGHT, Vector3.new(3, 2, 2), "Take Order", "Register", nil, Vector3.new(0, 0, 0))
-	station("Pickup", at(-8.7, 5.4, -0.9) * FACE_LEFT, Vector3.new(6, 1, 3), "Carryout", "Carryout")
+	station("Register", at(-6.2, 5.4, 7.4) * FACE_RIGHT, Vector3.new(3, 2, 2), "Take Order", "Register", nil, Vector3.new(0, 0, 0))
+	station("Pickup", at(-6.7, 5.4, -0.9) * FACE_LEFT, Vector3.new(6, 1, 3), "Carryout", "Carryout")
 	-- The production L: stretch table and sauce corner (their stations are
 	-- hitboxes over the work spots from StationArt.Layout), makeline, ready rack.
 	local ST, SL, ML = StationArt.Layout.StretchTable, StationArt.Layout.SauceTable, StationArt.Layout.MakeLine
@@ -726,7 +726,6 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- (The user's bigger table, 2026-10-21, moved toward the right wall with the
 	-- ovens the same day: the same place relative to their exits.)
 	station("CutTable", at(12.65, 1, -3.4) * FACE_RIGHT, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(3.1, CT.height, -1.55))
-	station("DeliveryRack", at(8.1, 1, -13.4) * FACE_FRONT, Vector3.new(6, 7, 2.2), "Heat Rack", "Heat Rack", nil, Vector3.new(0, 3.6, -1.1))
 	station("Fridge", at(WI_X + 2, 1, DOOR_Z) * FACE_LEFT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler") -- in the walk-in's door notch
 
 	-- === Lot out back ===
@@ -745,12 +744,12 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- Customer path: in at the front-left door, up the side lobby to the
 	-- register, wait by the carryout warmer, out the same door.
 	spot(spots, "CustomerSpawn", at(-16, 3, 38))
-	spot(spots, "Queue1", at(-12.8, 3, 7.4))
-	spot(spots, "Queue2", at(-12.8, 3, 11.0))
-	spot(spots, "Queue3", at(-12.8, 3, 14.6))
-	spot(spots, "Wait1", at(-13.0, 3, 0.4))
-	spot(spots, "Wait2", at(-13.6, 3, -3.0))
-	spot(spots, "Wait3", at(-12.6, 3, -6.4))
+	spot(spots, "Queue1", at(-10.8, 3, 7.4))
+	spot(spots, "Queue2", at(-10.8, 3, 11.0))
+	spot(spots, "Queue3", at(-10.8, 3, 14.6))
+	spot(spots, "Wait1", at(-11.0, 3, 0.4))
+	spot(spots, "Wait2", at(-11.6, 3, -3.0))
+	spot(spots, "Wait3", at(-10.6, 3, -6.4))
 	spot(spots, "Exit", at(-21, 3, 47))
 
 	model.PrimaryPart = (decor:FindFirstChild("Floor") :: Part)
