@@ -18,6 +18,7 @@ local Staff = require(ReplicatedStorage.Shared.Staff)
 local DataService = require(script.Parent.DataService)
 local MapBuilder = require(script.Parent.MapBuilder)
 local ShopService = require(script.Parent.ShopService)
+local StationArt = require(script.Parent.StationArt)
 
 type Plot = { id: number, cframe: CFrame, model: Model }
 -- `members` in the order they joined; the owner is one of them.
@@ -138,6 +139,40 @@ local function staffOf(owner: Player): { Staff.Member }
 	return if profile then profile.Staff :: any else {}
 end
 
+-- Where `name` is in Config.OvenPaints (0 if it isn't).
+local function paintIndex(name: string): number
+	for i, p in Config.OvenPaints do
+		if p.name == name then
+			return i
+		end
+	end
+	return 0
+end
+
+-- The owner's oven paint on their store; the oven's prompt offers the next one.
+local function paintOven(claim: Claim)
+	local profile = DataService.Get(claim.owner)
+	local i = math.max(1, paintIndex(if profile then profile.OvenPaint else ""))
+	StationArt.PaintOven(claim.shop.model, Config.OvenPaints[i].name)
+	local spot = claim.shop.model:FindFirstChild("OvenPaintSpot", true)
+	local pp = spot and spot:FindFirstChildOfClass("ProximityPrompt")
+	if pp then
+		pp.ObjectText = "Oven: " .. Config.OvenPaints[i].name
+		pp.ActionText = "Paint " .. Config.OvenPaints[i % #Config.OvenPaints + 1].name
+	end
+end
+
+-- The oven prompt: the owner's next paint (saved with them by the autosave).
+local function repaint(player: Player, id: number)
+	local claim = claims[id]
+	local profile = DataService.Get(player)
+	if not claim or claim.owner ~= player or not profile then
+		return
+	end
+	profile.OvenPaint = Config.OvenPaints[paintIndex(profile.OvenPaint) % #Config.OvenPaints + 1].name
+	paintOven(claim)
+end
+
 -- Builds the store on `plot` as `owner`'s, with `members` working there.
 local function openStore(plot: Plot, owner: Player, members: { Player })
 	local model = MapBuilder.BuildShop(plot.cframe, Config.GameName, workspace:FindFirstChild("Shops") :: Folder)
@@ -145,6 +180,14 @@ local function openStore(plot: Plot, owner: Player, members: { Player })
 	local claim: Claim = { owner = owner, shop = ShopService.AddShop(model, Config.GameName, owner), members = members }
 	ShopService.SetCrew(claim.shop, prepareStaff(owner))
 	claims[plot.id] = claim
+	paintOven(claim)
+	local spot = model:FindFirstChild("OvenPaintSpot", true)
+	local pp = spot and spot:FindFirstChildOfClass("ProximityPrompt")
+	if pp then
+		pp.Triggered:Connect(function(player)
+			repaint(player, plot.id)
+		end)
+	end
 	setLotVisible(plot, false)
 	for _, m in members do
 		enlist(m, plot, claim)

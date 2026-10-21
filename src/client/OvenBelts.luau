@@ -10,8 +10,7 @@ local RunService = game:GetService("RunService")
 local OvenBelts = {}
 
 local TILE = 0.3 -- studs per tile of the wire (StationArt's StudsPerTileV)
--- shortcut: the scroll's sign is unverified (Studio doesn't render in our scripted runs); flip it if the wire runs toward the entrance
-local SCROLL = 1
+local SCROLL = -1 -- toward the exit (the user saw +1 run the wrong way)
 
 function OvenBelts.start()
 	RunService.Heartbeat:Connect(function() -- Heartbeat: RenderStepped stops when Studio isn't rendering

@@ -272,6 +272,15 @@ Config.CheesePour = { StartRate = 1.2, Accel = 2.0, MaxRate = 5 }
 -- BakeTime: real seconds from entrance to exit. FallAfter: real seconds a
 -- pizza can sit at the exit before it falls off.
 Config.Oven = { BakeTime = 120, FallAfter = 25, Slots = 6, Gap = 0.15 }
+-- The ovens' paint (the user, 2026-10-21: silver by default, customizable):
+-- the store's owner cycles through these at the oven (saved with them).
+-- `metal`: stainless rather than painted.
+Config.OvenPaints = {
+	{ name = "Silver", color = Color3.fromRGB(140, 145, 152), metal = true },
+	{ name = "Blue", color = Color3.fromRGB(34, 58, 168), metal = false },
+	{ name = "Red", color = Config.Brand.Red, metal = false },
+	{ name = "Charcoal", color = Config.Brand.Charcoal, metal = false },
+}
 -- The ready rack at the end of the make-line: finished pizzas wait on its
 -- screens to be loaded. A toppings job only starts if there's a slot for it.
 Config.ReadyRack = { Slots = 15 }

@@ -751,7 +751,6 @@ end
 -- -X lane comes first. Markers per slot: OvenIn_<n> / OvenOut_<n> (a pizza's
 -- center at the start and end of its lane) and OvenMouthIn_<n> /
 -- OvenMouthOut_<n> (where the lane enters and leaves the bake chamber).
-local OVEN_PAINT = Color3.fromRGB(34, 58, 168) -- the user's photo (ovens.py --paint shows the other options)
 local GLASS = Color3.fromRGB(40, 40, 46)
 local BELT_TOP, PULLEY_R = 0.05, 0.12 -- over the deck height; as in tools/blender/ovens.py
 
@@ -762,7 +761,7 @@ Builders.Oven = function(m, base)
 	local mesh = stationMeshes("Oven")
 	if mesh then
 		M(m, base, mesh.Body, CFrame.new(mesh.Body.at), STAINLESS, Enum.Material.Metal, { collide = true, name = "Body" })
-		M(m, base, mesh.Paint, CFrame.new(mesh.Paint.at), OVEN_PAINT, Enum.Material.SmoothPlastic, { name = "Paint", reflect = 0.05 })
+		M(m, base, mesh.Paint, CFrame.new(mesh.Paint.at), STAINLESS, Enum.Material.Metal, { name = "OvenPaint" }) -- StationArt.PaintOven colours it
 		M(m, base, mesh.Conveyor, CFrame.new(mesh.Conveyor.at), Color3.fromRGB(160, 164, 170), Enum.Material.Metal)
 		M(m, base, mesh.Hood, CFrame.new(mesh.Hood.at), STAINLESS, Enum.Material.Metal, { name = "Hood" })
 		M(m, base, mesh.Filters, CFrame.new(mesh.Filters.at), STEEL, Enum.Material.Metal)
@@ -1089,6 +1088,24 @@ function StationArt.Screen(size: string, cf: CFrame): BasePart
 end
 
 -- Builds art for `kind` under `parent`, preferring a custom model if one exists.
+-- Paints the oven under `root` (a Config.OvenPaints name; an unknown one gets
+-- the first, silver). The code-built oven has no paint: it stays stainless.
+function StationArt.PaintOven(root: Instance, name: string)
+	local part = root:FindFirstChild("OvenPaint", true)
+	if not part or not part:IsA("BasePart") then
+		return
+	end
+	local paint = Config.OvenPaints[1]
+	for _, p in Config.OvenPaints do
+		if p.name == name then
+			paint = p
+		end
+	end
+	part.Color = paint.color
+	part.Material = if paint.metal then Enum.Material.Metal else Enum.Material.SmoothPlastic
+	part.Reflectance = if paint.metal then 0 else 0.05
+end
+
 function StationArt.Build(kind: string, parent: Instance, base: CFrame)
 	local folder = ServerStorage:FindFirstChild("StationModels")
 	local custom = folder and folder:FindFirstChild(kind)

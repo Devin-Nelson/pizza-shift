@@ -146,6 +146,10 @@ local function applyPrompt(pp: ProximityPrompt)
 		pp.Enabled = mine == nil or (store ~= nil and store:GetAttribute("StoreId") == mine)
 	elseif parent:GetAttribute("HouseId") ~= nil then
 		pp.Enabled = delivering
+	elseif pp:GetAttribute("OwnerOnly") then
+		-- Store settings (the ovens' paint): only the owner, at their own store.
+		local store = parent:FindFirstAncestorWhichIsA("Model")
+		pp.Enabled = player:GetAttribute("StoreOwner") == true and store ~= nil and store:GetAttribute("StoreId") == player:GetAttribute("StoreId")
 	elseif pp:GetAttribute("CarOwner") ~= nil then
 		-- Delivery car: only its owner sees the Drive prompt.
 		pp.Enabled = pp:GetAttribute("CarOwner") == player.UserId
@@ -165,6 +169,7 @@ workspace.DescendantAdded:Connect(function(d)
 	end
 end)
 player:GetAttributeChangedSignal("StoreId"):Connect(applyAll)
+player:GetAttributeChangedSignal("StoreOwner"):Connect(applyAll)
 task.defer(applyAll)
 
 ---------------------------------------------------------------------------

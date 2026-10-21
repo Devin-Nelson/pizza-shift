@@ -373,6 +373,9 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- Three stacked conveyor ovens right behind the makers, conveying toward the
 	-- back (not a station: pizzas ride through on their own).
 	StationArt.Build("Oven", decor, at(8.55, 1, 10.1))
+	-- The owner paints the ovens here, at their front (StoreService; only the owner sees it).
+	local paintSpot = part({ Name = "OvenPaintSpot", Size = Vector3.new(1, 1, 1), CFrame = at(4.85, 4, 10.1), Transparency = 1, CanCollide = false, CanQuery = false, Parent = decor })
+	prompt(paintSpot, "Paint", "Oven", 0.5):SetAttribute("OwnerOnly", true)
 
 	-- Box storage along the right wall by the ovens, a window further back
 	for i = 0, 3 do

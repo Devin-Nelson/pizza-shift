@@ -16,6 +16,7 @@ export type Profile = {
 	Deliveries: number,
 	TipsSeen: { [string]: boolean }, -- stations whose first-visit tip the player has closed
 	Staff: { any }, -- hired for their store (Staff.Member; made safe by Staff.sanitize when it opens)
+	OvenPaint: string, -- their store's oven paint (a Config.OvenPaints name)
 }
 
 local DataService = {}
@@ -46,6 +47,7 @@ local function defaultProfile(): Profile
 		Deliveries = 0,
 		TipsSeen = {},
 		Staff = {},
+		OvenPaint = Config.OvenPaints[1].name,
 	}
 end
 
