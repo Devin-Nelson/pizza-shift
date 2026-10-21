@@ -79,20 +79,19 @@ local MeshBank: { [string]: Station } = {
 		images = {},
 	},
 	-- tools/blender/cut_table.py (2026-10-21): the cut table from the user's photos (the
-	-- stacks' blanks die-cut as src/shared/PizzaBox.luau);
+	-- stacks' blanks, pizza and side boxes, die-cut as src/shared/PizzaBox.luau);
 	-- Rocker and RockerGrips are instanced (built standing, the edge's lowest point at the origin).
 	CutTable = {
-		model = 106062803154915,
+		model = 100220330523632,
 		meshes = {
-			Steel = { id = 127521090953533, size = Vector3.new(12.86, 3.0786, 6.37), at = Vector3.new(0, 1.6727, 0.005) },
-			Dark = { id = 71394981327894, size = Vector3.new(12.74, 3.697, 6.54), at = Vector3.new(0, 1.8515, 0.05) },
-			Cardboard = { id = 124064905920317, size = Vector3.new(10.7057, 3.8797, 3), at = Vector3.new(-0.5529, 2.5599, 0) },
-			Blanks = { id = 122600154019553, size = Vector3.new(11.0872, 1.996, 5.8826), at = Vector3.new(0.6669, 2.77, -0.0159) },
-			Wire = { id = 114389720967368, size = Vector3.new(2.1686, 0.988, 2.93), at = Vector3.new(-5.1557, 3.694, -0.075) },
-			Bottles = { id = 75117847680397, size = Vector3.new(0.42, 0.7041, 3.7715), at = Vector3.new(-5.1557, 3.252, -0.2943) },
-			Caps = { id = 93440723292344, size = Vector3.new(0.2632, 0.33, 0.835), at = Vector3.new(-5.1557, 3.485, -2.4175) },
-			Shakers = { id = 109400120863341, size = Vector3.new(0.2535, 0.42, 0.56), at = Vector3.new(-5.1557, 3.11, -2.55) },
-			Trash = { id = 99931970717427, size = Vector3.new(1.44, 2.24, 1.3804), at = Vector3.new(0, 1.12, 4.05) },
+			Steel = { id = 129861066340300, size = Vector3.new(12.86, 3.0786, 6.37), at = Vector3.new(0, 1.6727, 0.005) },
+			Dark = { id = 93063948607148, size = Vector3.new(12.74, 0.3939, 6.54), at = Vector3.new(0, 0.2, 0.05) },
+			Cardboard = { id = 71873887434317, size = Vector3.new(10.24, 0.62, 3), at = Vector3.new(-0.32, 0.93, 0) },
+			Blanks = { id = 125533634261381, size = Vector3.new(12.4067, 1.996, 5.8826), at = Vector3.new(0.0071, 2.77, -0.0159) },
+			Bottles = { id = 127042004448027, size = Vector3.new(0.2535, 0.61, 0.26), at = Vector3.new(2.1121, 3.205, 2.5943) },
+			Caps = { id = 82427795308953, size = Vector3.new(0.8292, 0.33, 0.27), at = Vector3.new(1.7451, 3.485, 2.5943) },
+			Shakers = { id = 103106550156809, size = Vector3.new(0.5535, 0.42, 0.26), at = Vector3.new(1.6121, 3.11, 2.5943) },
+			Trash = { id = 83584586917833, size = Vector3.new(1.44, 2.24, 1.3804), at = Vector3.new(0, 1.12, 4.05) },
 			Rocker = { id = 107227853656891, size = Vector3.new(3.4, 0.625, 0.206), at = Vector3.new(0, 0.3125, 0) },
 			RockerGrips = { id = 133911230277363, size = Vector3.new(3.52, 0.17, 0.19), at = Vector3.new(0, 0.595, 0) },
 		},

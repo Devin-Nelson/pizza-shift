@@ -293,6 +293,8 @@ StationArt.Layout = {
 		-- blank's base panel) centre, at the stack's top; the trough's rockers.
 		trays = { Small = Vector3.new(4.878, 3.68, -1.628), Medium = Vector3.new(1.812, 3.74, -1.456), Large = Vector3.new(-2.246, 3.8, -1.285) },
 		rockers = { Vector3.new(-0.271, 2.8, -0.8), Vector3.new(0.009, 2.8, -0.8) },
+		-- The side boxes' stacks at the far end (PizzaBox.Sides): tray centre, at the top.
+		sides = { SideLarge = Vector3.new(-5.156, 3.62, -2.093), SideSmall = Vector3.new(-5.156, 3.62, 0.856) },
 	},
 }
 
@@ -835,12 +837,14 @@ end
 -- Cut table, after the user's photos (2026-10-21): a stainless table on
 -- casters behind the oven exits, the oven tender on its long side (-Z) facing
 -- the carryout counter. Blender meshes when they load (tools/blender/cut_table.py:
--- the table, a stack of unfolded boxes per size, the rocker trough, the
--- seasoning insert, the side-box rack, the printer, the trash can), else a
--- plain table and stacks. Parts either way: the top blank of each stack
--- (Blank_<Size>, a Model of PizzaBox panels, each with BoxSize: the cut
--- minigame cuts the pizza on it, then folds it into the box), the size tags,
--- and CutLanding, where a pulled pizza waits while someone works it.
+-- the table, a stack of unfolded boxes per size, the rocker trough, the side
+-- boxes' stacks (two sizes the side items share), the seasoning insert, the
+-- trash can), else a plain table and stacks. Parts either way: the top blank
+-- of each stack (Blank_<Size>, a Model of PizzaBox panels, each with BoxSize:
+-- the cut minigame cuts the pizza on it, then folds it into the box; the side
+-- boxes' Blank_<Side> carry SideBox, ready to fold the same way once sides can
+-- be ordered), the size tags, and CutLanding, where a pulled pizza waits
+-- while someone works it.
 local CARDBOARD = Color3.fromRGB(205, 168, 118)
 
 Builders.CutTable = function(m, base)
@@ -852,7 +856,6 @@ Builders.CutTable = function(m, base)
 		M(m, base, mesh.Dark, CFrame.new(mesh.Dark.at), BLACK, Enum.Material.SmoothPlastic)
 		M(m, base, mesh.Cardboard, CFrame.new(mesh.Cardboard.at), CARDBOARD, Enum.Material.Cardboard)
 		M(m, base, mesh.Blanks, CFrame.new(mesh.Blanks.at), CARDBOARD, Enum.Material.Cardboard, { name = "BoxStacks" })
-		M(m, base, mesh.Wire, CFrame.new(mesh.Wire.at), CHROME, Enum.Material.Metal)
 		M(m, base, mesh.Bottles, CFrame.new(mesh.Bottles.at), Color3.fromRGB(238, 236, 228), Enum.Material.SmoothPlastic)
 		M(m, base, mesh.Caps, CFrame.new(mesh.Caps.at), GRIP_RED, Enum.Material.Plastic)
 		M(m, base, mesh.Shakers, CFrame.new(mesh.Shakers.at), Color3.fromRGB(230, 215, 170), Enum.Material.Plastic)
@@ -874,23 +877,34 @@ Builders.CutTable = function(m, base)
 		end
 	else
 		steelTable(m, base, w, d, h)
-		for size, t in L.trays do
-			local bs = Config.BoxSize[size]
-			local bw, bd = PizzaBox.blankSize(bs)
+		local function stack(kind: PizzaBox.Kind, t: Vector3)
+			local bw, bd = PizzaBox.blankSize(kind)
 			local below = t.Y - h - PizzaBox.Thick
-			P(m, base, Vector3.new(bw, below, bd), at(t.X, h + below / 2, t.Z - PizzaBox.trayFromFront(bs) + bd / 2), CARDBOARD, Enum.Material.Cardboard, { collide = false })
+			P(m, base, Vector3.new(bw, below, bd), at(t.X, h + below / 2, t.Z - PizzaBox.trayFromFront(kind) + bd / 2), CARDBOARD, Enum.Material.Cardboard, { collide = false })
+		end
+		for size, t in L.trays do
+			stack(PizzaBox.pizza(Config.BoxSize[size]), t)
+		end
+		for name, t in L.sides do
+			stack(PizzaBox.Sides[name], t)
 		end
 	end
-	-- The top blank of each stack, lying flat on it; its size on the front edge below.
-	for size, t in L.trays do
+	-- The top blank of each stack, lying flat on it; a pizza box's size on the front edge below.
+	local function topBlank(name: string, kind: PizzaBox.Kind, t: Vector3, attribute: string)
 		local blank = Instance.new("Model")
-		blank.Name = "Blank_" .. size
-		local panels = PizzaBox.panels(Config.BoxSize[size])
+		blank.Name = "Blank_" .. name
+		local panels = PizzaBox.panels(kind)
 		for i, cf in PizzaBox.pose(panels, base * CFrame.new(t), 0) do
 			local panel = P(blank, CFrame.identity, PizzaBox.size(panels[i]), cf, CARDBOARD, Enum.Material.Cardboard, { collide = false, name = panels[i].name })
-			panel:SetAttribute("BoxSize", size)
+			panel:SetAttribute(attribute, name)
 		end
 		blank.Parent = m
+	end
+	for name, t in L.sides do
+		topBlank(name, PizzaBox.Sides[name], t, "SideBox")
+	end
+	for size, t in L.trays do
+		topBlank(size, PizzaBox.pizza(Config.BoxSize[size]), t, "BoxSize")
 		local tag = P(m, base, Vector3.new(0.5, 0.11, 0.02), at(t.X, h - 0.075, -d / 2 - 0.011), Color3.new(1, 1, 1), nil, { collide = false })
 		surfaceText(tag, Enum.NormalId.Front, string.sub(size, 1, 1), Config.Brand.Red)
 	end

@@ -1039,7 +1039,7 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 				end
 			end
 		end
-		local panels = PizzaBox.panels(Config.BoxSize[chosenBox] or (d + 0.15))
+		local panels = PizzaBox.panels(PizzaBox.pizza(Config.BoxSize[chosenBox] or (d + 0.15)))
 		local parts: { BasePart } = {}
 		for i, panel in panels do
 			parts[i] = localPart(ctx.folder, "Box" .. panel.name, PizzaBox.size(panel), Color3.fromRGB(205, 168, 118), Enum.Material.Cardboard)

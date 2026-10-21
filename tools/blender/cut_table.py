@@ -3,17 +3,20 @@ table on casters with a square-edged top, solid end panels and back, two full
 shelves underneath, a round middle post at the front. On top: a stack of
 boxes per size lying completely unfolded (the tender folds the top one on its
 stack in the game, slides the pizza in, cuts and shuts it), a recessed trough
-with the rockers between two stacks, and past the stacks, out of the way: a
-seasoning insert, a wire rack of side-box blanks standing in stepped rows
-(wings, pasta, SuperCakes) and the label printer. Underneath: more blanks,
-a case of boxes, bins of side-box blanks. A trash can on the counter side.
+with the rockers between two stacks, the side boxes (two sizes: wings and
+pasta share the bigger, SuperCakes the smaller) lying unfolded in their own
+stacks out of the way at the far end, a seasoning insert behind the Medium
+stack.
+Underneath: more blanks, a case of boxes, bins of side-box blanks. A trash
+can on the counter side. (The user, 2026-10-21: no printer on the top.)
 
     blender -b -P tools/blender/cut_table.py -- --render
 
 Art-local = StationArt.Layout.CutTable (worker at -Z, the ovens off +X).
-StationArt keeps the gameplay pieces as parts: Blank_<Size> (BoxSize,
-WallHeight, OpenAngle), the top blank of each stack, which the cut minigame
-folds into a box once the pizza on it is cut; CutLanding; the size tags on
+StationArt keeps the gameplay pieces as parts: Blank_<Size> (BoxSize), the
+top blank of each pizza-box stack, which the cut minigame folds into a box
+once the pizza on it is cut; Blank_<Side> (SideBox), the side stacks' top
+blanks, folded the same way once sides can be ordered; CutLanding; the size tags on
 the front edge. Also the rocker (Rocker + RockerGrips, instanced): two in the
 trough, and the cut minigame's own.
 """
@@ -40,8 +43,8 @@ TOP_T = 0.15  # the top's thickness (square edge)
 
 
 def blank(bs):
-    """A box blank lying completely unfolded (w, d): pizzabox.py's die-cut sheet."""
-    return PB.blank_size(bs)
+    """A pizza box blank lying completely unfolded (w, d): pizzabox.py's die-cut sheet."""
+    return PB.blank_size(PB.pizza(bs))
 
 
 # The stacks along the front, small to large from the oven end, the rocker
@@ -67,7 +70,7 @@ TROUGH_Z0, TROUGH_Z1 = FRONT + 0.1, FRONT + 4.2
 def tray_at(size):
     """The tray's centre (x, z) on a stack: the base panel's centre."""
     sx, _, bs, _ = stacks[size]
-    return sx, FRONT + PB.tray_from_front(bs)
+    return sx, FRONT + PB.tray_from_front(PB.pizza(bs))
 
 
 LANDING = tray_at("Large")  # CutLanding: a pulled pizza waits on the Large stack
@@ -78,7 +81,6 @@ steel = Mesh("Steel", STAINLESS, metal=1.0, rough=0.28)
 dark = Mesh("Dark", rgb(40, 41, 45), rough=0.5)
 card = Mesh("Cardboard", rgb(205, 168, 118), rough=0.85)
 blanks = Mesh("Blanks", rgb(205, 168, 118), rough=0.85)
-wire = Mesh("Wire", rgb(215, 218, 222), metal=1.0, rough=0.2)
 rocker = Mesh("Rocker", rgb(200, 204, 210), metal=1.0, rough=0.25, instanced=True)
 rocker_grips = Mesh("RockerGrips", rgb(28, 28, 30), rough=0.5, instanced=True)
 bottles = Mesh("Bottles", rgb(238, 236, 228), rough=0.35)
@@ -103,7 +105,9 @@ def tray(m: Mesh, x0, x1, z0, z1, y0, y1, lip=0.03):
 
 # -- The top: square-edged, cut round the rocker trough and the seasoning
 # insert (both lined with dropped-in stainless pans).
-INSERT = (SIDE_X0 + 0.25, SIDE_X1 - 0.25, FRONT + 0.05, FRONT + 1.15)  # x0, x1, z0, z1
+# The seasoning insert behind the Medium stack (long side along the table).
+INSERT_Z0 = FRONT + blank(BOX["Medium"])[1] + 0.12
+INSERT = (stacks["Medium"][0] - 0.55, stacks["Medium"][0] + 0.55, INSERT_Z0, INSERT_Z0 + 0.6)  # x0, x1, z0, z1
 TROUGH = (TROUGH_X - TROUGH_W / 2, TROUGH_X + TROUGH_W / 2, TROUGH_Z0, TROUGH_Z1)
 
 
@@ -163,17 +167,17 @@ for cx, cz in casters:
 SLAB = 3
 
 
-def blank_stack(m, bs, tx, tz, y0, n, seed):
+def blank_stack(m, kind, tx, tz, y0, n, seed):
     """n blanks lying flat from y0 up, the tray centre at (tx, tz)."""
     for k in range(0, n, SLAB):
         c = min(SLAB, n - k)
         j = 0.012 * math.sin(k * 2.3 + seed)
-        PB.draw(m, bs, PB.root_at(tx + j, y0 + BLANK * (k + c) - 0.002, tz + 0.6 * j), thick=BLANK * c - 0.004)
+        PB.draw(m, kind, PB.root_at(tx + j, y0 + BLANK * (k + c) - 0.002, tz + 0.6 * j), thick=BLANK * c - 0.004)
 
 
 for size, _ in SIZES:
     tx, tz = tray_at(size)
-    blank_stack(blanks, BOX[size], tx, tz, H, COUNT[size] - 1, tx)
+    blank_stack(blanks, PB.pizza(BOX[size]), tx, tz, H, COUNT[size] - 1, tx)
 
 # -- The rocker (the user's photo, a two-handled pizza rocker): a steel
 # crescent, its spine straight, its cutting edge one long convex arc narrowing
@@ -213,58 +217,37 @@ R_HEIGHT = GRIP_Y + R_GRIP_H / 2
 # Two stand in the trough, edge down on its pan, handles up, along its length.
 TROUGH_ROCKERS = [(TROUGH_X + ox, H - 0.4, (TROUGH_Z0 + TROUGH_Z1) / 2) for ox in (-0.14, 0.14)]
 
-# -- The far end, out of the way beside the stacks: the seasoning insert (two
-# shakers and a squeeze bottle in its pan) at the front, then a wire rack of
-# side-box blanks standing in stepped rows (the user's photo: SuperCakes in
-# front, pasta, wings at the back), the label printer behind.
-IX = (INSERT[0] + INSERT[1]) / 2
-for z in (INSERT[2] + 0.2, INSERT[2] + 0.5):
-    shakers.cyl(0.13, 0.42, (IX, H - 0.3 + 0.21, z), segs=14)
-    caps.cyl(0.135, 0.06, (IX, H - 0.3 + 0.45, z), segs=14)
-    caps.cyl(0.135, 0.04, (IX, H - 0.3 + 0.5, z), segs=14, radius2=0.09)
-bz = INSERT[2] + 0.85
-bottles.cyl(0.13, 0.55, (IX, H - 0.3 + 0.275, bz), segs=14)
-bottles.cyl(0.13, 0.06, (IX, H - 0.3 + 0.58, bz), segs=14, radius2=0.07)
-caps.cyl(0.05, 0.14, (IX, H - 0.3 + 0.68, bz), segs=10, radius2=0.015)
+# -- The seasoning insert behind the Medium stack: two shakers and a squeeze
+# bottle standing in its pan.
+IZ = (INSERT[2] + INSERT[3]) / 2
+for x_ in (INSERT[0] + 0.2, INSERT[0] + 0.5):
+    shakers.cyl(0.13, 0.42, (x_, H - 0.3 + 0.21, IZ), segs=14)
+    caps.cyl(0.135, 0.06, (x_, H - 0.3 + 0.45, IZ), segs=14)
+    caps.cyl(0.135, 0.04, (x_, H - 0.3 + 0.5, IZ), segs=14, radius2=0.09)
+bx_ = INSERT[0] + 0.85
+bottles.cyl(0.13, 0.55, (bx_, H - 0.3 + 0.275, IZ), segs=14)
+bottles.cyl(0.13, 0.06, (bx_, H - 0.3 + 0.58, IZ), segs=14, radius2=0.07)
+caps.cyl(0.05, 0.14, (bx_, H - 0.3 + 0.68, IZ), segs=10, radius2=0.015)
+
+# -- The side boxes (the user: two sizes the side items share), lying unfolded
+# like the pizza boxes, out of the way at the far end, front to back. The top
+# blank of each is StationArt's.
+SIDE_COUNT = 14
 SX = (SIDE_X0 + SIDE_X1) / 2
-ROWS = [("SuperCakes", (1.1, 0.8), 8), ("Pasta", (1.5, 1.05), 8), ("Wings", (1.4, 1.3), 8)]
-ROW_D = 0.95
-RACK_Z0 = INSERT[3] + 0.3
-RACK_Z1 = RACK_Z0 + ROW_D * len(ROWS)
-RACK_W = SIDE_X1 - SIDE_X0 - 0.1
-for z in (RACK_Z0, RACK_Z1):
-    wire.rod((SX - RACK_W / 2, H + 0.03, z), (SX + RACK_W / 2, H + 0.03, z), 0.02, segs=6)
-for sx_ in (-1, 1):
-    wire.rod((SX + sx_ * RACK_W / 2, H + 0.03, RACK_Z0), (SX + sx_ * RACK_W / 2, H + 0.03, RACK_Z1), 0.02, segs=6)
-    for zf in (RACK_Z0, RACK_Z1):
-        wire.box((0.08, 0.02, 0.08), (SX + sx_ * RACK_W / 2, H + 0.01, zf))
-LEAN_RUN = 0.3  # how far a row's blanks lean back at the top
-for r, (name, (bw, bh), n) in enumerate(ROWS):
-    z0 = RACK_Z0 + ROW_D * r
-    back = z0 + ROW_D - 0.06
-    post_h = bh * 0.75
-    for sx_ in (-1, 1):  # the U the blanks lean on
-        wire.rod((SX + sx_ * (RACK_W / 2 - 0.1), H + 0.03, back), (SX + sx_ * (RACK_W / 2 - 0.1), H + post_h, back), 0.015, segs=6)
-    wire.rod((SX - (RACK_W / 2 - 0.1), H + post_h, back), (SX + (RACK_W / 2 - 0.1), H + post_h, back), 0.015, segs=6)
-    wire.rod((SX - RACK_W / 2, H + 0.12, z0 + 0.06), (SX + RACK_W / 2, H + 0.12, z0 + 0.06), 0.015, segs=6)  # front stop
-    for sx_ in (-1, 1):
-        wire.rod((SX + sx_ * RACK_W / 2, H + 0.03, z0 + 0.06), (SX + sx_ * RACK_W / 2, H + 0.12, z0 + 0.06), 0.015, segs=6)
-    lean = math.degrees(math.atan2(LEAN_RUN, bh))
-    for k in range(n):
-        zb = z0 + 0.1 + 0.03 * k
-        card.box((bw, bh, BLANK * 0.9), (SX, H + 0.03 + bh / 2 * math.cos(math.radians(lean)), zb + bh / 2 * math.sin(math.radians(lean))), r=kit.rot("x", lean))
-PRINTER = (SX, RACK_Z1 + 0.65, 0.7, 0.8, 0.5)  # x, z, w, d, h
-px, pz, pw, pd, ph = PRINTER
-dark.box((pw, ph, pd), (px, H + ph / 2, pz), bevel=0.04)
-dark.box((pw * 0.8, 0.02, 0.06), (px, H + ph - 0.12, pz - pd / 2 - 0.01))
-bottles.box((pw * 0.6, 0.004, 0.2), (px, H + ph - 0.14, pz - pd / 2 - 0.1), r=kit.rot("x", -25))  # a label coming out
+side_front = {"SideLarge": FRONT, "SideSmall": FRONT + PB.blank_size(PB.SIDES["SideLarge"])[1] + 0.2}
+side_x = {"SideLarge": SX, "SideSmall": SX}
+side_stacks = {}  # name -> (tray x, tray z, top)
+for name, kind in PB.SIDES.items():
+    tz_ = side_front[name] + PB.tray_from_front(kind)
+    blank_stack(blanks, kind, side_x[name], tz_, H, SIDE_COUNT - 1, tz_)
+    side_stacks[name] = (side_x[name], tz_, H + SIDE_COUNT * BLANK)
 
 # -- Underneath: unfolded blanks on the middle shelf; a case of boxes and
 # three sloped bins of side-box blanks on the bottom shelf.
 UNDER = (("Large", -W / 4, 12), ("Medium", W / 4, 12))
 for size, sx_, count in UNDER:
     bw, bd = blank(BOX[size])
-    blank_stack(blanks, BOX[size], sx_, 0.02 - bd / 2 + PB.tray_from_front(BOX[size]), SHELVES[1] + 0.02, count, sx_)
+    blank_stack(blanks, PB.pizza(BOX[size]), sx_, 0.02 - bd / 2 + PB.tray_from_front(PB.pizza(BOX[size])), SHELVES[1] + 0.02, count, sx_)
 BINS = (-4.9, -3.5, -2.1)
 BIN_W, BIN_D, BIN_H = 1.2, 1.8, 0.55
 for bx in BINS:
@@ -307,22 +290,29 @@ def overlap(a, b, gap=0.0):
 FEET = [footprint(s) for s, _ in SIZES]
 trough_r = (TROUGH[0] - 0.03, TROUGH[2] - 0.03, TROUGH[1] + 0.03, TROUGH[3] + 0.03)
 insert_r = (INSERT[0] - 0.03, INSERT[2] - 0.03, INSERT[1] + 0.03, INSERT[3] + 0.03)
-rack_r = (SX - RACK_W / 2 - 0.04, RACK_Z0 - 0.04, SX + RACK_W / 2 + 0.04, RACK_Z1 + 0.04)
-printer_r = (px - pw / 2, pz - pd / 2 - 0.15, px + pw / 2, pz + pd / 2)
-FAR = (insert_r, rack_r, printer_r)
+
+
+def side_foot(name):
+    x_, tz_, _ = side_stacks[name]
+    sw, sd = PB.blank_size(PB.SIDES[name])
+    z0 = tz_ - PB.tray_from_front(PB.SIDES[name])
+    return (x_ - sw / 2 - 0.02, z0, x_ + sw / 2 + 0.02, z0 + sd + 0.02)
+
+
+FAR = tuple(side_foot(n) for n in PB.SIDES) + (insert_r,)
 check("stacks on the top, front 0.2 in, back short of the edge", all(f[0] > -W / 2 and f[2] < W / 2 and f[1] >= -D / 2 + 0.2 - 1e-9 and f[3] < D / 2 - 0.05 for f in FEET))
 check("stacks clear of each other, the trough and the far end", not any(overlap(a, b) for i, a in enumerate(FEET) for b in FEET[i + 1:]) and not any(overlap(f, r, 0.05) for f in FEET for r in (trough_r,) + FAR))
-check("insert, side-box rack and printer in the far-end strip, clear of each other", all(r[0] > -W / 2 + 0.05 and r[2] < SIDE_X1 + 0.05 and r[3] < D / 2 - 0.05 for r in FAR) and not any(overlap(a, b, 0.05) for i, a in enumerate(FAR) for b in FAR[i + 1:]))
-check("side-box blanks fit the rack, leaning inside their rows", all(bw < RACK_W - 0.25 and 0.1 + 0.03 * n + LEAN_RUN < ROW_D - 0.08 for _, (bw, _), n in ROWS))
-check("side-box rows step up front to back", all(a[1][1] < b[1][1] for a, b in zip(ROWS, ROWS[1:])))
+check("side stacks and the insert on the top, clear of each other", all(r[0] > -W / 2 + 0.05 and r[2] < W / 2 - 0.05 and r[1] >= -D / 2 + 0.2 - 1e-9 and r[3] < D / 2 - 0.05 for r in FAR) and not any(overlap(a, b, 0.05) for i, a in enumerate(FAR) for b in FAR[i + 1:]))
+check("side stacks stay in the far-end strip", all(side_foot(n)[2] < SIDE_X1 + 0.05 for n in PB.SIDES))
 check("rockers stand inside the trough, clear of each other", TROUGH_W / 2 - 0.02 > 0.14 + R_GRIP_W / 2 + 0.01 and 0.14 > R_GRIP_W / 2 + 0.01 and R_LEN + 0.12 < TROUGH_Z1 - TROUGH_Z0 - 0.1)
 check("a Large pizza (2.4) fits the Large box's walls", BOX["Large"] - 2 * 0.04 > 2.4)
-check("CutLanding's pizza on the Large stack's base panel", abs(LANDING[1] - (FRONT + PB.tray_from_front(BOX["Large"]))) < 1e-9)
+check("CutLanding's pizza on the Large stack's base panel", abs(LANDING[1] - (FRONT + PB.tray_from_front(PB.pizza(BOX["Large"])))) < 1e-9)
 check("shelf stacks under the top, inside the panels, clear of the post", all(SHELVES[1] + 0.02 + BLANK * c < H - TOP_T - 0.05 for _, _, c in UNDER) and all(abs(sx_) + blank(BOX[s])[0] / 2 < W / 2 - 0.05 and abs(sx_ - POST_X) - blank(BOX[s])[0] / 2 > 0.1 and blank(BOX[s])[1] < D - 0.2 for s, sx_, _ in UNDER))
 check("bottom shelf: bins and the case under the middle shelf, clear of the post and each other", max(BINS) + BIN_W / 2 < POST_X - 0.1 and min(BINS) - BIN_W / 2 > -W / 2 + 0.05 and all(b - a > BIN_W for a, b in zip(BINS, BINS[1:])) and CASE[0] - CASE[1] / 2 > POST_X + 0.1 and CASE[0] + CASE[1] / 2 < W / 2 - 0.05 and SHELVES[0] + 0.02 + max(CASE[2], BIN_H) < SHELVES[1] - 0.1)
 check("wheels under the bottom shelf", 2 * WHEEL_R < SHELVES[0] - 0.05)
 check("trash clear of the table's back", TZ - TR - 0.04 > D / 2 + 0.05)
 print(f"[layout] rockers {[(round(x_, 3), round(y_, 3), round(z_, 3)) for x_, y_, z_ in TROUGH_ROCKERS]}")
+print(f"[layout] sides { {n: tuple(round(v, 3) for v in t) for n, t in side_stacks.items()} } (tray x, z, top)")
 print(f"[layout] W {W}; stacks { {s: (round(c[0], 3), round(c[1], 3), round(c[3], 3)) for s, c in stacks.items()} }; landing ({LANDING[0]:.3f}, {LANDING[1]:.3f})")
 
 # -- Preview only: the top blanks (StationArt's parts), a pulled pizza
@@ -332,7 +322,9 @@ print(f"[layout] W {W}; stacks { {s: (round(c[0], 3), round(c[1], 3), round(c[3]
 pv = Mesh("BlankPreview", rgb(214, 180, 130), rough=0.85)
 for size, _ in SIZES:
     tx, tz = tray_at(size)
-    PB.draw(pv, BOX[size], PB.root_at(tx, stacks[size][3], tz))
+    PB.draw(pv, PB.pizza(BOX[size]), PB.root_at(tx, stacks[size][3], tz))
+for name, (x_, tz_, top_) in side_stacks.items():
+    PB.draw(pv, PB.SIDES[name], PB.root_at(x_, top_, tz_))
 piz = Mesh("PizzaPreview", rgb(214, 160, 90), rough=0.7)
 chs = Mesh("CheesePreview", rgb(245, 205, 110), rough=0.6)
 cuts = Mesh("CutPreview", rgb(120, 80, 40), rough=0.8)
@@ -352,20 +344,25 @@ for size, d_, cut in (("Large", 2.4, False), ("Medium", 12 * INCH, True)):
 fold = Mesh("FoldPreview", rgb(214, 180, 130), rough=0.85)
 FOLD_AT = [(t_, -10.0 + 3.6 * k) for k, t_ in enumerate((0.2, 0.5, 0.8, 1.15, PB.TIME))]
 for t_, z_ in FOLD_AT:
-    PB.draw(fold, BOX["Large"], PB.root_at(16.0, PB.THICK, z_, -90), t=t_)
+    PB.draw(fold, PB.pizza(BOX["Large"]), PB.root_at(16.0, PB.THICK, z_, -90), t=t_)
     if t_ < 1.3:
         pizza_at(16.0, PB.THICK, z_, 2.4, True)
+# The two side boxes folding, in their own rows off past the oven end.
+for k, (t_, _z) in enumerate(FOLD_AT):
+    for name, zrow in (("SideLarge", 8.8), ("SideSmall", 11.6)):
+        PB.draw(fold, PB.SIDES[name], PB.root_at(8.0 + 2.5 * k, PB.THICK, zrow), t=t_)
 for m in (pv, piz, chs, cuts, fold):
     kit.preview(m)
 
 kit.finish(
     "cut_table",
-    [steel, dark, card, blanks, wire, rocker, rocker_grips, bottles, caps, shakers, trash],
+    [steel, dark, card, blanks, rocker, rocker_grips, bottles, caps, shakers, trash],
     [(m.name, (x_, y_ + (m.bounds()[0].y + m.bounds()[1].y) / 2, z_), yaw, 1) for m in (rocker, rocker_grips) for x_, y_, z_, yaw in [(*t, 90) for t in TROUGH_ROCKERS] + [(W / 2 + 6, 2.0 - R_HEIGHT / 2, -6.0, 0)]],
     [
         ("overview", (4.0, 12.0, -16.0), (-0.6, 2.6, 0.2), 32),
         ("fold", (36.0, 12.0, -2.8), (16.0, 0.3, -2.8), 62),
         ("foldclose", (19.5, 3.2, -9.5), (16.0, 0.2, -6.4), 44),
+        ("sidefold", (13.0, 7.5, 2.5), (13.0, 0.2, 10.2), 58),
         ("rocker", (W / 2 + 6, 2.15, -12.4), (W / 2 + 6, 2.05, -6.0), 36),
         ("rockerside", (W / 2 + 8.8, 3.0, -9.0), (W / 2 + 6, 2.0, -6.0), 40),
         ("top", (0.5, 11.0, -8.0), (0.0, 3.6, 0.3), 42),
