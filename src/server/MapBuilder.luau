@@ -370,20 +370,16 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	screenText(doughMonitor, Enum.NormalId.Right, "DOUGH\nS  M  L", Color3.fromRGB(120, 255, 140), Color3.fromRGB(12, 16, 22), Enum.Font.Code)
 	box("MonitorMount", -7.5, -7.3, 11.1, 1 + h, 18.4, 18.6, Color3.fromRGB(60, 60, 60), Enum.Material.Metal)
 
-	-- Three stacked conveyor ovens right behind the makers, conveying toward the
-	-- back (not a station: pizzas ride through on their own).
-	StationArt.Build("Oven", decor, at(8.55, 1, 10.1))
+	-- Three stacked conveyor ovens behind the makers, conveying toward the back
+	-- (not a station: pizzas ride through on their own), their backs to the
+	-- right wall with a small gap, too narrow to walk (the user, 2026-10-21:
+	-- the hood's edge 0.2 from the wall, the body's back 0.8).
+	StationArt.Build("Oven", decor, at(19.35, 1, 10.1))
 	-- The owner paints the ovens here, at their front (StoreService; only the owner sees it).
-	local paintSpot = part({ Name = "OvenPaintSpot", Size = Vector3.new(1, 1, 1), CFrame = at(4.85, 4, 10.1), Transparency = 1, CanCollide = false, CanQuery = false, Parent = decor })
+	local paintSpot = part({ Name = "OvenPaintSpot", Size = Vector3.new(1, 1, 1), CFrame = at(15.65, 4, 10.1), Transparency = 1, CanCollide = false, CanQuery = false, Parent = decor })
 	prompt(paintSpot, "Paint", "Oven", 0.5):SetAttribute("OwnerOnly", true)
 
-	-- Box storage along the right wall by the ovens, a window further back
-	for i = 0, 3 do
-		box("BoxShelf", HW - 3.2, HW - 0.5, 1.3 + i * 2.4, 1.45 + i * 2.4, 1.5, 12.5, steel, Enum.Material.DiamondPlate)
-		for j = 0, 3 do
-			box("FlatBoxes", HW - 3.0, HW - 0.7, 1.45 + i * 2.4, 2.5 + i * 2.4, 1.9 + j * 2.6, 3.9 + j * 2.6, Color3.fromRGB(205, 168, 118), Enum.Material.Cardboard, { CanCollide = false })
-		end
-	end
+	-- A window on the right wall past the cut table
 	box("Window", HW - 0.6, HW + 0.6, 4, 9, -9.3, -3.9, glass, nil, glassProps)
 
 	-- Dispatch zone behind the oven tender: a second heat rack and the bag cabinet
@@ -734,8 +730,9 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	station("Load", readyCF, Vector3.new(RR.width, 8, RR.depth), "Load Oven", "Ready Rack", nil, Vector3.new(RR.rackX, RR.height + 2.3, RR.rackZ - RR.rackDepth / 2))
 	-- Cut table behind the oven exits; the oven tender faces the carryout counter.
 	local CT = StationArt.Layout.CutTable
-	-- (The user's bigger table, 2026-10-21: its front and oven end where they were; the work spot too.)
-	station("CutTable", at(1.85, 1, -3.4) * FACE_RIGHT, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(3.1, CT.height, -1.55))
+	-- (The user's bigger table, 2026-10-21, moved toward the right wall with the
+	-- ovens the same day: the same place relative to their exits.)
+	station("CutTable", at(12.65, 1, -3.4) * FACE_RIGHT, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(3.1, CT.height, -1.55))
 	station("DeliveryRack", at(8.1, 1, -13.4) * FACE_FRONT, Vector3.new(6, 7, 2.2), "Heat Rack", "Heat Rack", nil, Vector3.new(0, 3.6, -1.1))
 	station("Fridge", at(17, 1, -18.2) * FACE_FRONT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler")
 

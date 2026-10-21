@@ -746,13 +746,15 @@ end
 -- the painted enclosure up to the ceiling), else parts. Either way: the belts
 -- (a wire Texture) and, with the meshes, the pulleys at their ends, tagged
 -- OvenBelt / OvenPulley so the client runs them at the lanes' speed
--- (client/OvenBelts); a dim lamp in each chamber; the slot markers and tags.
+-- (client/OvenBelts); a dim lamp in each chamber; the slot markers; the slot
+-- numbers over each lane's mouth at both ends (the user, 2026-10-21).
 -- Slots 1-2 are the top oven, 3-4 the middle, 5-6 the bottom; in each oven the
 -- -X lane comes first. Markers per slot: OvenIn_<n> / OvenOut_<n> (a pizza's
 -- center at the start and end of its lane) and OvenMouthIn_<n> /
 -- OvenMouthOut_<n> (where the lane enters and leaves the bake chamber).
 local GLASS = Color3.fromRGB(40, 40, 46)
 local BELT_TOP, PULLEY_R = 0.05, 0.12 -- over the deck height; as in tools/blender/ovens.py
+local HOUSING_END = 5.13 -- the conveyor housings' end faces (ZH1 in tools/blender/ovens.py)
 
 Builders.Oven = function(m, base)
 	local L = StationArt.Layout.Oven
@@ -822,9 +824,6 @@ Builders.Oven = function(m, base)
 			for _, sz in { -1, 1 } do
 				P(m, base, Vector3.new(0.24, 0.07, 0.07), at(fx - 0.12, winTop + 0.24, sz * (C / 2 - 1.7)), STEEL, Enum.Material.Metal, { collide = false })
 			end
-			-- Control box beside the exit
-			local control = P(m, base, Vector3.new(0.9, 1.1, 1.3), at(W / 2 + 0.45, y + 0.5, -C / 2 - 0.9), Color3.fromRGB(232, 232, 228), Enum.Material.SmoothPlastic, { name = "OvenControl", collide = true })
-			surfaceText(control, Enum.NormalId.Front, string.format("OVEN CONTROL\n510 F   %d:%02d", Config.Oven.BakeTime // 60, Config.Oven.BakeTime % 60), Color3.fromRGB(40, 40, 46))
 			for _, sx in { -1, 1 } do
 				P(m, base, Vector3.new(0.12, 0.25, B), at(sx * (W / 2 - 0.35), y + 0.05, 0), STEEL_DARK, Enum.Material.Metal, { collide = false })
 			end
@@ -834,6 +833,7 @@ Builders.Oven = function(m, base)
 		P(m, base, Vector3.new(W + 1.5, 1, C + 3), at(0, top + 0.9, 0), STEEL, Enum.Material.Metal, { name = "Hood" })
 		P(m, base, Vector3.new(2.2, 14 - top, 2.2), at(0, top + 1.4 + (14 - top) / 2, 0), STEEL, Enum.Material.Metal, { name = "Duct" })
 	end
+	local mouthFace = if mesh then HOUSING_END else C / 2 + 0.05 -- the face over the mouths: the housings' ends, or the chamber's bezels
 	for i, y in L.decks do
 		-- The belt: its wire a Texture top and bottom (clear between the wires), between the pulleys.
 		local belt = P(m, base, Vector3.new(W - 0.8, 0.03, B - 4 * PULLEY_R), at(0, y + BELT_TOP - 0.015, 0), BLACK, nil, { name = "Belt", transparency = 1, collide = false })
@@ -862,11 +862,11 @@ Builders.Oven = function(m, base)
 			mark("OvenMouthIn_", C / 2)
 			mark("OvenMouthOut_", -C / 2)
 			mark("OvenOut_", -B / 2 + 1.3)
-			-- Slot numbers under both belt ends (clear of the exit shelf), matching:
-			-- the exit's face the tender (-Z), the entrance's face the loader (+Z).
-			local outTag = P(m, base, Vector3.new(0.5, 0.22, 0.05), at(lx, y - 0.17, -B / 2 - 0.03), Color3.new(1, 1, 1), nil, { collide = false })
+			-- Slot numbers over the lane's mouth at both ends, matching: the exit's
+			-- face the tender (-Z), the entrance's face the loader (+Z).
+			local outTag = P(m, base, Vector3.new(0.6, 0.4, 0.05), at(lx, y + 0.92, -mouthFace - 0.025), Color3.new(1, 1, 1), nil, { collide = false })
 			surfaceText(outTag, Enum.NormalId.Front, tostring(slot), Config.Brand.Red)
-			local inTag = P(m, base, Vector3.new(0.5, 0.22, 0.05), at(lx, y - 0.17, B / 2 + 0.03), Color3.new(1, 1, 1), nil, { collide = false })
+			local inTag = P(m, base, Vector3.new(0.6, 0.4, 0.05), at(lx, y + 0.92, mouthFace + 0.025), Color3.new(1, 1, 1), nil, { collide = false })
 			surfaceText(inTag, Enum.NormalId.Back, tostring(slot), Config.Brand.Red)
 		end
 	end
