@@ -1,7 +1,7 @@
 """Box blanks, mirroring src/shared/PizzaBox.luau (keep the two in step): the
-die-cut panels of a pizza box or a side box, their hinges and folds, and the
-pose at any point of the fold. Roblox axes throughout (mathutils matrices);
-kit.rb maps to Blender when the boxes are drawn. A kind is (w, d, h, double).
+die-cut panels of a pizza box, their hinges and folds, and the pose at any
+point of the fold. Roblox axes throughout (mathutils matrices); kit.rb maps to
+Blender when the boxes are drawn. A kind is (w, d, h).
 """
 
 import math
@@ -12,15 +12,10 @@ from mathutils import Matrix, Vector
 from kit import rb
 
 WALL, THICK, TIME = 0.2, 0.025, 1.45
-INCH = 2.4 / 14
-SIDES = {  # PizzaBox.Sides: two sizes the side items share (wings and pasta, SuperCakes)
-    "SideLarge": (8 * INCH, 6 * INCH, 2 * INCH, False),
-    "SideSmall": (6 * INCH, 3 * INCH, 2 * INCH, False),
-}
 
 
 def pizza(bs):
-    return (bs, bs, WALL, True)
+    return (bs, bs, WALL)
 
 
 def _yaw(deg):
@@ -33,9 +28,9 @@ def _at(x, y, z):
 
 def panels(kind):
     """[(name, parent index or None, hinge matrix, width, length, fold, from, to)]"""
-    w, d, h, double = kind
+    w, d, h = kind
     T = THICK
-    inner = 2 * T if double else T
+    inner = 2 * T
     out = [("Base", None, Matrix.Identity(4), w, d, 0, 0, 0)]
 
     def add(*p):
@@ -44,15 +39,13 @@ def panels(kind):
 
     for s in (1, -1):
         side = add("Side", 0, _at(s * w / 2, 0, 0) @ _yaw(s * 90), d, h, 90, 0, 0.3)
-        if double:
-            add("SideFlap", side, _at(0, 0, h), d - 0.04, h - 0.01, 180, 0.55, 0.85)
+        add("SideFlap", side, _at(0, 0, h), d - 0.04, h - 0.01, 180, 0.55, 0.85)
     front = add("Front", 0, _at(0, 0, -d / 2) @ _yaw(180), w - 2 * inner, h, 90, 0.25, 0.55)
     back = add("Back", 0, _at(0, 0, d / 2), w - 2 * inner, h, 90, 0.25, 0.55)
     for wall in (front, back):
         for s in (1, -1):
             add("Tab", wall, _at(s * (w / 2 - inner), 0, h / 2) @ _yaw(s * 90), h - 0.04, min(h - 0.02, d / 2 - 0.03), 90, 0.35, 0.55)
-    if double:
-        add("FrontFlap", front, _at(0, 0, h), w - 0.12, h - 0.01, 180, 0.6, 0.9)
+    add("FrontFlap", front, _at(0, 0, h), w - 0.12, h - 0.01, 180, 0.6, 0.9)
     lid_len = d - 2 * T
     lid = add("Lid", back, _at(0, 0, h), w + 2 * T, lid_len, 90, 0.95, 1.45)
     for s in (1, -1):
@@ -63,15 +56,13 @@ def panels(kind):
 
 def blank_size(kind):
     """(width, depth) of the flat blank."""
-    w, d, h, double = kind
-    if double:
-        return w + 4 * h - 0.02, 2 * d + 4 * h - 2 * THICK - 0.04
-    return w + 2 * h, 2 * d + 3 * h - 2 * THICK - 0.03
+    w, d, h = kind
+    return w + 4 * h - 0.02, 2 * d + 4 * h - 2 * THICK - 0.04
 
 
 def tray_from_front(kind):
-    w, d, h, double = kind
-    return d / 2 + (2 * h - 0.01 if double else h)
+    w, d, h = kind
+    return d / 2 + 2 * h - 0.01
 
 
 def _ease(x):

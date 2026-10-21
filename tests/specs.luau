@@ -786,14 +786,11 @@ spec("a server that lost the save never overwrites it", function()
 end)
 
 -------------------------------------------------------------------- pizza box
-spec("box blanks (pizza and side boxes) lie flat with no panels overlapping, and shut with the lid on the walls", function()
+spec("pizza box blanks lie flat with no panels overlapping, and shut with the lid on the walls", function()
 	local T = PizzaBox.Thick
 	local kinds = {}
 	for size, bs in Config.BoxSize do
 		kinds[size] = PizzaBox.pizza(bs)
-	end
-	for name, k in PizzaBox.Sides do
-		kinds[name] = k
 	end
 	for name, k in kinds do
 		local panels = PizzaBox.panels(k)
