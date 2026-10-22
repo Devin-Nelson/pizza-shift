@@ -724,6 +724,12 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- finished carryout orders wait there for their customers (ShopService).
 	StationArt.Build("CarryoutRack", decor, cutCF * CFrame.new(-StationArt.Layout.CarryoutRack.nextTo, 0, 0) * CFrame.Angles(0, -math.pi / 2, 0))
 	station("CutTable", cutCF, Vector3.new(CT.width, 4, CT.depth), "Cut & Box", "Cut Table", nil, Vector3.new(3.1, CT.height, -1.55))
+	-- Dispatch (the user, 2026-10-21, spot C on their plan): along the right wall
+	-- past the carryout rack, drivers facing it; the delivery ready rack beside it
+	-- toward the walk-in, each waiting order's hot bag on it (ShopService).
+	local DP, HR = StationArt.Layout.Dispatch, StationArt.Layout.CarryoutRack
+	station("DeliveryRack", at(HW - 0.6 - DP.depth / 2, 1, -17.7) * FACE_LEFT, Vector3.new(DP.length, 7, DP.depth), "Dispatch", "Dispatch", nil, Vector3.new(2.9, 4.4, 0))
+	StationArt.Build("DeliveryReadyRack", decor, at(HW - 0.6 - HR.depth / 2, 1, -17.7 - DP.length / 2 - 0.15 - HR.length / 2) * FACE_LEFT)
 	station("Fridge", at(WI_X + 2, 1, DOOR_Z) * FACE_LEFT, Vector3.new(6, 10, 4), "Check Stock", "Walk-in Cooler") -- in the walk-in's door notch
 
 	-- === Lot out back ===

@@ -293,6 +293,10 @@ StationArt.Layout = {
 	-- a tier at `slotsX`; `nextTo`: its centre from the cut table's, along the
 	-- cut table's length. Its -Z faces the cut table, +Z the carryout side.
 	CarryoutRack = { length = 6.3, depth = 3.0, tiers = { 3.2, 4.55, 5.9 }, slotsX = { -1.55, 1.55 }, nextTo = 7.95 },
+	-- The dispatch station (tools/blender/dispatch.py): the table, its overhead
+	-- shelf (`top`), the monitor's face (`screen`: size, centre height, its
+	-- distance back from the table's centre). The driver at -Z.
+	Dispatch = { length = 5.0, depth = 2.4, height = 3.2, top = 6.21, screen = { w = 2.0, h = 1.25, y = 4.65, z = 0.55 } },
 	-- Cut table behind the oven exits (the ovens are off its +X end), the oven
 	-- tender on its long side facing the carryout counter.
 	CutTable = {
@@ -942,12 +946,13 @@ Builders.CutTable = function(m, base)
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(lt.X, lt.Y + 0.08, lt.Z), BLACK, nil, { name = "CutLanding", transparency = 1, collide = false })
 end
 
--- The carryout rack (tools/blender/carryout_rack.py): a stainless table with
--- heated shelves over it, across the cut table's far end. Blender meshes when
--- they load, else plain parts. Either way the CarryoutSlot_<n> markers, where
--- ShopService stacks a waiting order's boxes (tier by tier, -X first). Nothing
--- in it takes clicks: ShopService puts its own hitbox over it.
-Builders.CarryoutRack = function(m, base)
+-- The heated rack (tools/blender/carryout_rack.py): a stainless table with
+-- heated shelves over it; the carryout rack across the cut table's far end and
+-- the delivery ready rack by dispatch. Blender meshes when they load, else
+-- plain parts. Either way the <slotPrefix><n> markers, where ShopService puts
+-- a waiting order (tier by tier, -X first). Nothing in it takes clicks:
+-- ShopService puts its own hitbox over the carryout one.
+local function heatedRack(m: Instance, base: CFrame, slotPrefix: string)
 	local L = StationArt.Layout.CarryoutRack
 	local top = L.tiers[#L.tiers] + 1.35 -- the heated canopy
 	local mesh = stationMeshes("CarryoutRack")
@@ -971,7 +976,7 @@ Builders.CarryoutRack = function(m, base)
 	for _, y in L.tiers do
 		for _, x in L.slotsX do
 			n += 1
-			P(m, base, Vector3.new(0.1, 0.1, 0.1), at(x, y, 0), BLACK, nil, { name = "CarryoutSlot_" .. n, transparency = 1, collide = false })
+			P(m, base, Vector3.new(0.1, 0.1, 0.1), at(x, y, 0), BLACK, nil, { name = slotPrefix .. n, transparency = 1, collide = false })
 		end
 	end
 	for _, d in m:GetDescendants() do
@@ -981,52 +986,61 @@ Builders.CarryoutRack = function(m, base)
 	end
 end
 
--- Chrome wire shelving stacked with pizza boxes and insulated delivery bags.
+Builders.CarryoutRack = function(m, base)
+	heatedRack(m, base, "CarryoutSlot_")
+end
+
+-- The delivery ready rack beside dispatch: each delivery order waits on it in
+-- a hot bag labelled with its order number (ShopService; the user, 2026-10-21).
+Builders.DeliveryReadyRack = function(m, base)
+	heatedRack(m, base, "DeliverySlot_")
+end
+
+-- The dispatch station (tools/blender/dispatch.py; the user, 2026-10-21; the
+-- "DeliveryRack" station, where drivers check out): a small stainless table
+-- with an overhead shelf and the dispatch monitor dead in the centre of the
+-- opening, at chest height (a touch screen). Blender meshes when they load,
+-- else parts. Either way the screen's face, DispatchScreen, which ShopService
+-- writes the deliveries waiting on.
 Builders.DeliveryRack = function(m, base)
-	local w, d, h = 6, 2.2, 7
-	for _, sx in { -1, 1 } do
-		for _, sz in { -1, 1 } do
-			P(m, base, Vector3.new(h, 0.18, 0.18), up(sx * (w / 2 - 0.1), h / 2, sz * (d / 2 - 0.1)), Color3.fromRGB(215, 218, 222), Enum.Material.Metal, { shape = Enum.PartType.Cylinder, reflect = 0.2, collide = true })
-		end
-	end
-	local shelfY = { 0.5, 2.4, 4.3, 6.2 }
-	for _, y in shelfY do
-		P(m, base, Vector3.new(w, 0.1, d), at(0, y, 0), Color3.fromRGB(205, 208, 212), Enum.Material.DiamondPlate, { collide = true })
-	end
-	local boxColor = Color3.fromRGB(205, 168, 118)
-	local function boxStack(x: number, y: number, n: number)
-		for i = 0, n - 1 do
-			local b = P(m, base, Vector3.new(1.9, 0.32, 1.9), at(x, y + 0.16 + i * 0.33, 0), boxColor, Enum.Material.Cardboard, { collide = false })
-			if i == n - 1 then
-				surfaceText(b, Enum.NormalId.Top, (string.upper(Config.GameName):gsub(" ", "\n")), Color3.fromRGB(200, 40, 30))
+	local L = StationArt.Layout.Dispatch
+	local sc = L.screen
+	local mesh = stationMeshes("Dispatch")
+	if mesh then
+		M(m, base, mesh.Steel, CFrame.new(mesh.Steel.at), STAINLESS, Enum.Material.Metal, { collide = true, name = "Table" })
+		M(m, base, mesh.Wire, CFrame.new(mesh.Wire.at), CHROME, Enum.Material.Metal)
+		M(m, base, mesh.Dark, CFrame.new(mesh.Dark.at), BLACK, Enum.Material.SmoothPlastic)
+	else
+		steelTable(m, base, L.length, L.depth, L.height)
+		P(m, base, Vector3.new(L.length, 0.06, L.depth), at(0, L.top + 0.03, 0), STAINLESS, Enum.Material.Metal)
+		for _, sx in { -1, 1 } do
+			for _, sz in { -1, 1 } do
+				P(m, base, Vector3.new(0.1, L.top - L.height, 0.1), at(sx * (L.length / 2 - 0.07), (L.height + L.top) / 2, sz * (L.depth / 2 - 0.07)), STAINLESS, Enum.Material.Metal)
 			end
 		end
+		P(m, base, Vector3.new(sc.w + 0.12, sc.h + 0.12, 0.1), at(0, sc.y, sc.z + 0.05), BLACK)
 	end
-	boxStack(-1.5, 0.55, 5)
-	boxStack(1.5, 0.55, 4)
-	-- Insulated delivery bags
-	for i, x in { -1.5, 1.5 } do
-		local bag = P(m, base, Vector3.new(2.6, 1.0, 2.0), at(x, 2.95, 0), Color3.fromRGB(190, 30, 35), Enum.Material.Fabric, { name = "Bag" .. i })
-		P(m, base, Vector3.new(2.62, 0.08, 2.02), at(x, 3.3, 0), Color3.fromRGB(30, 30, 30), Enum.Material.Fabric, { collide = false }) -- zipper
-		P(m, base, Vector3.new(1.0, 0.1, 0.25), at(x, 3.5, 0), Color3.fromRGB(30, 30, 30), Enum.Material.Fabric, { collide = false }) -- handle
-		surfaceText(bag, Enum.NormalId.Front, "HOT", Color3.new(1, 1, 1))
-	end
-	boxStack(-1.5, 4.35, 2)
-	boxStack(1.5, 4.35, 3)
-	boxStack(0, 6.25, 6)
-	-- Heat lamp over the top
-	P(m, base, Vector3.new(w, 0.3, 1.2), at(0, h + 0.2, -0.3), STEEL, Enum.Material.Metal)
-	local lamp = P(m, base, Vector3.new(w - 0.4, 0.05, 0.5), at(0, h + 0.03, -0.3), Color3.fromRGB(255, 130, 60), Enum.Material.Neon, { collide = false })
-	local light = Instance.new("SpotLight")
-	light.Face = Enum.NormalId.Bottom
-	light.Color = Color3.fromRGB(255, 160, 90)
-	light.Range = 10
-	light.Brightness = 1.5
-	light.Parent = lamp
-	-- Routing screen above the rack
-	P(m, base, Vector3.new(0.15, 1.0, 0.15), at(0, h + 0.85, 0.3), STEEL_DARK, Enum.Material.Metal)
-	local screen = P(m, base, Vector3.new(2.6, 1.4, 0.12), at(0, h + 1.9, 0.3), BLACK, Enum.Material.Glass, { name = "RoutingScreen" })
-	surfaceText(screen, Enum.NormalId.Front, "ROUTING\nGrab a bag, hit the road", Color3.fromRGB(120, 230, 255), Color3.fromRGB(15, 22, 32), Enum.Font.Code)
+	local screen = P(m, base, Vector3.new(sc.w, sc.h, 0.02), at(0, sc.y, sc.z - 0.01), Color3.fromRGB(12, 18, 28), Enum.Material.SmoothPlastic, { name = "DispatchScreen", collide = false })
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Front
+	gui.CanvasSize = Vector2.new(400, 250)
+	gui.LightInfluence = 0
+	local text = Instance.new("TextLabel")
+	text.Name = "Text"
+	text.Size = UDim2.fromScale(1, 1)
+	text.BackgroundTransparency = 1
+	text.Font = Enum.Font.Code
+	text.TextSize = 24
+	text.TextColor3 = Color3.fromRGB(120, 230, 255)
+	text.TextXAlignment = Enum.TextXAlignment.Left
+	text.TextYAlignment = Enum.TextYAlignment.Top
+	text.Text = "DISPATCH"
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 14)
+	pad.PaddingTop = UDim.new(0, 10)
+	pad.Parent = text
+	text.Parent = gui
+	gui.Parent = screen
 end
 
 -- Glass pass-through carryout warmer on the counter. Front faces the customers.

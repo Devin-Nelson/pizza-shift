@@ -54,7 +54,7 @@ Config.Stations = {
 	{ id = "Toppings", label = "Toppings", stage = "Cheesed", stay = true, queue = "make" },
 	{ id = "Load", label = "Load Oven", stage = "Ready", stay = true, pick = true, queue = "make" },
 	{ id = "CutTable", label = "Cut & Box", stage = "Exit", stay = true, pick = true, queue = "oven" },
-	{ id = "DeliveryRack", label = "Heat Rack", stay = true, pick = true, queue = "delivery" },
+	{ id = "DeliveryRack", label = "Dispatch", stay = true, pick = true, queue = "delivery" }, -- the id predates dispatch (staff stats are saved under it)
 }
 
 function Config.StationInfo(id: string): any?
@@ -118,7 +118,7 @@ Config.StationView = {
 	-- the right for the user's bigger table, 2026-10-21, so all three show).
 	CutTable = { height = 4.6, back = 3.8, side = 1.6, focusBack = -0.4, focusSide = 1.6, fov = 72, stand = 2.6, idle = { height = 2.4, back = 2.2, side = 0, focusBack = 5.2, focusUp = 0.8, focusSide = -4.9, fov = 72 } },
 	Register = { height = 1.6, back = 2.2, side = 1.2, focusBack = -4, focusUp = 0.4, fov = 70, stand = 2.8 }, -- over the POS, out to the customers
-	DeliveryRack = { height = 1.2, back = 4.5, focusUp = 1.0, fov = 70, stand = 3.0 }, -- facing the heat rack shelves
+	DeliveryRack = { height = 1.0, back = 7.5, focusUp = 0.2, fov = 70, stand = 3.0 }, -- dispatch: the screen and the delivery rack's bags
 }
 
 -- Order matching when a finished pizza is loaded into the oven (a per-player

@@ -90,6 +90,17 @@ local MeshBank: { [string]: Station } = {
 		},
 		images = {},
 	},
+	-- tools/blender/dispatch.py (2026-10-21): the dispatch station after the user's photo
+	-- (a small table, an overhead shelf, the monitor dead centre at chest height).
+	Dispatch = {
+		model = 124800745624701,
+		meshes = {
+			Steel = { id = 94823809055811, size = Vector3.new(5, 6.27, 2.4), at = Vector3.new(0, 3.135, 0) },
+			Wire = { id = 126365888071456, size = Vector3.new(3.1, 2.2476, 0.0547), at = Vector3.new(0, 4.65, 1.0924) },
+			Dark = { id = 78263515920142, size = Vector3.new(2.12, 1.37, 0.56), at = Vector3.new(0, 4.65, 0.83) },
+		},
+		images = {},
+	},
 	-- tools/blender/cut_table.py (2026-10-21): the cut table from the user's photos (the
 	-- stacks' blanks die-cut as src/shared/PizzaBox.luau);
 	-- Rocker and RockerGrips are instanced (built standing, the edge's lowest point at the origin).

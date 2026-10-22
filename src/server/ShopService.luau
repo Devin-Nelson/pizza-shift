@@ -165,6 +165,7 @@ export type Shop = {
 	calledOut: { [number]: boolean }, -- member ids who called out of this shift
 	carryout: { [number]: Order }, -- carryout rack slot -> the boxed order waiting there
 	carryQueue: { Order }, -- boxed carryout orders waiting for a free slot
+	bags: { [Order]: BasePart }, -- delivery orders' hot bags on the delivery ready rack
 	alive: boolean,
 }
 
@@ -498,10 +499,91 @@ local function trackerStep(o: Order): number
 	return 4
 end
 
+-- Delivery ready rack (the user, 2026-10-21): each boxed delivery order waits
+-- there in a hot bag labelled with its order number until a driver takes it
+-- at dispatch; the dispatch screen lists them. (Placeholder bags: the user will
+-- have the bags modelled later.)
+local function hotBag(order: Order): Part
+	local bag = Instance.new("Part")
+	bag.Name = "HotBag" .. order.id
+	bag.Size = Vector3.new(2.8, 0.45 + 0.25 * math.min(#order.tickets, 3), 2.8)
+	bag.Color = Config.Brand.Red
+	bag.Material = Enum.Material.Fabric
+	bag.Anchored = true
+	bag.CanCollide = false
+	bag.CanQuery = false
+	local gui = Instance.new("SurfaceGui") -- its number on the front, toward the driver
+	gui.Face = Enum.NormalId.Front
+	gui.CanvasSize = Vector2.new(280, math.floor(bag.Size.Y * 100))
+	gui.LightInfluence = 0
+	local label = Instance.new("TextLabel")
+	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.Position = UDim2.fromScale(0.5, 0.5)
+	label.Size = UDim2.new(0, 120, 1, -12)
+	label.BackgroundColor3 = Color3.new(1, 1, 1)
+	label.BorderSizePixel = 0
+	label.FontFace = Style.Font.Heading
+	label.TextScaled = true
+	label.TextColor3 = Config.Brand.Charcoal
+	label.Text = "#" .. order.id
+	label.Parent = gui
+	gui.Parent = bag
+	return bag
+end
+
+-- Puts a bag on the delivery rack for every boxed delivery order waiting on a
+-- driver (oldest first; past the rack's slots they wait unseen), takes the
+-- rest off, and lists them on the dispatch screen.
+local function layoutBags(shop: Shop)
+	local waiting = {}
+	for _, o in shop.orders do
+		if o.delivery and o.stage == "Rack" then
+			table.insert(waiting, o)
+		end
+	end
+	table.sort(waiting, function(a, b)
+		return (a.readyAt or 0) < (b.readyAt or 0)
+	end)
+	local shown: { [Order]: boolean } = {}
+	for i, o in waiting do
+		local slot = marker(shop, "DeliverySlot_" .. i)
+		if not slot then
+			break
+		end
+		local bag = shop.bags[o]
+		if not bag then
+			bag = hotBag(o)
+			shop.bags[o] = bag
+			bag.Parent = shop.model
+		end
+		bag.CFrame = slot.CFrame * CFrame.new(0, bag.Size.Y / 2, 0)
+		shown[o] = true
+	end
+	for o, bag in shop.bags do
+		if not shown[o] then
+			bag:Destroy()
+			shop.bags[o] = nil
+		end
+	end
+	local screen = marker(shop, "DispatchScreen")
+	local text = screen and screen:FindFirstChild("Text", true) :: TextLabel?
+	if text then
+		local lines = { "DISPATCH" }
+		for _, o in waiting do
+			table.insert(lines, string.format("#%-4d House %d  (%d)", o.id, o.house or 0, #o.tickets))
+		end
+		if #waiting == 0 then
+			table.insert(lines, "No deliveries waiting")
+		end
+		text.Text = table.concat(lines, "\n")
+	end
+end
+
 local function updateBoards(shop: Shop)
 	if not shop.alive then
 		return
 	end
+	layoutBags(shop)
 	local now = os.clock()
 
 	-- Kitchen display: the dough racks and ready rack, then a ticket per order
@@ -3645,6 +3727,7 @@ function ShopService.AddShop(model: Model, name: string, owner: Player?, volume:
 		calledOut = {},
 		carryout = {},
 		carryQueue = {},
+		bags = {},
 		alive = true,
 	}
 	for _, ing in Config.Ingredients do

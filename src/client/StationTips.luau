@@ -59,7 +59,7 @@ local TIPS: { [string]: { string } } = {
 		"Rock the blade through even cuts, then close the lid.",
 	},
 	DeliveryRack = {
-		"Pick an order from the tickets.",
+		"Pick an order from the tickets: it waits on the delivery rack in a bag with its number.",
 		"Grab the bag, drive to the house and walk it to the door. Faster, bigger tip.",
 	},
 }
