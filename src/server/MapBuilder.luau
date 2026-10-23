@@ -682,16 +682,18 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	part({ Name = "LotSignPost", Size = Vector3.new(0.3, 4.4, 0.3), CFrame = at(0, 2.2, -81.8), Color = Color3.fromRGB(90, 90, 95), Material = Enum.Material.Metal, Parent = decor })
 
 	-- Customer path: in at the front-left door, into the line for the ordering
-	-- screen (the register: Queue1 in front of it, the line running back toward
-	-- the door), then into the waiting line beside it along the counter (Wait1,
-	-- the line running toward the back), out the same door (the user,
-	-- 2026-10-23). ShopService puts the k-th in a line k - 1 steps of
-	-- Queue2 - Queue1 (Wait2 - Wait1) from the first.
+	-- screen (the register), then into the waiting line beside it, out the same
+	-- door (the user, 2026-10-23). Each line runs straight back from the
+	-- counter (<line>1 at the counter, <line>2 the corner), then turns toward
+	-- the front door (<line>3); the waiting line turns further out, so the two
+	-- run side by side without crossing (ShopService.lineSpot).
 	spot(spots, "CustomerSpawn", at(-16, 3, 38))
-	spot(spots, "Queue1", at(-6.2 + S - 4.2, 3, 7.4))
-	spot(spots, "Queue2", at(-6.2 + S - 4.2, 3, 10.2))
-	spot(spots, "Wait1", at(-6.2 + S - 5.4, 3, 4.0))
-	spot(spots, "Wait2", at(-6.2 + S - 5.4, 3, 1.5))
+	spot(spots, "Queue1", at(-5.7, 3, 7.4))
+	spot(spots, "Queue2", at(-10.9, 3, 7.4))
+	spot(spots, "Queue3", at(-10.9, 3, 20))
+	spot(spots, "Wait1", at(-5.9, 3, 3.0))
+	spot(spots, "Wait2", at(-13.7, 3, 3.0))
+	spot(spots, "Wait3", at(-13.7, 3, 20))
 	spot(spots, "Exit", at(-21, 3, 47))
 
 	model.PrimaryPart = (decor:FindFirstChild("Floor") :: Part)

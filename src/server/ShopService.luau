@@ -885,13 +885,22 @@ local function customerName(shop: Shop): string
 end
 
 -- Two orderly lines in the side lobby (the user, 2026-10-23): customers
--- who haven't ordered queue up to the ordering screen at the counter (Queue1,
--- then back along Queue2's direction), and those waiting for their order
--- stand in a line beside it along the counter (Wait1, Wait2, ...), in the
--- order they came in, until someone hands them their boxes.
+-- who haven't ordered queue up to the ordering screen at the counter, and
+-- those waiting for their order stand in a second line beside it, in the
+-- order they came in, until someone hands them their boxes. Each line runs
+-- straight back from the counter, then turns toward the front door (the
+-- user: not along the counter): the k-th person stands LINE_STEP * (k - 1)
+-- along the path through its spots (<name>1, <name>2, <name>3: the counter,
+-- the corner, toward the door), carrying on past the last one.
+local LINE_STEP = 2.6
 local function lineSpot(shop: Shop, name: string, k: number): Vector3
-	local first = spot(shop, name .. "1")
-	return first + (spot(shop, name .. "2") - first) * (k - 1)
+	local a, b, c = spot(shop, name .. "1"), spot(shop, name .. "2"), spot(shop, name .. "3")
+	local along = LINE_STEP * (k - 1)
+	local first = (b - a).Magnitude
+	if along <= first then
+		return a + (b - a).Unit * along
+	end
+	return b + (c - b).Unit * (along - first)
 end
 
 local function layoutCustomers(shop: Shop)
