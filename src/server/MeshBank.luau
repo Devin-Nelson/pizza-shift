@@ -90,6 +90,17 @@ local MeshBank: { [string]: Station } = {
 		},
 		images = {},
 	},
+	-- tools/blender/front_counter.py --export (2026-10-23): the user's design C, wood
+	-- slats and steel; the customers at -Z; Logo is the bold box lid art on a panel.
+	FrontCounter = {
+		model = 107106662175026,
+		meshes = {
+			Wood = { id = 94453167421691, size = Vector3.new(13.22, 3.85, 0.08), at = Vector3.new(0, 2.345, -1.79) },
+			Back = { id = 127849161303408, size = Vector3.new(13.3, 3.9, 3.61), at = Vector3.new(0, 2.35, 0.105) },
+			Steel = { id = 97456352771836, size = Vector3.new(13.7, 4.4, 4.0), at = Vector3.new(0, 2.2, 0) },
+		},
+		images = { Logo = 100879538652843 }, -- lid_bold.png
+	},
 	-- tools/blender/dispatch.py (2026-10-21): the dispatch station after the user's photo
 	-- (a small table, an overhead shelf, the monitor dead centre at chest height).
 	Dispatch = {

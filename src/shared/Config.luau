@@ -321,6 +321,10 @@ function Config.MoodAt(share: number): any
 	end
 	return mood
 end
+-- The pizza box print (the user's pick, 2026-10-23: "classic white";
+-- tools/blender/box_art.py): white board, the lid art and the side band as
+-- Image assets (never Decal ids).
+Config.BoxPrint = { Board = Color3.fromRGB(238, 235, 226), Lid = 80589939878510, Band = 139609335854778 } -- band_classic_any.png (no size on it)
 -- Customers' first names; each gets a last initial ("John P.").
 Config.CustomerNames = {
 	"John", "Maria", "David", "Aisha", "Chris", "Elena", "Marcus", "Grace", "Tyler", "Sofia",

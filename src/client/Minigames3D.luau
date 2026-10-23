@@ -1007,21 +1007,14 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		local panels = PizzaBox.panels(PizzaBox.pizza(Config.BoxSize[chosenBox] or (d + 0.15)))
 		local parts: { BasePart } = {}
 		for i, panel in panels do
-			parts[i] = localPart(ctx.folder, "Box" .. panel.name, PizzaBox.size(panel), Color3.fromRGB(205, 168, 118), Enum.Material.Cardboard)
+			parts[i] = localPart(ctx.folder, "Box" .. panel.name, PizzaBox.size(panel), Config.BoxPrint.Board, Enum.Material.SmoothPlastic)
 			if panel.name == "Lid" then
-				-- The printed outside: the lid's underside while open, its top once shut.
+				-- The printed outside: the lid's underside while open, its top once
+				-- shut, reading from the front (turned 90: checked in Studio).
 				local printed = Instance.new("SurfaceGui")
 				printed.Face = Enum.NormalId.Bottom
-				printed.CanvasSize = Vector2.new(200, 200)
-				local brand = Instance.new("TextLabel")
-				brand.Size = UDim2.fromScale(1, 1)
-				brand.BackgroundColor3 = Color3.fromRGB(205, 168, 118)
-				brand.BorderSizePixel = 0
-				brand.FontFace = F.Heading
-				brand.TextScaled = true
-				brand.TextColor3 = Config.Brand.Red
-				brand.Text = (string.upper(Config.GameName):gsub(" ", "\n"))
-				brand.Parent = printed
+				printed.CanvasSize = Vector2.new(256, 256)
+				Ui.new("ImageLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Rotation = 90, Image = "rbxassetid://" .. Config.BoxPrint.Lid, Parent = printed })
 				printed.Parent = parts[i]
 			end
 		end

@@ -896,7 +896,7 @@ end
 -- each stack (Blank_<Size>, a Model of PizzaBox panels, each with BoxSize: the
 -- cut minigame cuts the pizza on it, then folds it into the box), the size
 -- tags, and CutLanding, where a pulled pizza waits while someone works it.
-local CARDBOARD = Color3.fromRGB(205, 168, 118)
+local CARDBOARD = Config.BoxPrint.Board -- white board (the user's pick of box print)
 
 Builders.CutTable = function(m, base)
 	local L = StationArt.Layout.CutTable
@@ -1004,6 +1004,32 @@ end
 -- opening, at chest height (a touch screen). Blender meshes when they load,
 -- else parts. Either way the screen's face, DispatchScreen, which ShopService
 -- writes the deliveries waiting on.
+-- The front counter (the user's pick of three, 2026-10-23: design C,
+-- tools/blender/front_counter.py): warm wood slats on a stainless kick, a
+-- stainless top and end caps, the brand panel in the middle of the front.
+-- 13.5 long, 3.8 deep, its top at 4.4; the customers at -Z. The POS on it
+-- is the Register's art. Parts when the meshes don't load.
+StationArt.Layout.FrontCounter = { length = 13.5, depth = 3.8, top = 4.4, logo = Vector3.new(0, 2.35, -1.885), logoSize = 2.5 }
+Builders.FrontCounter = function(m, base)
+	local L = StationArt.Layout.FrontCounter
+	local mesh = stationMeshes("FrontCounter")
+	if mesh then
+		M(m, base, mesh.Steel, CFrame.new(mesh.Steel.at), STAINLESS, Enum.Material.Metal, { collide = true, name = "Counter" })
+		M(m, base, mesh.Wood, CFrame.new(mesh.Wood.at), Color3.fromRGB(150, 104, 66), Enum.Material.Wood)
+		M(m, base, mesh.Back, CFrame.new(mesh.Back.at), Color3.fromRGB(40, 32, 26), Enum.Material.SmoothPlastic)
+	else
+		P(m, base, Vector3.new(L.length, L.top - 0.1, L.depth - 0.2), at(0, (L.top - 0.1) / 2, 0.1), Color3.fromRGB(150, 104, 66), Enum.Material.WoodPlanks, { collide = true, name = "Counter" })
+		P(m, base, Vector3.new(L.length + 0.2, 0.1, L.depth + 0.2), at(0, L.top - 0.05, 0), STAINLESS, Enum.Material.Metal)
+		P(m, base, Vector3.new(L.length, 0.4, L.depth - 0.3), at(0, 0.2, 0.05), STAINLESS, Enum.Material.Metal)
+	end
+	P(m, base, Vector3.new(L.logoSize + 0.2, L.logoSize + 0.2, 0.04), at(L.logo.X, L.logo.Y, L.logo.Z + 0.03), STAINLESS, Enum.Material.Metal, { collide = false })
+	local panel = P(m, base, Vector3.new(L.logoSize, L.logoSize, 0.01), at(L.logo.X, L.logo.Y, L.logo.Z), Config.Brand.Red, nil, { collide = false, name = "Logo" })
+	local decal = Instance.new("Decal")
+	decal.Face = Enum.NormalId.Front
+	decal.Texture = "rbxassetid://" .. MeshBank.FrontCounter.images.Logo
+	decal.Parent = panel
+end
+
 Builders.DeliveryRack = function(m, base)
 	local L = StationArt.Layout.Dispatch
 	local sc = L.screen

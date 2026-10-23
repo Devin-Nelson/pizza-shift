@@ -222,11 +222,8 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- a second POS, menu boards hanging above (no carryout warmer: orders wait
 	-- on the carryout rack by the oven, the user, 2026-10-23). Its face is in
 	-- line with the dough show's low wall beside the slap table (the user,
-	-- 2026-10-21: "even with the slap table"). Code-built until the user picks
-	-- a design for the new counter.
-	box("Counter", -8.6 + S, -4.8 + S, 1, 5, -3.6, 9.9, BRAND.Charcoal)
-	box("CounterFace", -8.65 + S, -8.6 + S, 2.8, 4, -3.6, 9.9, BRAND.Red)
-	box("CounterTop", -8.8 + S, -4.6 + S, 5, 5.4, -3.8, 9.8, Color3.fromRGB(235, 235, 232), Enum.Material.Marble)
+	-- 2026-10-21: "even with the slap table").
+	StationArt.Build("FrontCounter", decor, at(-6.7 + S, 1, 3.15) * FACE_LEFT) -- the user's design C (x -3.9..-0.1, z -3.6..9.9, top 5.4)
 	StationArt.Build("Register", decor, at(-6.2 + S, 5.4, 3.0) * FACE_RIGHT)
 	local menuItems = {
 		{ "PIZZAS", "Build your own:\nsize + up to 3\ntoppings" },

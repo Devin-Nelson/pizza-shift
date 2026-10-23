@@ -963,24 +963,32 @@ local function makeBoxPart(size: string): Part
 	local p = Instance.new("Part")
 	p.Name = "PizzaBox"
 	p.Size = Vector3.new(bs, bs, 0.28) -- 0.3 apart in a stack: a seam shows between boxes
-	p.Color = Color3.fromRGB(205, 168, 118)
-	p.Material = Enum.Material.Cardboard
+	p.Color = Config.BoxPrint.Board
+	p.Material = Enum.Material.SmoothPlastic
 	p.CanCollide = false
 	p.CanQuery = false
 	p.Massless = true
 	p.Anchored = true
-	local gui = Instance.new("SurfaceGui")
-	gui.Face = Enum.NormalId.Front
-	gui.CanvasSize = Vector2.new(110, 110)
-	local tl = Instance.new("TextLabel")
-	tl.Size = UDim2.fromScale(1, 1)
-	tl.BackgroundTransparency = 1
-	tl.FontFace = Style.Font.Heading
-	tl.TextScaled = true
-	tl.TextColor3 = Config.Brand.Red
-	tl.Text = (string.upper(Config.GameName):gsub(" ", "\n"))
-	tl.Parent = gui
-	gui.Parent = p
+	-- The print (the user's pick: classic white): the lid art on the lid, the
+	-- red band along both side walls (turned to run along them).
+	local lid = Instance.new("Decal")
+	lid.Face = Enum.NormalId.Front
+	lid.Texture = "rbxassetid://" .. Config.BoxPrint.Lid
+	lid.Parent = p
+	for _, face in { Enum.NormalId.Left, Enum.NormalId.Right } do
+		local gui = Instance.new("SurfaceGui")
+		gui.Face = face
+		gui.CanvasSize = Vector2.new(28, 255)
+		local band = Instance.new("ImageLabel")
+		band.AnchorPoint = Vector2.new(0.5, 0.5)
+		band.Position = UDim2.fromScale(0.5, 0.5)
+		band.Size = UDim2.fromOffset(245, 24)
+		band.Rotation = 90 -- reads upright on both walls (checked in Studio)
+		band.BackgroundTransparency = 1
+		band.Image = "rbxassetid://" .. Config.BoxPrint.Band
+		band.Parent = gui
+		gui.Parent = p
+	end
 	return p
 end
 

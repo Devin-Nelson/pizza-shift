@@ -74,7 +74,7 @@ def band(design, size_word):
     d = ImageDraw.Draw(img)
     fg = design["bandInk"]
     d.text((40, 22), "DOMINUS PIZZA", font=font("impact.ttf", 76), fill=fg)
-    s = size_word.upper() + " BOX"
+    s = size_word.upper() + " BOX" if size_word else "HOT & FRESH"  # the game uses one band for every size
     f = font("impact.ttf", 64)
     d.text((w - 40 - d.textlength(s, font=f), 30), s, font=f, fill=fg)
     return img
@@ -103,6 +103,7 @@ if __name__ == "__main__":
     for name, design in DESIGNS.items():
         lid(design).save(os.path.join(OUT, f"lid_{name}.png"))
         band(design, "Large").save(os.path.join(OUT, f"band_{name}.png"))
+        band(design, None).save(os.path.join(OUT, f"band_{name}_any.png"))
         print("wrote", name)
     label("JOHN P.").save(os.path.join(OUT, "label.png"))
     assert math.isclose(N, 1024)

@@ -9,7 +9,11 @@ current counter's: 13.5 long, 3.8 deep, its top at 4.4.
     python tools/blender/box_art.py      (the bold lid art is design C's logo panel)
     blender -b -P tools/blender/front_counter.py -- --render
 
-Renders only. Art-local: length along X, the customers at -Z, the staff at +Z.
+The user picked C (2026-10-23): `-- --export` builds C alone at the origin
+(no POS: the game's Register art sits on it) and writes its meshes for upload
+(Wood, Back, Steel; the logo is a Part with the lid art as a Decal in game).
+
+Art-local: length along X, the customers at -Z, the staff at +Z.
 """
 
 import math
@@ -29,6 +33,7 @@ QUARTZ, STAINLESS, BLACK = rgb(232, 232, 228), rgb(140, 145, 152), rgb(26, 26, 2
 TILE, GROUT = rgb(246, 246, 243), rgb(200, 200, 196)
 
 kit.reset()
+EXPORT = "--export" in sys.argv
 
 
 def logo(name, x, y, z, s):
@@ -133,10 +138,10 @@ meshes += [b_tile, b_grout, b_red, b_steel, b_top, b_glass, b_dark, b_glow]
 
 # -- C: Wood and steel. Warm vertical wood slats on the front with the brand
 # panel in the middle, a stainless top and kick, stainless end caps.
-xc = SPACING
-c_wood = Mesh("C_Wood", rgb(150, 104, 66), rough=0.7, grain=True)
-c_back = Mesh("C_Back", rgb(40, 32, 26), rough=0.8)
-c_steel = Mesh("C_Steel", STAINLESS, metal=1.0, rough=0.3)
+xc = 0 if EXPORT else SPACING
+c_wood = Mesh("Wood" if EXPORT else "C_Wood", rgb(150, 104, 66), rough=0.7, grain=True)
+c_back = Mesh("Back" if EXPORT else "C_Back", rgb(40, 32, 26), rough=0.8)
+c_steel = Mesh("Steel" if EXPORT else "C_Steel", STAINLESS, metal=1.0, rough=0.3)
 c_dark, c_glow = Mesh("C_Pos", BLACK, rough=0.4), Mesh("C_Screen", rgb(70, 140, 210), rough=0.2)
 c_steel.box((L, 0.4, D - 0.3), (xc, 0.2, 0.05))
 c_back.box((L - 0.2, TOP - 0.1 - 0.4, D - 0.3), (xc, 0.4 + (TOP - 0.5) / 2, 0.05))
@@ -150,6 +155,10 @@ c_steel.box((L + 0.2, 0.1, D + 0.2), (xc, TOP - 0.05, 0), bevel=0.02)
 c_steel.box((2.7, 2.7, 0.04), (xc, 2.35, -D / 2 + 0.05))
 logo("C_Logo", xc, 2.35, -D / 2 + 0.025, 2.5)
 staff_side(c_back, xc, TOP)
+print(f"[layout] logo panel {2.5} square at (0, 2.35, {-D / 2 + 0.025:.3f})")
+if EXPORT:
+    kit.finish("front_counter", [c_wood, c_back, c_steel], [], [("C_export", (-9.0, 6.5, -13.0), (0.0, 2.6, 0.0), 32)], kit.args()["render"])
+    sys.exit(0)
 pos(c_dark, c_glow, xc - L / 2 + 2.0, TOP, 0.5)
 pos(c_dark, c_glow, xc - L / 2 + 4.6, TOP, 0.5)
 meshes += [c_wood, c_back, c_steel, c_dark, c_glow]
