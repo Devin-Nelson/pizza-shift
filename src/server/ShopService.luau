@@ -1770,7 +1770,7 @@ local function takeOrder(player: Player, order: Order)
 	carrying[player] = order
 	player:SetAttribute("Carrying", order.id)
 	order.stack = stackInHands(order, root, character)
-	notify(player, string.format("%s's order - hand it to them at the counter.", if order.customer then order.customer.name else "#" .. order.id))
+	notify(player, string.format("%s's order - hand it to them in line.", if order.customer then order.customer.name else "#" .. order.id))
 end
 
 -- Back on its slot (put back, or whoever had it left).
@@ -3034,20 +3034,11 @@ local function setParked(player: Player, at: string?)
 	player:SetAttribute("Following", at == nil)
 end
 
--- Someone who'll work `stationName` without a follower: a player parked
--- there, or staff on shift there.
+-- A station someone else is working (another player there, or staff on
+-- shift there) is filled: following never sends you to one, and you don't
+-- carry a pizza into one (the user, 2026-10-23); its pizzas are theirs.
 local function manned(shop: Shop, stationName: string, except: Player?): boolean
-	for player, stay in stationed do
-		if player ~= except and parked[player] == stationName and stay.shop == shop and stay.name == stationName then
-			return true
-		end
-	end
-	for _, c in shop.crew do
-		if c.present and c.station == stationName then
-			return true
-		end
-	end
-	return false
+	return occupant(shop, stationName, except) ~= nil
 end
 
 local MAKE_STAGES = { Cheesed = 1, Sauced = 2 } -- furthest along first (Ready ones load themselves)
@@ -3096,7 +3087,15 @@ local function followTarget(shop: Shop, player: Player): (string, number?, strin
 	for _, t in neededTickets(shop) do
 		table.insert(needed, t.item.size)
 	end
-	return Follow.target(needed, covered, waiting, freeSkins(shop))
+	local at, pick, size = Follow.target(needed, covered, waiting, freeSkins(shop))
+	if at == "Sauce" and manned(shop, "Sauce", player) then
+		at, pick = "Dough", nil -- someone's saucing: stretch the top pizza's size instead
+	end
+	if manned(shop, at, player) then
+		local here = stationed[player]
+		return if here then here.name else at, nil, nil -- every place it needs is filled: stay put
+	end
+	return at, pick, size
 end
 
 local enterStation: (shop: Shop, player: Player, stationName: string, pickId: number?, size: string?) -> ()
@@ -3220,9 +3219,9 @@ local function useStation(shop: Shop, stationName: string, player: Player, pickI
 		notify(player, "Hop out of the car first.", Color3.fromRGB(255, 160, 100))
 		return
 	end
-	if table.find(Config.MakeSteps, stationName) then
-		setParked(player, if park == true then stationName else nil)
-	end
+	-- Parked at a make station from the HUD; anywhere else (the cut table,
+	-- dispatch, the register) there's nothing to come back to.
+	setParked(player, if park == true and table.find(Config.MakeSteps, stationName) then stationName else nil)
 	enterStation(shop, player, stationName, pickId)
 end
 
@@ -3255,12 +3254,13 @@ function stepDone(player: Player, stationName: string, pie: Pie?)
 	end
 	stay.idleSince = os.clock()
 	local nextAt = if pie and (pie.stage == "Sauced" or pie.stage == "Cheesed") and not pie.claimedBy then Config.StationForStage(pie.stage) else nil
-	if pie and nextAt then
+	if pie and nextAt and not manned(stay.shop, nextAt, player) then
 		enterStation(stay.shop, player, nextAt, pie.id)
 		return
 	end
+	-- Back where they parked, from a make step only (never from the oven side).
 	local home = parked[player]
-	if home and home ~= stationName then
+	if home and home ~= stationName and table.find(Config.MakeSteps, stationName) and not manned(stay.shop, home, player) then
 		task.delay(Config.NextJobDelay, function()
 			if stationed[player] == stay then
 				enterStation(stay.shop, player, home)

@@ -1138,6 +1138,12 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		bindPress(ctx, press)
 	end
 
+	local function startCut()
+		if active and active.folder == ctx.folder and stage == "box" then -- still this job (not closed or replaced)
+			cutPhase()
+		end
+	end
+
 	-- 1) BOX IT: click the right size's stack (and another one to move it) ----
 	local function putIn(size: string)
 		local tray = trayFrame(size)
@@ -1155,12 +1161,14 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 			newPhase()
 			-- Wrong box? Clicking another one moves it (the tip says so).
 			titleChip(1)
+			-- The cut starts by itself (the user, 2026-10-23: no click first): once
+			-- the bubbles are popped, or straight away (a moment to move it to
+			-- another box) if there are none.
 			if #bubbleData > 0 then
 				note("Pop the bubbles", 2)
+			else
+				task.delay(0.8, startCut)
 			end
-			local start = actionButton(body, "Cut", 3, 130, KEY_HINT)
-			start.Activated:Connect(cutPhase)
-			bindSpace(cutPhase)
 		end
 	end
 	ctx.track(RunService.RenderStepped:Connect(function()
@@ -1188,6 +1196,9 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 			task.delay(0.16, function()
 				hitPart:Destroy()
 			end)
+			if #bubbleParts == 0 then
+				task.delay(0.3, startCut)
+			end
 			return
 		end
 		local result = rayAt(boxParts)
