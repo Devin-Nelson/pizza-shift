@@ -36,6 +36,7 @@ local TIPS: { [string]: { string } } = {
 		"The top ticket's skin is laid out for you (pick one when you stay here).",
 		"Hold and spread the sauce out to the 3/4\" line.",
 		"Keep the rim clean, then press Done.",
+		"You take your pizza on down the makeline: cheese, then toppings.",
 	},
 	Cheese = {
 		"Hold to pour. It speeds up the longer you hold.",
@@ -44,10 +45,8 @@ local TIPS: { [string]: { string } } = {
 	},
 	Toppings = {
 		"Each topping is on its own line of the ticket.",
-		"Click a pan on the rail to pick a topping up, then hold on the pizza.",
-		"The scale shows what's on: pepperoni and ham in pieces, the rest in ounces.",
-		"Portions are below, within 10%. -5 picks some back off.",
-		"Load sends it to the oven; To Rack puts it on the ready rack.",
+		"Click a pan on the rail to put that topping on; click it again to take it off.",
+		"Done sends it into the oven.",
 	},
 	Load = {
 		"Click a pizza on the ready rack to load it into the next oven slot.",
@@ -76,21 +75,6 @@ local REFS: { [string]: () -> { string } } = {
 		local lines = {}
 		for _, size in Config.Sizes do
 			table.insert(lines, pad(string.upper(size), 8) .. Config.PortionText("Cheese", Config.CheesePortion[size]))
-		end
-		return lines
-	end,
-	Toppings = function()
-		local head = pad("1 / 2-3 top", 12)
-		for _, size in Config.Sizes do
-			head ..= pad(string.upper(string.sub(size, 1, 1)), 10)
-		end
-		local lines = { head }
-		for _, topping in Config.Toppings do
-			local line = pad(string.upper(topping), 12)
-			for _, size in Config.Sizes do
-				line ..= pad(string.format("%g/%g", Config.PortionFor(topping, size, 1), Config.PortionFor(topping, size, 2)), 10)
-			end
-			table.insert(lines, line .. (if Config.CountedToppings[topping] then "pcs" else "oz"))
 		end
 		return lines
 	end,

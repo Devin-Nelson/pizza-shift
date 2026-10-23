@@ -108,7 +108,7 @@ function Screens.kds(gui: SurfaceGui, m: Kds)
 		local head = frame(bg, { Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = C.Ink })
 		frame(head, { Size = UDim2.new(0, 4, 1, 0), BackgroundColor3 = C.Red })
 		text(head, "MAKE-LINE", F.Heading, 16, { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(0, 110, 1, 0) })
-		text(head, string.format("DOUGH  S %d   M %d   L %d     RACKS %d/%d     READY %d/%d", m.dough.Small or 0, m.dough.Medium or 0, m.dough.Large or 0, m.used, m.capacity, m.ready, m.readyCapacity), F.Mono, 14, {
+		text(head, string.format("DOUGH  M %d   L %d     RACKS %d/%d", m.dough.Medium or 0, m.dough.Large or 0, m.used, m.capacity), F.Mono, 14, {
 			TextColor3 = C.CreamDim,
 			Position = UDim2.fromOffset(122, 0),
 			Size = UDim2.new(1, -132, 1, 0),

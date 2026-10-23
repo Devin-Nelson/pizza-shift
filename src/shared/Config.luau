@@ -45,14 +45,16 @@ Config.TicketAge = { Fresh = 120, Aging = 300 }
 -- leave or switch stations. The next job loads as soon as one is waiting,
 -- unless the station is `pick`: there the player picks each job (a pizza at
 -- the oven exit, an order on the heat rack). `queue`: the HUD queue panel shown
--- there ("make" = the make-line order queue, "oven", "delivery").
+-- there ("make" = the make-line order queue, "oven", "delivery"). `bar`
+-- false: not on the HUD's Stations bar (you only get there with a pizza).
+-- No Load station for now (the user, 2026-10-23): a topped pizza goes
+-- straight into the oven; the ready rack's code stays for a store builder.
 Config.Stations = {
 	{ id = "Register", label = "Register", stay = true },
 	{ id = "Dough", label = "Stretch", stay = true, queue = "make" },
 	{ id = "Sauce", label = "Sauce", stay = true, queue = "make" },
-	{ id = "Cheese", label = "Cheese", stage = "Sauced", stay = true, queue = "make" },
-	{ id = "Toppings", label = "Toppings", stage = "Cheesed", stay = true, queue = "make" },
-	{ id = "Load", label = "Load Oven", stage = "Ready", stay = true, pick = true, queue = "make" },
+	{ id = "Cheese", label = "Cheese", stage = "Sauced", stay = true, queue = "make", bar = false },
+	{ id = "Toppings", label = "Toppings", stage = "Cheesed", stay = true, queue = "make", bar = false },
 	{ id = "CutTable", label = "Cut & Box", stage = "Exit", stay = true, pick = true, queue = "oven" },
 	{ id = "DeliveryRack", label = "Dispatch", stay = true, pick = true, queue = "delivery" }, -- the id predates dispatch (staff stats are saved under it)
 }
@@ -77,10 +79,11 @@ function Config.StationForStage(stage: string): string?
 end
 
 -- The make process (everything before the bake), in order. Players follow
--- the top pizza through it by default (ShopService); one who parked at one of
--- these with nothing to work is moved back a step (unless someone's at that
--- one: then they wait).
-Config.MakeSteps = { "Dough", "Sauce", "Cheese", "Toppings", "Load" }
+-- the top pizza through it by default (ShopService); whoever sauces a pizza
+-- always takes it on through cheese and toppings (the user, 2026-10-23). One
+-- who parked at one of these with nothing to work is moved back a step
+-- (unless someone's at that one: then they wait).
+Config.MakeSteps = { "Dough", "Sauce", "Cheese", "Toppings" }
 
 function Config.StepBefore(id: string): string?
 	local i = table.find(Config.MakeSteps, id)
@@ -110,8 +113,6 @@ Config.StationView = {
 	-- Toppings: a little shallower, so the pans on the rail (picked by clicking)
 	-- sit below the tickets at the top of the screen.
 	Toppings = { height = 2.6, back = 2.2, focusBack = 0, fov = 70, stand = 2.6 },
-	-- Load: facing the ready rack, high enough to see down onto every slot.
-	Load = { height = 2.8, back = 5.0, focusUp = -0.3, fov = 70, stand = 2.6 },
 	-- Cut table (user, plan v4.1): the tender faces the carryout counter. Between
 	-- jobs the camera looks left at the oven exits to pull a pizza; working, it
 	-- turns back to the table and its three box stacks (pulled back and over to
@@ -151,7 +152,9 @@ Config.IngredientColors = {
 -- Customers pick 0..3 toppings with ToppingCount odds, each topping as
 -- likely as its ToppingPopularity.
 Config.MaxToppings = 3
-Config.Sizes = { "Small", "Medium", "Large" }
+-- No Small for now (the user, 2026-10-23): nobody orders or stretches one.
+-- The per-size tables below keep Small (and the cut table its Small boxes).
+Config.Sizes = { "Medium", "Large" }
 Config.SizePrice = { Small = 10, Medium = 14, Large = 17 } -- dollars; store sales are tracked in these
 Config.ToppingPrice = { Small = 1.5, Medium = 2, Large = 2.5 }
 Config.ToppingCount = { 0.15, 0.40, 0.30, 0.15 } -- odds of 0, 1, 2, 3 toppings
@@ -281,15 +284,43 @@ Config.OvenPaints = {
 	{ name = "Red", color = Config.Brand.Red, metal = false },
 	{ name = "Charcoal", color = Config.Brand.Charcoal, metal = false },
 }
--- The ready rack at the end of the make-line: finished pizzas wait on its
--- screens to be loaded. A toppings job only starts if there's a slot for it.
+-- The ready rack (not in the store for now: no Load station): finished
+-- pizzas waited on its screens to be loaded.
 Config.ReadyRack = { Slots = 15 }
 -- The carryout rack across the cut table's far end (the user, 2026-10-21):
 -- boxed carryout orders wait on it in stacks tagged with the customer's name;
 -- the customer steps up to the counter and says it, and someone carries their
 -- order over. Slots: stacks it holds (two a tier); MaxStack: boxes shown in a
--- stack; PickupPatience: real seconds a customer waits at the counter.
-Config.Carryout = { Slots = 6, MaxStack = 4, PickupPatience = 150 }
+-- stack on the rack (4 fit under the shelf above; the rest are counted on
+-- the name tag, which is on the bottom box: the user, 2026-10-23); in hand
+-- every box shows. PickupPatience: real seconds a customer waits once their
+-- order is on the rack (doubled, the user, 2026-10-23).
+Config.Carryout = { Slots = 6, MaxStack = 4, PickupPatience = 300 }
+-- How a waiting customer feels, by the share of their patience used up (the
+-- user, 2026-10-23: faces grow angrier, they grumble, and the longer the
+-- wait the lower the satisfaction and the tips). `at`: from that share on;
+-- `factor`: on the order's satisfaction if it's handed over then.
+Config.Moods = {
+	{ name = "Happy", at = 0, factor = 1 },
+	{ name = "Fine", at = 0.3, factor = 0.9 },
+	{ name = "Annoyed", at = 0.55, factor = 0.7 },
+	{ name = "Angry", at = 0.8, factor = 0.45 },
+}
+Config.MoodLines = {
+	Annoyed = { "Is it almost ready?", "Taking a while, huh...", "*checks phone*", "Any update on my order?", "Hmm. Still waiting." },
+	Angry = { "Seriously?!", "I've been here forever!", "This is ridiculous.", "Where is my pizza?!", "Unbelievable..." },
+}
+
+-- The mood for a customer who has used up `share` (0..1+) of their patience.
+function Config.MoodAt(share: number): any
+	local mood = Config.Moods[1]
+	for _, m in Config.Moods do
+		if share >= m.at then
+			mood = m
+		end
+	end
+	return mood
+end
 -- Customers' first names; each gets a last initial ("John P.").
 Config.CustomerNames = {
 	"John", "Maria", "David", "Aisha", "Chris", "Elena", "Marcus", "Grace", "Tyler", "Sofia",
@@ -385,8 +416,8 @@ Config.Shop = {
 	StartingStock = 60,
 	MaxStock = 60,
 	MaxCustomers = 6, -- NPCs in the lobby at once
-	CustomerPatience = 300, -- real seconds any order waits with 1 pizza (the bake alone is ~90 s)...
-	PatiencePerPizza = 75, -- ...plus this much per extra pizza (big orders take a while)
+	CustomerPatience = 600, -- real seconds any order waits with 1 pizza (the bake alone is ~90 s)... (doubled: the user, 2026-10-23)
+	PatiencePerPizza = 150, -- ...plus this much per extra pizza (big orders take a while)
 	AutoRegisterDelay = 12, -- online kiosk takes an order if no one answers (x3 while a player is at the store)
 	-- No supply truck for now: the shelves refill to StartingStock (full) on their own.
 	AutoRestockInterval = 20,
@@ -433,7 +464,7 @@ Config.Staff = {
 }
 Config.StaffOrder = { "TeamMember", "AssistantManager", "StoreManager" }
 Config.StaffOnShift = 8 -- scheduled per shift
-Config.StaffStations = { "Register", "Dough", "Sauce", "Cheese", "Toppings", "Load", "CutTable", "DeliveryRack" }
+Config.StaffStations = { "Register", "Dough", "Sauce", "Cheese", "Toppings", "CutTable", "DeliveryRack" }
 Config.StaffStatNames = {
 	Register = "Service",
 	Dough = "Stretching",

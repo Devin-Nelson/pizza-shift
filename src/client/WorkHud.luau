@@ -58,12 +58,15 @@ local function stationLabel(id: string): string
 	return if info then info.label else id
 end
 
--- Every station (there are no roles), while you work at a store.
+-- Every station (there are no roles), while you work at a store, except
+-- the ones you only reach with a pizza (cheese and toppings: `bar` false).
 local function myStations(): { string }
 	local list = {}
 	if player:GetAttribute("StoreId") ~= nil then
 		for _, s in Config.Stations do
-			table.insert(list, s.id)
+			if s.bar ~= false then
+				table.insert(list, s.id)
+			end
 		end
 	end
 	return list
@@ -376,7 +379,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 				StationTips.Show(tipFor, true)
 			end })
 		end
-		if here == "Toppings" or here == "Load" then
+		if here == "Toppings" then
 			-- Tentative setting: who decides which order a loaded pizza is for.
 			table.insert(utils, { text = if Loading.mode == "Pick" then "Pick order" else "Auto-match", icon = "check", fn = function()
 				Loading.SetMode(if Loading.mode == "Pick" then "Auto" else "Pick")

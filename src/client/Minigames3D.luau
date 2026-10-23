@@ -777,55 +777,43 @@ local function cheese(data: any, finish: Finish, cancel: Cancel)
 end
 
 ---------------------------------------------------------------------------
--- Toppings (make-line): click a pan on the rail to pick a topping up, then
--- hold on the pizza. No targets on screen (go by the ticket and the tip
--- card's portions): the scale shows the topping in hand on the pizza, in
--- pieces (pepperoni, ham) or ounces. Then put it on the ready rack, or load it straight away.
+-- Toppings (make-line): top the pizza you're following (the user, 2026-10-23:
+-- no weighing, just the right toppings). Clicking a pan on the rail puts that
+-- topping on, a full portion for how many toppings are on it (the portion
+-- chart), spread over the pizza; clicking it again takes it off. No targets
+-- on screen: makers go by the ticket. Done sends it into the oven.
 ---------------------------------------------------------------------------
 local function toppings(data: any, finish: Finish, cancel: Cancel)
 	local ctx = open(data, cancel)
 	if not ctx then
 		return
 	end
-	local ws, body, holding = ctx.ws, ctx.body, ctx.holding
+	local ws, body = ctx.ws, ctx.body
 	hideShared(data.visual, ctx.cleanup)
 	hideWaiting(data, ws, "Cheesed", ctx.cleanup)
 	local spec = if type(data.spec) == "table" then data.spec else { size = data.size }
 	local pizza = Pizza3D.fromSpec(ws.frame * CFrame.new(0, 0.06, 0), spec, ctx.folder)
-	local R = (Config.PizzaDiameter[spec.size] or 2.4) / 2
-	local list: { string } = if type(data.toppings) == "table" then data.toppings else Config.Toppings
 	local out = if type(data.out) == "table" then data.out else {}
 	local rng = Random.new()
-	local counts: { [string]: number } = {}
+	local on: { string } = {} -- the toppings on it, in the order they went on
 
 	sizeChip(body, tostring(spec.size), 1)
-	local selected: string? = nil
-	local held = Ui.text("PICK A TOPPING FROM THE PANS", F.LabelBold, S.Label, { TextColor3 = C.Gold, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 54), LayoutOrder = 2, Parent = body })
-	local setScale = scaleDisplay(ctx, data.station, "Toppings")
-	local function refresh()
-		for _, name in list do
-			counts[name] = pizza:count(name)
+	local held = Ui.text("CLICK THE PANS FOR ITS TOPPINGS", F.LabelBold, S.Label, { TextColor3 = C.Gold, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 54), LayoutOrder = 2, Parent = body })
+	local function spread()
+		for _, name in Config.Toppings do
+			pizza:removeTopping(name, math.huge)
 		end
-		if selected then
-			local n = counts[selected] or 0
-			held.Text = string.upper(selected)
-			held.TextColor3 = C.Cream
-			setScale(string.upper(selected) .. "\n" .. (if Config.CountedToppings[selected] then string.format("%d PCS", n) else string.format("%.2f OZ", Config.ToppingAmount(selected, n))))
-		else
-			setScale("0.00 OZ")
+		for _, name in on do
+			for _ = 1, Config.PortionPieces(name, spec.size, #on) do
+				local x, z = pizza:randomPoint(rng)
+				pizza:addTopping(name, x, z, rng)
+			end
 		end
+		held.Text = if #on > 0 then string.upper(table.concat(on, " + ")) else "CLICK THE PANS FOR ITS TOPPINGS"
+		held.TextColor3 = if #on > 0 then C.Cream else C.Gold
 	end
-	local pick = Ui.flatButton("", "ghost", { Size = UDim2.fromOffset(52, 54), LayoutOrder = 20, Parent = body })
-	Ui.text("-5", F.Mono, S.Label, { TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 20), Parent = pick })
-	Ui.text("PICK OFF", F.Label, S.Tiny, { TextColor3 = C.CreamDim, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 0, 14), Parent = pick })
-	pick.Activated:Connect(function()
-		if selected then
-			pizza:removeTopping(selected, 5)
-			refresh()
-		end
-	end)
 
-	-- The pans on the rail: hovering one outlines it, clicking picks it up.
+	-- The pans on the rail: hovering one outlines it, clicking puts it on (or takes it off).
 	local pans: { Instance } = {}
 	local shopModel = if typeof(data.station) == "Instance" and data.station.Parent then data.station.Parent.Parent else nil
 	for _, d in (if shopModel then shopModel:GetDescendants() else {}) do
@@ -852,14 +840,22 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 		end
 		local pan = panUnderPointer()
 		local name = if pan then pan:GetAttribute("Topping") else nil
-		if type(name) == "string" then
-			if out[name] then
-				Ui.toast(string.format("Out of %s - it's being restocked.", string.lower(name)), C.Red)
-			else
-				selected = name
-				refresh()
-			end
+		if type(name) ~= "string" then
+			return
 		end
+		local i = table.find(on, name)
+		if i then
+			table.remove(on, i)
+		elseif out[name] then
+			Ui.toast(string.format("Out of %s - it's being restocked.", string.lower(name)), C.Red)
+			return
+		elseif #on >= Config.MaxToppings then
+			Ui.toast(string.format("Up to %d toppings on a pizza.", Config.MaxToppings), C.Red)
+			return
+		else
+			table.insert(on, name)
+		end
+		spread()
 	end))
 	ctx.track(RunService.RenderStepped:Connect(function()
 		local pan = panUnderPointer()
@@ -867,54 +863,23 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 		outline.Enabled = pan ~= nil
 	end))
 	Ui.rule(body, 21)
-	local rackBtn = Ui.flatButton("To rack", "ghost", { Size = UDim2.fromOffset(92, 52), LayoutOrder = 22, Parent = body })
-	local loadBtn = actionButton(body, "Load", 23, 110)
-	loadBtn.Activated:Connect(function()
+	local doneBtn = actionButton(body, "Done", 23, 110)
+	doneBtn.Activated:Connect(function()
+		local counts: { [string]: number } = {}
+		for _, name in on do
+			counts[name] = pizza:count(name)
+		end
 		if Loading.mode == "Pick" then
 			-- Which order it's for, then it goes in (closing the picker keeps topping).
 			Loading.Pick(data.size, function(orderId: number)
 				Minigames3D.Close()
-				finish({ counts = counts, load = true, orderId = orderId })
+				finish({ counts = counts, orderId = orderId })
 			end)
 		else
 			Minigames3D.Close()
-			finish({ counts = counts, load = true })
+			finish({ counts = counts })
 		end
 	end)
-	rackBtn.Activated:Connect(function()
-		Minigames3D.Close()
-		finish({ counts = counts, load = false })
-	end)
-	refresh()
-
-	-- A hand-sized scoop of the selected topping follows the pointer.
-	local scoop = localPart(ctx.folder, "Scoop", Vector3.new(0.35, 0.12, 0.35), Color3.new(1, 1, 1), Enum.Material.SmoothPlastic)
-	local acc = 0
-	ctx.track(RunService.RenderStepped:Connect(function(dt)
-		local hit, x, z = ws:pointer(0.2)
-		local onPizza = hit ~= nil and math.sqrt(x * x + z * z) < R + 0.4
-		scoop.Transparency = if onPizza then 0 else 1
-		if hit then
-			scoop.CFrame = CFrame.new(ws:at(x, 0.55, z))
-			scoop.Color = if selected then Config.IngredientColors[selected] or scoop.Color else scoop.Color
-		end
-		if onPizza and holding() and selected then
-			acc += dt
-			while acc >= 0.1 do
-				acc -= 0.1
-				local jx, jz = x + rng:NextNumber(-0.18, 0.18), z + rng:NextNumber(-0.18, 0.18)
-				local r = math.sqrt(jx * jx + jz * jz)
-				local maxR = R * 0.82
-				if r > maxR then
-					jx, jz = jx * maxR / r, jz * maxR / r
-				end
-				pizza:addTopping(selected, jx, jz, rng)
-				refresh()
-			end
-		else
-			acc = 0
-		end
-	end))
 end
 
 ---------------------------------------------------------------------------

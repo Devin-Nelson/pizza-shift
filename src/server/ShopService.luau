@@ -40,7 +40,10 @@ type Customer = {
 	arrived: number,
 	order: Order?,
 	name: string, -- "John P.": what they say at the counter to collect a carryout order
-	atCounter: number?, -- when they stepped up to the counter, their order on the carryout rack
+	atCounter: number?, -- when their order went on the carryout rack (they say their name)
+	mood: string?, -- Config.Moods name their face shows
+	said: string?, -- what their bubble says when they aren't grumbling
+	grumbleAt: number?, -- when they next grumble (Annoyed / Angry)
 }
 
 type PendingOrder = {
@@ -195,7 +198,7 @@ local sessions: { [Player]: Session } = {}
 local stationed: { [Player]: Stay } = {}
 -- Players who picked a make station from the HUD: they stay there instead of
 -- following the top pizza (the default).
-local parked: { [Player]: boolean } = {}
+local parked: { [Player]: string } = {} -- the make station a player parked at (from the HUD); they come back to it after taking a pizza on
 local playerShop: { [Player]: Shop } = {}
 local carrying: { [Player]: Order } = {} -- the carryout order each player has in hand
 local CARRYOUT_REACH = 18 -- how far away a carryout stack, the rack or a customer can be clicked
@@ -766,6 +769,106 @@ local function setBubble(c: Customer, text: string)
 		gui = newGui
 	end
 	((gui :: BillboardGui):FindFirstChild("Text") :: TextLabel).Text = text
+	c.said = text
+end
+
+-- A moment of grumbling in the bubble, then back to what they were saying.
+local function grumble(c: Customer, text: string)
+	local said = c.said
+	setBubble(c, text)
+	c.said = said
+	task.delay(4, function()
+		if c.state ~= "Leaving" and said and c.npc.Parent then
+			setBubble(c, said)
+		end
+	end)
+end
+
+-- How much of their patience a customer has used: waiting on their order,
+-- then waiting for it to be brought from the carryout rack.
+local function waitShare(c: Customer, now: number): number
+	local share = (now - c.arrived) / Config.OrderPatience(#c.items)
+	if c.atCounter then
+		share = math.max(share, (now - c.atCounter) / Config.Carryout.PickupPatience)
+	end
+	return share
+end
+
+-- Their face, drawn on the head (no uploads): eyes, brows that knit and a
+-- mouth that sours as they wait (Config.Moods), the skin flushing when angry.
+local FACES = {
+	Happy = { brow = 0, mouth = "smile", flush = 0 },
+	Fine = { brow = 0, mouth = "flat", flush = 0 },
+	Annoyed = { brow = 14, mouth = "frown", flush = 0 },
+	Angry = { brow = 30, mouth = "frown", flush = 0.3 },
+}
+local function setFace(c: Customer, mood: string)
+	local look = FACES[mood]
+	local head = c.npc:FindFirstChild("Head") :: BasePart?
+	if c.mood == mood or not look or not head then
+		return
+	end
+	c.mood = mood
+	local default = head:FindFirstChild("face")
+	if default and default:IsA("Decal") then
+		default:Destroy()
+	end
+	local old = head:FindFirstChild("Face")
+	if old then
+		old:Destroy()
+	end
+	local skin = head:GetAttribute("Skin")
+	if typeof(skin) ~= "Color3" then
+		skin = head.Color
+		head:SetAttribute("Skin", skin)
+	end
+	head.Color = (skin :: Color3):Lerp(Color3.fromRGB(220, 60, 50), look.flush)
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Face"
+	gui.Face = Enum.NormalId.Front
+	gui.CanvasSize = Vector2.new(100, 100)
+	local function shape(size: Vector2, at: Vector2, rot: number?, round: boolean?): Frame
+		local f = Instance.new("Frame")
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.Position = UDim2.fromOffset(at.X, at.Y)
+		f.Size = UDim2.fromOffset(size.X, size.Y)
+		f.Rotation = rot or 0
+		f.BackgroundColor3 = Color3.fromRGB(25, 22, 22)
+		f.BorderSizePixel = 0
+		if round then
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0.5, 0)
+			corner.Parent = f
+		end
+		f.Parent = gui
+		return f
+	end
+	for _, side in { -1, 1 } do
+		shape(Vector2.new(11, 14), Vector2.new(50 + side * 17, 44), nil, true)
+		-- Inner ends drop as they get angrier.
+		shape(Vector2.new(20, 4), Vector2.new(50 + side * 17, 30 + look.brow * 0.12), -side * look.brow)
+	end
+	if look.mouth == "flat" then
+		shape(Vector2.new(24, 4), Vector2.new(50, 70))
+	else
+		-- Half of a ring: its bottom (a smile) or its top (a frown).
+		local clip = shape(Vector2.new(34, 14), Vector2.new(50, 70))
+		clip.BackgroundTransparency = 1
+		clip.ClipsDescendants = true
+		local ring = Instance.new("Frame")
+		ring.Size = UDim2.fromOffset(34, 34)
+		ring.Position = UDim2.fromOffset(0, if look.mouth == "smile" then -20 else 0)
+		ring.BackgroundTransparency = 1
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0.5, 0)
+		corner.Parent = ring
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 4
+		stroke.Color = Color3.fromRGB(25, 22, 22)
+		stroke.Parent = ring
+		ring.Parent = clip
+	end
+	gui.Parent = head
 end
 
 -- A first name and last initial ("John P."), not one already in the lobby.
@@ -781,31 +884,25 @@ local function customerName(shop: Shop): string
 	return name
 end
 
--- Where the k-th customer collecting a carryout order stands: at the counter
--- by the carryout warmer, the next ones along it.
-local function counterSpot(shop: Shop, k: number): Vector3
-	local pickup = station(shop, "Pickup")
-	if not pickup then
-		return spot(shop, "Wait1")
-	end
-	return pickup.Position + pickup.CFrame.LookVector * 3.5 - pickup.CFrame.RightVector * (k - 1) * 2.5
+-- Two orderly lines in the side lobby (the user, 2026-10-23): customers
+-- who haven't ordered queue up to the ordering screen at the counter (Queue1,
+-- then back along Queue2's direction), and those waiting for their order
+-- stand in a line beside it along the counter (Wait1, Wait2, ...), in the
+-- order they came in, until someone hands them their boxes.
+local function lineSpot(shop: Shop, name: string, k: number): Vector3
+	local first = spot(shop, name .. "1")
+	return first + (spot(shop, name .. "2") - first) * (k - 1)
 end
 
 local function layoutCustomers(shop: Shop)
-	local q, w, k = 0, 0, 0
+	local q, w = 0, 0
 	for _, c in shop.customers do
 		if c.state == "Queued" then
 			q += 1
-			local base = spot(shop, "Queue" .. math.min(q, 3))
-			c.humanoid:MoveTo(base + Vector3.new(0, 0, math.max(0, q - 3) * 3))
-		elseif c.atCounter then
-			k += 1
-			c.humanoid:MoveTo(counterSpot(shop, k))
+			c.humanoid:MoveTo(lineSpot(shop, "Queue", q))
 		elseif c.state == "Waiting" then
 			w += 1
-			local base = spot(shop, "Wait" .. ((w - 1) % 3 + 1))
-			local ring = math.floor((w - 1) / 3)
-			c.humanoid:MoveTo(base + Vector3.new(ring * 2.5, 0, ring * 2))
+			c.humanoid:MoveTo(lineSpot(shop, "Wait", w))
 		end
 	end
 end
@@ -865,7 +962,7 @@ local function makeBoxPart(size: string): Part
 	local bs = Config.BoxSize[size] or 2.55
 	local p = Instance.new("Part")
 	p.Name = "PizzaBox"
-	p.Size = Vector3.new(bs, bs, 0.3)
+	p.Size = Vector3.new(bs, bs, 0.28) -- 0.3 apart in a stack: a seam shows between boxes
 	p.Color = Color3.fromRGB(205, 168, 118)
 	p.Material = Enum.Material.Cardboard
 	p.CanCollide = false
@@ -895,10 +992,11 @@ end
 -- (client/CarryoutPicks); Register staff hand orders over too.
 ---------------------------------------------------------------------------
 
--- An order's boxes as a stack, the biggest at the bottom (at most MaxStack
--- shown), its customer's name on a tag on the top box's front. `base`: the
--- stack's underside; its -Z is the front (the lids read from there).
-local function makeStack(order: Order, base: CFrame): Model
+-- An order's boxes as a stack, the biggest at the bottom, each box its own
+-- (at most `most` shown, the rest counted on the tag), its customer's name on
+-- a tag on the bottom box's front (the user, 2026-10-23). `base`: the stack's
+-- underside; its -Z is the front (the lids read from there).
+local function makeStack(order: Order, base: CFrame, most: number): Model
 	local stack = Instance.new("Model")
 	stack.Name = "CarryoutOrder" .. order.id
 	local sizes = {}
@@ -908,18 +1006,18 @@ local function makeStack(order: Order, base: CFrame): Model
 	table.sort(sizes, function(a, b)
 		return (Config.BoxSize[a] or 0) > (Config.BoxSize[b] or 0)
 	end)
-	local n = math.min(#sizes, Config.Carryout.MaxStack)
+	local n = math.min(#sizes, most)
 	for i = 1, n do
 		local box = makeBoxPart(sizes[i])
 		box.CFrame = base * CFrame.new(0, 0.15 + (i - 1) * 0.3, 0) * BOX_FLAT
 		box.CanQuery = true -- client/CarryoutPicks raycasts at it
 		box.Parent = stack
 	end
-	local width = Config.BoxSize[sizes[n]] or 2.55
+	local width = Config.BoxSize[sizes[1]] or 2.55
 	local tag = Instance.new("Part")
 	tag.Name = "NameTag"
-	tag.Size = Vector3.new(math.min(width - 0.2, 1.9), 0.26, 0.02)
-	tag.CFrame = base * CFrame.new(0, 0.15 + (n - 1) * 0.3, -width / 2 - 0.012)
+	tag.Size = Vector3.new(math.min(width - 0.2, 1.9), 0.24, 0.02)
+	tag.CFrame = base * CFrame.new(0, 0.14, -width / 2 - 0.012)
 	tag.Color = Color3.new(1, 1, 1)
 	tag.Material = Enum.Material.SmoothPlastic
 	tag.Anchored = true
@@ -953,14 +1051,14 @@ local function stackOnRack(shop: Shop, order: Order)
 	if not m then
 		return
 	end
-	local stack = makeStack(order, m.CFrame * CFrame.Angles(0, math.pi, 0))
+	local stack = makeStack(order, m.CFrame * CFrame.Angles(0, math.pi, 0), Config.Carryout.MaxStack)
 	tagPick(stack, "Stack")
 	stack.Parent = shop.model
 	order.stack = stack
 end
 
 -- Puts a boxed carryout order on a free rack slot (or in line for one); its
--- customer steps up to the counter and says their name.
+-- customer, waiting in line, says their name.
 local function rackOrder(shop: Shop, order: Order)
 	local slot
 	for n = 1, Config.Carryout.Slots do
@@ -1153,35 +1251,7 @@ local function pickPie(shop: Shop, stage: string, pieId: number?): Pie?
 end
 
 -- Where pizzas wait between make steps (markers on the make-line board).
-local WAITING_SPOT = { Sauced = "SaucedQueue", Cheesed = "CheesedQueue" }
-
--- Free slots on the ready rack, counting toppings jobs in progress (each
--- will need a slot when it's done).
-local function readyRoom(shop: Shop): number
-	local used = 0
-	for _, p in shop.pies do
-		if p.stage == "Ready" or (p.stage == "Cheesed" and p.claimedBy) then
-			used += 1
-		end
-	end
-	return Config.ReadyRack.Slots - used
-end
-
--- The top-most empty slot on the ready rack (nil if it's full).
-local function freeReadySlot(shop: Shop): number?
-	local taken: { [number]: boolean } = {}
-	for _, p in shop.pies do
-		if p.stage == "Ready" and p.readySlot then
-			taken[p.readySlot] = true
-		end
-	end
-	for slot = 1, Config.ReadyRack.Slots do
-		if not taken[slot] then
-			return slot
-		end
-	end
-	return nil
-end
+local WAITING_SPOT = { Sauced = "SaucedQueue", Cheesed = "CheesedQueue", Ready = "ReadyQueue" } -- Ready: topped, waiting a moment for the oven
 
 -- Lines up the pizzas waiting for cheese / toppings (several at one spot fan
 -- out and stack a little so each stays visible), and puts finished ones on
@@ -1535,6 +1605,17 @@ local function loadPie(shop: Shop, player: Player?, pie: Pie, orderId: number?):
 	return nil
 end
 
+-- Topped pizzas waiting at the makeline's end go into the oven as soon as an
+-- entrance is free, auto-matched (staff toppings, a busy entrance, a picked
+-- order that didn't fit). Runs with the oven.
+local function loadWaiting(shop: Shop)
+	for _, p in table.clone(shop.pies) do
+		if p.stage == "Ready" and not p.claimedBy and nextFreeSlot(shop, diameter(p.size)) then
+			loadPie(shop, nil, p, nil)
+		end
+	end
+end
+
 ---------------------------------------------------------------------------
 -- Finishing orders
 ---------------------------------------------------------------------------
@@ -1562,8 +1643,10 @@ local function completeOrder(shop: Shop, order: Order, extra: number, driver: Pl
 		end
 	end
 	local boxFactor = 1 - 0.15 * (wrongBoxes / math.max(#order.tickets, 1))
+	-- A customer kept waiting is less happy, and tips less (Config.Moods).
+	local waited = if order.customer then Config.MoodAt(waitShare(order.customer, os.clock())).factor else 1
 	-- Portions more than 10% off penalize satisfaction directly.
-	local satisfaction = average(qualities) * accuracy * extra * average(portions) * boxFactor
+	local satisfaction = average(qualities) * accuracy * extra * average(portions) * boxFactor * waited
 
 	if order.delivery and order.house ~= order.desiredHouse then
 		loseSale(shop, order, order.desired)
@@ -1641,7 +1724,7 @@ end
 
 -- Welds a stack of the order's boxes in front of `root` (whoever's carrying it).
 local function stackInHands(order: Order, root: BasePart, parent: Instance): Model
-	local stack = makeStack(order, root.CFrame * CFrame.new(0, -0.7, -1.8))
+	local stack = makeStack(order, root.CFrame * CFrame.new(0, -0.7, -1.8), 12) -- in hand: every box
 	for _, part in stack:GetChildren() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
@@ -1843,6 +1926,7 @@ local function spawnCustomer(shop: Shop, items: { Item }, online: boolean)
 
 		local c: Customer = { npc = npc, humanoid = humanoid, items = items, state = "Queued", arrived = os.clock(), order = nil, name = customerName(shop), atCounter = nil }
 		table.insert(shop.customers, c)
+		setFace(c, "Happy")
 		tagPick(npc, "Customer") -- with an order in hand you can click any customer: only its own takes it
 		if online then
 			-- Ordered on the app; the tickets are already on the make-line.
@@ -2099,7 +2183,7 @@ local function topPie(shop: Shop, pie: Pie, counts: { [string]: number }, player
 	if player then
 		pie.workers[player] = true
 	end
-	pie.readySlot = freeReadySlot(shop) -- there's always one: it was counted when the job started
+	-- No ready rack for now: it waits at the makeline's end for the oven (loadWaiting).
 	setStage(pie, "Ready")
 	placeOnLine(shop, pie)
 	updateBoards(shop)
@@ -2473,9 +2557,6 @@ local function crewJobAt(shop: Shop, c: Crew, s: string): any?
 		pie.claimedBy = c
 		return { what = "Cheese", pie = pie }
 	elseif s == "Toppings" then
-		if readyRoom(shop) <= 0 then
-			return nil
-		end
 		for _, pie in shop.pies do
 			local recipe = if pie.stage == "Cheesed" and not pie.claimedBy then neededToppings(shop, pie.size) else nil
 			if recipe then
@@ -2761,9 +2842,6 @@ local function startStation(shop: Shop, stationName: string, player: Player, pic
 				return "Out of " .. missing .. "! It's being restocked."
 			end
 			consume(shop, needs)
-		elseif readyRoom(shop) <= 0 then
-			-- Every topped pizza needs a ready rack slot to go to.
-			return string.format("The ready rack is full (%d/%d). Load some pizzas into the oven first.", Config.ReadyRack.Slots, Config.ReadyRack.Slots)
 		end
 		pie.claimedBy = player
 		local data: any = {
@@ -2931,19 +3009,19 @@ end
 -- player in the make process goes with each pizza to its next step, then
 -- picks up the top pizza on the tickets.
 local function following(player: Player, stationName: string): boolean
-	return not parked[player] and table.find(Config.MakeSteps, stationName) ~= nil
+	return parked[player] == nil and table.find(Config.MakeSteps, stationName) ~= nil
 end
 
-local function setParked(player: Player, on: boolean)
-	parked[player] = if on then true else nil
-	player:SetAttribute("Following", not on)
+local function setParked(player: Player, at: string?)
+	parked[player] = at
+	player:SetAttribute("Following", at == nil)
 end
 
 -- Someone who'll work `stationName` without a follower: a player parked
 -- there, or staff on shift there.
 local function manned(shop: Shop, stationName: string, except: Player?): boolean
 	for player, stay in stationed do
-		if player ~= except and parked[player] and stay.shop == shop and stay.name == stationName then
+		if player ~= except and parked[player] == stationName and stay.shop == shop and stay.name == stationName then
 			return true
 		end
 	end
@@ -2955,7 +3033,7 @@ local function manned(shop: Shop, stationName: string, except: Player?): boolean
 	return false
 end
 
-local MAKE_STAGES = { Ready = 1, Cheesed = 2, Sauced = 3 } -- furthest along first
+local MAKE_STAGES = { Cheesed = 1, Sauced = 2 } -- furthest along first (Ready ones load themselves)
 
 -- Where a follower goes for the top pizza on the tickets (Follow.target):
 -- pizzas being worked, staff at their posts and other followers' skins cover
@@ -3126,7 +3204,7 @@ local function useStation(shop: Shop, stationName: string, player: Player, pickI
 		return
 	end
 	if table.find(Config.MakeSteps, stationName) then
-		setParked(player, park == true)
+		setParked(player, if park == true then stationName else nil)
 	end
 	enterStation(shop, player, stationName, pickId)
 end
@@ -3141,10 +3219,12 @@ local function isNumber(v: any): boolean
 	return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
 end
 
--- A station step is done: tell the client, then line up what's next. A
--- follower goes straight on with the pizza to its next make step, unless
--- someone stays at that station to do it; otherwise the next job loads at
--- the station (for a follower, wherever the top pizza needs them).
+-- A station step is done: tell the client, then line up what's next.
+-- Whoever sauced or cheesed a pizza goes straight on with it to its next
+-- make step (the user, 2026-10-23: you always follow your pizza from sauce
+-- through the makeline); then a parked player goes back to where they parked
+-- and anyone else gets the next job (a follower, wherever the top pizza
+-- needs them).
 function stepDone(player: Player, stationName: string, pie: Pie?)
 	local info: any = { station = stationName }
 	if pie then
@@ -3158,8 +3238,17 @@ function stepDone(player: Player, stationName: string, pie: Pie?)
 	end
 	stay.idleSince = os.clock()
 	local nextAt = if pie and (pie.stage == "Sauced" or pie.stage == "Cheesed") and not pie.claimedBy then Config.StationForStage(pie.stage) else nil
-	if pie and nextAt and following(player, stationName) and not manned(stay.shop, nextAt, player) then
+	if pie and nextAt then
 		enterStation(stay.shop, player, nextAt, pie.id)
+		return
+	end
+	local home = parked[player]
+	if home and home ~= stationName then
+		task.delay(Config.NextJobDelay, function()
+			if stationed[player] == stay then
+				enterStation(stay.shop, player, home)
+			end
+		end)
 		return
 	end
 	task.delay(Config.NextJobDelay, assign, player)
@@ -3342,12 +3431,13 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		end
 		endSession(player, session, false)
 		topPie(shop, pie, placed, player)
-		if payload.load == true then
-			local orderId = if isNumber(payload.orderId) then payload.orderId else nil
-			local why = loadPie(shop, player, pie, orderId)
-			if why then
-				notify(player, why, Color3.fromRGB(255, 160, 100))
-			end
+		-- Straight into the oven (no Load station for now): for the order picked
+		-- in Pick mode, else auto-matched; if the entrance is busy, loadWaiting
+		-- puts it in a moment later.
+		local orderId = if isNumber(payload.orderId) then payload.orderId else nil
+		local why = loadPie(shop, player, pie, orderId)
+		if why and orderId then
+			notify(player, why, Color3.fromRGB(255, 160, 100))
 		end
 		stepDone(player, "Toppings", pie)
 	elseif kind == "Cut" then
@@ -3356,7 +3446,7 @@ function ShopService.FinishMinigame(player: Player, token: any, payload: any)
 		if type(angles) ~= "table" or #angles ~= cuts then
 			return
 		end
-		if type(box) ~= "string" or not table.find(Config.Sizes, box) then
+		if type(box) ~= "string" or not Config.BoxSize[box] then -- any box on the table (Small ones too: they stay for sides)
 			return
 		end
 		local norm = {}
@@ -3656,10 +3746,22 @@ local function tick(shop: Shop)
 
 	-- Impatient customers: waiting on their order, or at the counter with it on
 	-- the carryout rack and nobody bringing it (not while it waits for a slot).
+	-- Their faces sour as they wait and, annoyed, they grumble now and then.
 	for _, c in table.clone(shop.customers) do
 		if c.state == "Leaving" then
 			continue
-		elseif c.atCounter then
+		end
+		local mood = Config.MoodAt(waitShare(c, now)).name
+		local lines = Config.MoodLines[mood]
+		if mood ~= c.mood then
+			setFace(c, mood)
+			c.grumbleAt = if lines then now else nil
+		end
+		if lines and c.grumbleAt and now >= c.grumbleAt then
+			grumble(c, randomFrom(lines))
+			c.grumbleAt = now + shop.rng:NextNumber(18, 30)
+		end
+		if c.atCounter then
 			if now - c.atCounter > Config.Carryout.PickupPatience then
 				customerLeave(shop, c, "Nobody's bringing my order?! >:(")
 			end
@@ -3840,7 +3942,7 @@ end
 function ShopService.SetMember(player: Player, shop: Shop?)
 	if playerShop[player] ~= shop then
 		dropCarry(player)
-		setParked(player, false)
+		setParked(player, nil)
 		leaveStation(player)
 		ShopService.CancelSession(player)
 		CarService.Release(player)
@@ -3937,6 +4039,9 @@ function ShopService.Init(houseDoors: { Part })
 		for _, shop in shops do
 			if shop.alive then
 				local ok, err = pcall(ovenStep, shop, step)
+				if ok then
+					ok, err = pcall(loadWaiting, shop)
+				end
 				if not ok then
 					warn("[ShopService] oven error:", err)
 				end
@@ -3976,7 +4081,7 @@ function ShopService.Init(houseDoors: { Part })
 		end
 		local stay = stationed[player]
 		if stay and stay.shop == shop and table.find(Config.MakeSteps, stay.name) then
-			setParked(player, false)
+			setParked(player, nil)
 			assign(player)
 		else
 			useStation(shop, (followTarget(shop, player)), player)

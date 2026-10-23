@@ -133,6 +133,11 @@ The user chose a lighting / materials / decor pass while they set the Open Cloud
 - Verified (scripted play; a Studio-granted Assistant Manager on Dispatch so a one-player store takes deliveries, then moved off it): online delivery #7 was made, baked, cut and boxed; bag "#7" sat on slot 1 at the right height, the screen read "#7 House 4 (1)"; taking it at Dispatch removed the bag, cleared the screen, and handed the Delivery Bag ("Order #7 ... to house #4. Your car's out back"); nothing clips the station or the rack; no errors. Changing Config from the Server command context doesn't reach the game's scripts (a separate module cache): hire a driver to test deliveries.
 - Not seen: any in-Studio picture; the screen taking taps (display only); a driver crew taking a bag; more than six bags.
 
+## Streamlining (2026-10-23, the user's list)
+- Done and pushed: see CLAUDE.md ("Streamlining"). Verified (scripted play): the store builds with no ready rack, warmer, staff wall or lobby furniture, one scale (cheese), 14 dough balls (M 8, L 6), the ReadyQueue marker; following from Dough: Large stretched -> sauced -> the same pizza cheesed -> topped -> straight into the top oven lane, matched to a ticket, back to Dough; parked at Sauce with no skins -> sent to Dough; six customers in the two lines with faces. Edit-mode previews: top-down and the lobby view.
+- Not seen: the faces up close and their moods changing, grumbling, a customer handed an order from the wait line, the new toppings minigame by hand (pans toggling, the portions spread), Pick mode at Toppings.
+- Waiting on the user: front counter designs (renders, nothing in the game yet) and the new pizza box model (renders for approval, our brand, not the reference box's).
+
 ## Exact next step
 1. Ask the user to try the carryout pickup and a delivery by hand (the dispatch screen, the bags) and to look at the ovens in Studio. The hot bags get modelled when the user asks (placeholders now). Then the rest.
 2. The user's hands-on playtest of batch 2 (`rojo serve` in this folder, Connect in the Rojo plugin): the new store, clicking dough balls (and a tray refilling after its last ball), the camera views (tray pick -> stretch close-up; the cut table looking at the exits, turning to the boxes for a job), customers' path, NPC staff in the new spots. Fix what they report first.

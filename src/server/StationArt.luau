@@ -682,12 +682,12 @@ Builders.MakeLine = function(m, base)
 		end
 		P(m, base, Vector3.new(w, 0.3, 0.08), at(0, top - 0.1, front - 0.04), STEEL, Enum.Material.Metal, { name = "FrontLip" })
 	end
-	-- Portion scales at the cheese and toppings spots: a flat plate the pizza
-	-- sits on and a read-out standing to the maker's right (the tip card is on
-	-- the left of the screen), tipped back toward
-	-- the maker (`Scale` = the station; the client writes the weight on it
-	-- while they work).
-	for _, spot in { { id = "Cheese", x = L.cheeseX }, { id = "Toppings", x = L.toppingsX } } do
+	-- The portion scale at the cheese spot (the only one: toppings aren't
+	-- weighed, the user, 2026-10-23): a flat plate the pizza sits on and a
+	-- read-out standing to the maker's right (the tip card is on the left of
+	-- the screen), tipped back toward the maker (`Scale` = the station; the
+	-- client writes the weight on it while they work).
+	for _, spot in { { id = "Cheese", x = L.cheeseX } } do
 		P(m, base, Vector3.new(2.7, 0.03, 2.7), at(spot.x, top + 0.015, L.boardZ), STEEL, Enum.Material.Metal, { name = "ScalePlate", collide = false, reflect = 0.2 })
 		P(m, base, Vector3.new(0.06, 0.3, 0.06), at(spot.x - 1.75, top + 0.15, L.boardZ - 0.95), STEEL_DARK, Enum.Material.Metal, { collide = false })
 		local display = P(m, base, Vector3.new(1.0, 0.5, 0.1), at(spot.x - 1.75, top + 0.42, L.boardZ - 0.95) * CFrame.Angles(math.rad(40), 0, 0), BLACK, Enum.Material.SmoothPlastic, { name = "ScaleDisplay", collide = false })
@@ -729,6 +729,8 @@ Builders.MakeLine = function(m, base)
 	-- Where waiting pizzas sit (ShopService lines them up here)
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(L.saucedQueueX, top, L.boardZ), BLACK, nil, { name = "SaucedQueue", transparency = 1, collide = false })
 	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(L.cheesedQueueX, top, L.boardZ), BLACK, nil, { name = "CheesedQueue", transparency = 1, collide = false })
+	-- Topped pizzas wait here, at the oven end, for an oven entrance (no ready rack for now).
+	P(m, base, Vector3.new(0.1, 0.1, 0.1), at(w / 2 - 1.5, top, L.boardZ), BLACK, nil, { name = "ReadyQueue", transparency = 1, collide = false })
 end
 
 -- The ready rack: a square stainless table at the makeline's end with the

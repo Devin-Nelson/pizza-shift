@@ -115,7 +115,7 @@ end)
 spec("each pizza stage is worked by the right station", function()
 	eq(Config.StationForStage("Sauced"), "Cheese", "Sauced")
 	eq(Config.StationForStage("Cheesed"), "Toppings", "Cheesed")
-	eq(Config.StationForStage("Ready"), "Load", "Ready")
+	eq(Config.StationForStage("Ready"), nil, "Ready (no Load station: topped pizzas load themselves)")
 	eq(Config.StationForStage("Exit"), "CutTable", "Exit")
 	eq(Config.StationForStage("Oven"), nil, "Oven (nobody works it)")
 end)
@@ -136,11 +136,11 @@ spec("a follower goes with the top pizza: its pizza on the line, else its skin, 
 	eq(go({}, none, waiting, none), "Dough nil nil", "nothing on order: stretch ahead")
 end)
 
-spec("the make process runs Dough to Load; nothing to work moves you back a step", function()
-	eq(table.concat(Config.MakeSteps, ","), "Dough,Sauce,Cheese,Toppings,Load", "make steps")
+spec("the make process runs Dough to Toppings; nothing to work moves you back a step", function()
+	eq(table.concat(Config.MakeSteps, ","), "Dough,Sauce,Cheese,Toppings", "make steps")
 	eq(Config.StepBefore("Dough"), nil, "nothing before stretching")
 	eq(Config.StepBefore("Sauce"), "Dough", "no skins: stretch")
-	eq(Config.StepBefore("Load"), "Toppings", "nothing ready: top")
+	eq(Config.StepBefore("Toppings"), "Cheese", "nothing cheesed: cheese")
 	eq(Config.StepBefore("CutTable"), nil, "after the bake isn't the make process")
 	for _, id in Config.MakeSteps do
 		local info = Config.StationInfo(id)
@@ -397,10 +397,28 @@ spec("managers: Flexibility sets how many stations they handle; past that they s
 	near(Staff.jobQuality(m, "Dough"), Staff.quality(1) * 0.7, "sloppier")
 end)
 
-spec("every order waits 5 minutes, plus 75 s per extra pizza", function()
-	eq(Config.OrderPatience(1), 300, "1 pizza")
-	eq(Config.OrderPatience(3), 450, "3 pizzas")
-	eq(Config.OrderPatience(0), 300, "never less than 1 pizza's")
+spec("every order waits 10 minutes, plus 150 s per extra pizza", function()
+	eq(Config.OrderPatience(1), 600, "1 pizza")
+	eq(Config.OrderPatience(3), 900, "3 pizzas")
+	eq(Config.OrderPatience(0), 600, "never less than 1 pizza's")
+end)
+
+spec("customers sour as they wait, and a longer wait means a smaller tip", function()
+	eq(Config.MoodAt(0).name, "Happy", "just in")
+	eq(Config.MoodAt(0.3).name, "Fine", "a while")
+	eq(Config.MoodAt(0.6).name, "Annoyed", "past half")
+	eq(Config.MoodAt(5).name, "Angry", "long past it")
+	local last = math.huge
+	for _, m in Config.Moods do
+		assert(m.factor <= last and m.factor > 0, m.name .. ": satisfaction only falls, never to nothing")
+		last = m.factor
+		assert(m.name == "Happy" or m.name == "Fine" or Config.MoodLines[m.name], m.name .. " has things to grumble")
+	end
+end)
+
+spec("nobody orders or stretches a Small; the cut table keeps its Small boxes", function()
+	eq(table.concat(Config.Sizes, ","), "Medium,Large", "sizes")
+	assert(Config.BoxSize.Small and Config.PizzaInches.Small, "Small's numbers stay")
 end)
 
 spec("staff roll odds sum to 1 and only land on roll kinds", function()
