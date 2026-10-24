@@ -3121,7 +3121,10 @@ local function assign(player: Player, pickId: number?)
 		Remotes.StationMode:FireClient(player, nil)
 		return
 	end
-	local back = if why and not session and not follows then Config.StepBefore(stay.name) else nil
+	-- The makeline is a stop of its own (the user, 2026-10-24): parked there you
+	-- wait for pizzas rather than being moved back.
+	local makeline = stay.name == "Cheese" or stay.name == "Toppings"
+	local back = if why and not session and not follows and not makeline then Config.StepBefore(stay.name) else nil
 	if back and not hasWork(stay.shop, stay.name) then
 		local label = (Config.StationInfo(back) :: any).label
 		local who = occupant(stay.shop, back, player)
