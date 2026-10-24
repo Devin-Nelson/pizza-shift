@@ -2,12 +2,14 @@
 -- Staying at a station between jobs. The server puts you at a station
 -- (Remotes.StationMode) and hands you each job there as soon as one is waiting
 -- (StartMinigame). In between, a slim strip at the bottom shows what the
--- station is waiting for (Remotes.StationStatus). You leave with Exit on the
--- Stations bar, or hop to another station from it (WorkHud) without walking.
+-- station is waiting for (Remotes.StationStatus). You leave with the Exit
+-- button or by jumping (Space / gamepad A: the user, 2026-10-24), or step to
+-- another station with the edge arrows (WorkHud) without walking.
 -- The first visit to a station shows its tip card (StationTips).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Style = require(ReplicatedStorage.Shared.Style)
@@ -134,6 +136,13 @@ function StationMode.Init(minigameOpen: () -> boolean, closeOpenMinigame: () -> 
 		status = tostring(text)
 		if idle then
 			idle.text.Text = status
+		end
+	end)
+	-- Jumping takes you off the station (your controls are off there, so the
+	-- jump itself doesn't happen).
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if not processed and current and (input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA) then
+			StationMode.Exit()
 		end
 	end)
 	-- The idle strip shows whenever we're at a station with no job open.

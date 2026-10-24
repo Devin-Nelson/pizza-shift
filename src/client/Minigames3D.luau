@@ -4,8 +4,8 @@
 -- work spot, the station's tool (your own hands are hidden), and a work strip
 -- at the bottom with just the controls (short labels; the station's tip card
 -- explains it on a first visit). Each step starts from the
--- pizza exactly as the last step left it. Space, a mouse click and a tap on
--- the screen all work as the action button. The make-line is free-form:
+-- pizza exactly as the last step left it. F, a mouse click and a tap on
+-- the screen all work as the action button (Space jumps off the station). The make-line is free-form:
 -- nothing tells you the portions (the tip cards do), and pizzas only meet an
 -- order when they're loaded. Results are raw inputs; the server scores.
 
@@ -47,7 +47,7 @@ type Ctx = {
 local ACTION = "PizzaMinigameInput"
 local STEEL = Color3.fromRGB(200, 204, 210)
 -- The key hint on action buttons (none on touch-only devices).
-local KEY_HINT: string? = if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then nil else "SPACE"
+local KEY_HINT: string? = if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then nil else "F"
 
 local active: { dock: Frame, folder: Folder, cleanup: { () -> () }, conns: { RBXScriptConnection } }? = nil
 
@@ -83,7 +83,7 @@ local function isPlayClick(input: InputObject, processed: boolean): boolean
 end
 
 -- Common setup at the station the job was started at: its folder of local
--- parts and an empty work strip (leaving is on the Stations bar).
+-- parts and an empty work strip (leaving is the Exit button or a jump).
 local function open(data: any, cancel: Cancel): Ctx?
 	Minigames3D.Close()
 	local ws = StationMode.Ensure(data.station)
@@ -124,7 +124,8 @@ local function open(data: any, cancel: Cancel): Ctx?
 	}
 end
 
--- Space / gamepad A, without jumping. `onEnd` (optional) fires on release.
+-- The action key: F / gamepad X (Space jumps you off the station now: the
+-- user, 2026-10-24). `onEnd` (optional) fires on release.
 local function bindSpace(onBegin: () -> (), onEnd: (() -> ())?)
 	ContextActionService:BindActionAtPriority(ACTION, function(_, state)
 		if state == Enum.UserInputState.Begin then
@@ -133,10 +134,10 @@ local function bindSpace(onBegin: () -> (), onEnd: (() -> ())?)
 			onEnd()
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.Space, Enum.KeyCode.ButtonA)
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.F, Enum.KeyCode.ButtonX)
 end
 
--- The action button: Space / gamepad A, or a click / tap anywhere on the 3D view.
+-- The action button: F / gamepad X, or a click / tap anywhere on the 3D view.
 local function bindPress(ctx: Ctx, onPress: () -> ())
 	bindSpace(onPress)
 	-- Ignore the click that opened this phase, if it's still being delivered.

@@ -5,7 +5,7 @@
 -- job aid cards in the world; this is the reference. On screen everything
 -- else is short labels. "Got it" closes it for good (saved
 -- server-side via Remotes.TipSeen, read back from the TipsSeen attribute);
--- Help on the Stations bar brings it back.
+-- Help in the Menu brings it back.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -30,7 +30,7 @@ local TIPS: { [string]: { string } } = {
 		"Click a dough ball in its tray: the lit tray is the size the top ticket needs (any tray when you stay here to prep).",
 		"Press when the marker is in the green. The zone jumps after every press.",
 		"Yellow and misses leave the skin small and lopsided.",
-		"You follow each pizza to its next step. Pick a station on the Stations bar to stay there; Follow brings you back.",
+		"You follow each pizza to its next step. Step to a station with the side arrows to stay there; Follow in the Menu brings you back.",
 	},
 	Sauce = {
 		"The top ticket's skin is laid out for you (pick one when you stay here).",
@@ -50,7 +50,7 @@ local TIPS: { [string]: { string } } = {
 	},
 	Load = {
 		"Click a pizza on the ready rack to load it into the next oven slot.",
-		"Auto-match or pick the order yourself: switch it on the Stations bar.",
+		"Auto-match or pick the order yourself: switch it in the Menu.",
 	},
 	CutTable = {
 		"Click a pizza as it comes out of an oven, before it falls off.",
@@ -128,7 +128,7 @@ function StationTips.Show(id: string, again: boolean?)
 	local ref = REFS[id]
 	local root = Ui.box(C.Cream, {
 		Name = "Tip",
-		Position = UDim2.fromOffset(10, 170),
+		Position = UDim2.fromOffset(140, 170), -- clear of the left station arrow
 		Size = UDim2.fromOffset(if ref then 360 else 300, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = Ui.Root,
@@ -178,7 +178,7 @@ function StationTips.Show(id: string, again: boolean?)
 		})
 	end
 	local foot = Ui.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 46), LayoutOrder = 100, Parent = root })
-	Ui.text("Help on the Stations bar reopens this", Style.Font.Body, Style.Size.Small, {
+	Ui.text("Help in the Menu reopens this", Style.Font.Body, Style.Size.Small, {
 		TextColor3 = Color3.fromRGB(122, 114, 102),
 		Position = UDim2.fromOffset(12, 0),
 		Size = UDim2.new(1, -130, 1, 0),

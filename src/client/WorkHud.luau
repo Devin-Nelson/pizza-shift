@@ -6,15 +6,20 @@
 --    table, every pizza in the ovens by slot (OUT to pull, red as it's about
 --    to fall); at the heat rack, deliveries ready to go (click one to take it)
 --    and the ones on the road.
---  * Stations tab (bottom left, at your store): collapsed by default. It opens
---    sideways along the bottom into a key per station (gold badge = jobs
---    waiting; picking a make station parks you there), then Follow (lit while
---    you follow the top pizza, the default), Help (the station's tip and
---    portions), the order-matching switch, Exit and Stores.
---    While it's open the work strip steps aside so nothing covers the pizza.
---    The oldest make-line ticket flashes: that's the top pizza.
+--  * Station arrows (the user's pick, 2026-10-24, "just chevrons"): a big
+--    rounded chevron on each side of the screen in the colour of the station
+--    it goes to, its name under it; they step through the stations in order
+--    (Register, Stretch, Sauce, Cut & Box, Dispatch, wrapping; Q / E or the
+--    d-pad too) and park you there. The station you're at shows above the
+--    work strip (off a station: "Back to ...", the last one). Exit (bottom
+--    left) takes you off the station, as jumping does (StationMode).
+--  * Menu tab (bottom right, at your store): opens a short bar of Follow (lit
+--    while you follow the top pizza, the default), Help (the station's tip),
+--    the order-matching switch and Stores. While it's open the work strip
+--    steps aside so nothing covers the pizza. The oldest make-line ticket
+--    flashes: that's the top pizza.
 --  * Staff button (beside the tab): the store's hired staff (Staff menu).
---  * Not at a store: a Stores button where the tab goes (open or join one).
+--  * Not at a store: a Stores button bottom left (open or join one).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -37,22 +42,22 @@ local F = Style.Font
 local S = Style.Size
 
 local player = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+
+-- Each station's colour on the arrows (bright, so kids learn the route by colour).
+local STATION_COLORS: { [string]: Color3 } = {
+	Register = Color3.fromRGB(47, 155, 255),
+	Dough = Color3.fromRGB(255, 201, 60),
+	Sauce = Color3.fromRGB(255, 75, 62),
+	CutTable = Color3.fromRGB(46, 212, 122),
+	DeliveryRack = Color3.fromRGB(139, 92, 246),
+}
+local ROUND = Font.fromEnum(Enum.Font.FredokaOne)
 
 local TICKET_W = 138
 local MAX_TICKETS = 6
 local MAX_ROWS = 8 -- lines per ticket; the rest fold into "+N more"
 local KEY_W = 64 -- utility keys on the open bar
-local STATION_ICONS: { [string]: string } = {
-	Register = "register",
-	Dough = "dough",
-	Sauce = "sauce",
-	Cheese = "cheese",
-	Toppings = "toppings",
-	Load = "oven",
-	CutTable = "box",
-	DeliveryRack = "rack",
-}
-
 local function stationLabel(id: string): string
 	local info = Config.StationInfo(id)
 	return if info then info.label else id
@@ -142,10 +147,6 @@ function WorkHud.Init(_isBusy: () -> boolean)
 	local snapshot: any = nil
 	local snapshotAt = 0
 	local expanded = false
-
-	local function waitingAt(id: string): number
-		return if snapshot then tonumber(snapshot.waiting[id]) or 0 else 0
-	end
 
 	-- Ticket rail ----------------------------------------------------------------
 	local rail = Ui.new("Frame", {
@@ -263,18 +264,18 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		Remotes.RequestStores:FireServer()
 	end)
 
-	-- The Stations tab with the Staff button beside it.
+	-- The Menu tab with the Staff button beside it, bottom right.
 	local dock = Ui.new("Frame", {
 		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 10, 1, -10),
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -10, 1, -10),
 		Size = UDim2.fromOffset(0, 40),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Parent = Ui.Root,
 	})
 	list(dock, Enum.FillDirection.Horizontal, 6)
 	local tab = Ui.flatButton("", "key", {
-		Name = "StationsTab",
+		Name = "MenuTab",
 		Size = UDim2.fromOffset(0, 40),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Visible = false,
@@ -284,9 +285,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 	list(tab, Enum.FillDirection.Horizontal, 8, Enum.VerticalAlignment.Center)
 	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), Parent = tab })
 	Icons.make("grid", 14, tab).LayoutOrder = 1
-	Ui.text("STATIONS", F.LabelBold, S.Label, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 40), LayoutOrder = 2, Parent = tab })
-	local tabBadge = Ui.badge("0", { LayoutOrder = 3, Visible = false, Parent = tab })
-	Icons.make("chevron", 12, tab, { dir = "right" }).LayoutOrder = 4
+	Ui.text("MENU", F.LabelBold, S.Label, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 40), LayoutOrder = 2, Parent = tab })
 
 	local staffButton = Ui.flatButton("", "key", {
 		Name = "StaffButton",
@@ -305,10 +304,11 @@ function WorkHud.Init(_isBusy: () -> boolean)
 	end)
 
 	local bar = Ui.box(C.Panel, {
-		Name = "StationsBar",
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 10, 1, -10),
-		Size = UDim2.new(1, -20, 0, 54),
+		Name = "MenuBar",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -10, 1, -10),
+		Size = UDim2.fromOffset(0, 54),
+		AutomaticSize = Enum.AutomaticSize.X,
 		Visible = false,
 		Parent = Ui.Root,
 	})
@@ -350,12 +350,8 @@ function WorkHud.Init(_isBusy: () -> boolean)
 
 	local function rebuildBar()
 		local here = StationMode.Current()
-		local stations = myStations()
 		local following = player:GetAttribute("Following") ~= false
 		local sig = table.concat({ tostring(here), tostring(player:GetAttribute("StoreId")), Loading.mode, tostring(following) }, "|")
-		for _, id in stations do
-			sig ..= "|" .. waitingAt(id)
-		end
 		if sig == barSig then
 			return
 		end
@@ -386,26 +382,11 @@ function WorkHud.Init(_isBusy: () -> boolean)
 				rebuildBar()
 			end, opts = { iconOpts = { color = if Loading.mode == "Pick" then C.Gold else C.Green } } })
 		end
-		if here then
-			table.insert(utils, { text = "Exit", icon = "close", fn = function()
-				setExpanded(false)
-				StationMode.Exit()
-			end, opts = { dim = true, iconOpts = { color = C.CreamDim } } })
-		end
 		table.insert(utils, { text = "Stores", icon = "person", fn = function()
 			setExpanded(false)
 			Remotes.RequestStores:FireServer()
 		end, opts = { dim = true, iconOpts = { color = C.CreamDim } } })
-		local fixed = #utils * KEY_W + 52
-		local n = math.max(#stations, 1)
 		local order = 0
-		for _, id in stations do
-			order += 1
-			key(stationLabel(id), STATION_ICONS[id], UDim2.new(1 / n, -fixed / n, 1, 0), order, function()
-				setExpanded(false)
-				Remotes.UseStation:FireServer(id)
-			end, { on = id == here, badge = waitingAt(id) })
-		end
 		for _, u in utils do
 			order += 1
 			key(u.text, u.icon, UDim2.new(0, KEY_W, 1, 0), order, u.fn, u.opts)
@@ -413,7 +394,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		order += 1
 		local collapse = key("", "chevron", UDim2.new(0, 52, 1, 0), order, function()
 			setExpanded(false)
-		end, { iconOpts = { dir = "left" } })
+		end, { iconOpts = { dir = "right" } })
 		-- Centre the chevron (no label under it).
 		local ico = collapse:FindFirstChild("Icon_chevron") :: Frame?
 		if ico then
@@ -427,14 +408,147 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		setExpanded(true)
 	end)
 
-	local function refreshTab()
-		local total = 0
-		for _, id in myStations() do
-			total += waitingAt(id)
+	-- Station arrows ------------------------------------------------------------
+	-- A chunky rounded chevron drawn from two bars (no images), with a soft shadow.
+	local function chevron(parent: Instance, dir: number, color: Color3): Frame
+		local holder = Ui.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(60, 96), Parent = parent })
+		for _, layer in { { offset = Vector2.new(3, 4), color = Color3.new(0, 0, 0), transparency = 0.55 }, { offset = Vector2.zero, color = color, transparency = 0 } } do
+			for _, half in { -1, 1 } do
+				local barPart = Ui.new("Frame", {
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromOffset(30 + layer.offset.X, 48 + half * 18 + layer.offset.Y),
+					Size = UDim2.fromOffset(58, 20),
+					Rotation = -half * 45 * dir, -- the top bar slopes down to the tip (GUI rotation is clockwise)
+					BackgroundColor3 = layer.color,
+					BackgroundTransparency = layer.transparency,
+					BorderSizePixel = 0,
+					Parent = holder,
+				})
+				Ui.new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = barPart })
+			end
 		end
-		tabBadge.Text = tostring(total)
-		tabBadge.Visible = total > 0
+		return holder
 	end
+	local function roundText(text: string, size: number, props: { [string]: any }): TextLabel
+		local t = Ui.text(text, ROUND, size, props)
+		t.TextColor3 = Color3.new(1, 1, 1)
+		t.TextStrokeColor3 = Color3.new(0, 0, 0)
+		t.TextStrokeTransparency = 0.45
+		return t
+	end
+	local keyboard = UserInputService.KeyboardEnabled
+	local lastStation = "Register"
+	local function navBase(): string
+		local here = StationMode.Current()
+		-- With your pizza on the makeline, you're still on the sauce part of the line.
+		if here == "Cheese" or here == "Toppings" then
+			return "Sauce"
+		end
+		return here or lastStation
+	end
+	local function stepTo(dir: number): string?
+		local stations = myStations()
+		if #stations == 0 then
+			return nil
+		end
+		local i = table.find(stations, navBase()) or 1
+		return stations[(i - 1 + dir) % #stations + 1]
+	end
+	local arrows: { [number]: { button: TextButton, art: Frame?, name: TextLabel } } = {}
+	for _, dir in { -1, 1 } do
+		local button = Ui.new("TextButton", {
+			Name = if dir < 0 then "PrevStation" else "NextStation",
+			Text = "",
+			AutoButtonColor = false,
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(if dir < 0 then 0 else 1, 0.5),
+			Position = UDim2.new(if dir < 0 then 0 else 1, dir * -14, 0.5, -10),
+			Size = UDim2.fromOffset(120, 150),
+			Visible = false,
+			Parent = Ui.Root,
+		})
+		local name = roundText("", 20, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1), Size = UDim2.new(1, 0, 0, 26), TextXAlignment = Enum.TextXAlignment.Center, Parent = button })
+		arrows[dir] = { button = button, art = nil, name = name }
+		button.Activated:Connect(function()
+			local target = stepTo(dir)
+			if target then
+				Remotes.UseStation:FireServer(target)
+			end
+		end)
+	end
+	local hereChip = Ui.new("TextButton", {
+		Name = "HereStation",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -96),
+		Size = UDim2.fromOffset(0, 32),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Visible = false,
+		Parent = Ui.Root,
+	})
+	list(hereChip, Enum.FillDirection.Horizontal, 8, Enum.VerticalAlignment.Center)
+	local hereDot = Ui.new("Frame", { Size = UDim2.fromOffset(16, 16), BorderSizePixel = 0, LayoutOrder = 1, Parent = hereChip })
+	Ui.new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = hereDot })
+	Ui.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = hereDot })
+	local hereText = roundText("", 26, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 32), LayoutOrder = 2, Parent = hereChip })
+	hereChip.Activated:Connect(function()
+		if not StationMode.Current() then
+			Remotes.UseStation:FireServer(lastStation)
+		end
+	end)
+	local exitButton = Ui.new("TextButton", {
+		Name = "ExitStation",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 14, 1, -14),
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Visible = false,
+		Parent = Ui.Root,
+	})
+	list(exitButton, Enum.FillDirection.Horizontal, 8, Enum.VerticalAlignment.Center)
+	Icons.make("close", 26, exitButton, { color = STATION_COLORS.Sauce }).LayoutOrder = 1
+	roundText(if keyboard then "EXIT  [SPACE]" else "EXIT", 24, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 40), LayoutOrder = 2, Parent = exitButton })
+	exitButton.Activated:Connect(function()
+		StationMode.Exit()
+	end)
+	local navSig = ""
+	local function refreshNav()
+		local here = StationMode.Current()
+		local base = navBase()
+		local sig = table.concat({ tostring(here), base, #myStations() }, "|")
+		if sig == navSig then
+			return
+		end
+		navSig = sig
+		for dir, a in arrows do
+			local target = stepTo(dir)
+			if a.art then
+				a.art:Destroy()
+			end
+			local art = chevron(a.button, dir, if target then STATION_COLORS[target] or C.Cream else C.Cream)
+			art.AnchorPoint = Vector2.new(0.5, 0)
+			art.Position = UDim2.new(0.5, 0, 0, 10)
+			a.art = art
+			a.name.Text = if target then string.upper(stationLabel(target)) .. (if keyboard then (if dir < 0 then "  [Q]" else "  [E]") else "") else ""
+		end
+		hereDot.BackgroundColor3 = STATION_COLORS[base] or C.Cream
+		hereText.Text = if here then string.upper(stationLabel(base)) else "BACK TO " .. string.upper(stationLabel(base))
+	end
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or not StationMode.Current() then
+			return
+		end
+		local dir = if input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.DPadLeft then -1 elseif input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.DPadRight then 1 else nil
+		local target = if dir then stepTo(dir) else nil
+		if target then
+			Remotes.UseStation:FireServer(target)
+		end
+	end)
 
 	-- Wiring --------------------------------------------------------------------
 	local railStation: string? = nil
@@ -442,7 +556,6 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		snapshot = snap
 		snapshotAt = os.clock()
 		rebuildRail()
-		refreshTab()
 		if expanded then
 			rebuildBar()
 		end
@@ -455,7 +568,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 	player:GetAttributeChangedSignal("StoreId"):Connect(function()
 		setExpanded(false)
 		barSig = ""
-		refreshTab()
+		navSig = ""
 	end)
 
 	local lastTick = 0
@@ -487,6 +600,15 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		storesButton.Visible = not onShift and here == nil
 		tab.Visible = onShift and not expanded
 		staffButton.Visible = onShift and not expanded
+		if here and here ~= "Cheese" and here ~= "Toppings" and table.find(myStations(), here) then
+			lastStation = here
+		end
+		refreshNav()
+		for _, a in arrows do
+			a.button.Visible = onShift and not expanded
+		end
+		hereChip.Visible = onShift and not expanded
+		exitButton.Visible = here ~= nil and not expanded
 		if expanded and not onShift then
 			setExpanded(false)
 		end
