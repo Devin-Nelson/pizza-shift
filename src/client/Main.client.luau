@@ -137,8 +137,8 @@ local function applyPrompt(pp: ProximityPrompt)
 	if not parent then
 		return
 	end
-	-- Drawn by Prompts in the store-systems look.
-	pp.Style = Enum.ProximityPromptStyle.Custom
+	-- Roblox's own prompt look (the user, 2026-10-24).
+	pp.Style = Enum.ProximityPromptStyle.Default
 	local station = parent:GetAttribute("Station")
 	if type(station) == "string" and Config.StationInfo(station) then
 		-- Not at a store yet: show every store's, so players find them (the server

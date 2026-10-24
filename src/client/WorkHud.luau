@@ -10,9 +10,9 @@
 --    rounded chevron on each side of the screen in the colour of the station
 --    it goes to, its name under it; they step through the stations in order
 --    (Register, Stretch, Sauce, Cut & Box, Dispatch, wrapping; Q / E or the
---    d-pad too) and park you there. The station you're at shows above the
---    work strip (off a station: "Back to ...", the last one). Exit (bottom
---    left) takes you off the station, as jumping does (StationMode).
+--    d-pad too) and park you there; only while you're at a station. The
+--    station you're at shows above the work strip. Exit (bottom left) takes
+--    you off the station, as jumping does (StationMode).
 --  * Menu tab (bottom right, at your store): opens a short bar of Follow (lit
 --    while you follow the top pizza, the default), Help (the station's tip),
 --    the order-matching switch and Stores. While it's open the work strip
@@ -416,7 +416,9 @@ function WorkHud.Init(_isBusy: () -> boolean)
 			for _, half in { -1, 1 } do
 				local barPart = Ui.new("Frame", {
 					AnchorPoint = Vector2.new(0.5, 0.5),
-					Position = UDim2.fromOffset(30 + layer.offset.X, 48 + half * 18 + layer.offset.Y),
+					-- Each bar's rounded end sits on the tip: its centre is (58 - 20) / 2
+					-- along the bar from there, 13.4 off the middle at 45 degrees.
+					Position = UDim2.fromOffset(30 + layer.offset.X, 48 + half * 13.4 + layer.offset.Y),
 					Size = UDim2.fromOffset(58, 20),
 					Rotation = -half * 45 * dir, -- the top bar slopes down to the tip (GUI rotation is clockwise)
 					BackgroundColor3 = layer.color,
@@ -476,10 +478,8 @@ function WorkHud.Init(_isBusy: () -> boolean)
 			end
 		end)
 	end
-	local hereChip = Ui.new("TextButton", {
+	local hereChip = Ui.new("Frame", {
 		Name = "HereStation",
-		Text = "",
-		AutoButtonColor = false,
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -96),
@@ -493,11 +493,6 @@ function WorkHud.Init(_isBusy: () -> boolean)
 	Ui.new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = hereDot })
 	Ui.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = hereDot })
 	local hereText = roundText("", 26, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 32), LayoutOrder = 2, Parent = hereChip })
-	hereChip.Activated:Connect(function()
-		if not StationMode.Current() then
-			Remotes.UseStation:FireServer(lastStation)
-		end
-	end)
 	local exitButton = Ui.new("TextButton", {
 		Name = "ExitStation",
 		Text = "",
@@ -537,7 +532,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 			a.name.Text = if target then string.upper(stationLabel(target)) .. (if keyboard then (if dir < 0 then "  [Q]" else "  [E]") else "") else ""
 		end
 		hereDot.BackgroundColor3 = STATION_COLORS[base] or C.Cream
-		hereText.Text = if here then string.upper(stationLabel(base)) else "BACK TO " .. string.upper(stationLabel(base))
+		hereText.Text = string.upper(stationLabel(base))
 	end
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed or not StationMode.Current() then
@@ -604,10 +599,11 @@ function WorkHud.Init(_isBusy: () -> boolean)
 			lastStation = here
 		end
 		refreshNav()
+		-- Only while you're at a station (the user, 2026-10-24).
 		for _, a in arrows do
-			a.button.Visible = onShift and not expanded
+			a.button.Visible = here ~= nil and not expanded
 		end
-		hereChip.Visible = onShift and not expanded
+		hereChip.Visible = here ~= nil and not expanded
 		exitButton.Visible = here ~= nil and not expanded
 		if expanded and not onShift then
 			setExpanded(false)
