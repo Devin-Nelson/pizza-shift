@@ -495,6 +495,12 @@ Config.Reliability = { Max = 10, CalloutPerPoint = 0.03 }
 -- stations comfortably. Each station past that makes every job of theirs
 -- Slow slower and Sloppy worse (orders back up, customers leave).
 Config.Flexibility = { Max = 10, Slow = 0.5, Sloppy = 0.15 }
+-- Playtest (the user, 2026-10-23): every store owner without a Store Manager
+-- gets one free as their store opens: open availability (scheduled for every
+-- shift), full Flexibility, on the register and dispatch (so a solo tester
+-- gets deliveries too; the owner can move them). Saved like any hire, so it
+-- happens once. Turn off when the staff roll goes live.
+Config.Playtest = { FreeManager = true, ManagerStations = { "Register", "DeliveryRack" } }
 -- New hires, by pool (a Staff kind, or "Buy" for bought team members).
 -- `levels`: each station's starting level (range); `reliability` (range);
 -- `shifts`: odds of being available for 1, 2 or all 3 shifts; `flexibility`

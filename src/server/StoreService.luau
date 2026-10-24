@@ -121,6 +121,33 @@ local function prepareStaff(owner: Player): { Staff.Member }
 			table.insert(list, m)
 		end
 	end
+	if Config.Playtest.FreeManager then
+		local has, nextId, taken = false, 1, {}
+		for _, m in list do
+			has = has or m.kind == "StoreManager"
+			nextId = math.max(nextId, m.id + 1)
+			taken[m.name] = true
+		end
+		if not has then
+			local free = {}
+			for _, n in Config.StaffNames do
+				if not taken[n] then
+					table.insert(free, n)
+				end
+			end
+			local name = if #free > 0 then free[rng:NextInteger(1, #free)] else Config.StaffNames[1]
+			local m = Staff.newMember(rng, "StoreManager", "StoreManager", nextId, name, Config.Playtest.ManagerStations[1])
+			m.stations = table.clone(Config.Playtest.ManagerStations)
+			m.flexibility = Config.Flexibility.Max
+			m.reliability = Config.Reliability.Max -- never calls out on a tester
+			for _, shift in Staff.Shifts do
+				m.avail[shift] = true
+				m.shifts[shift] = true
+			end
+			table.insert(list, 1, m) -- first, so the shift cap below keeps them on
+			notify(owner, string.format("Playtest: %s joined your crew as your Store Manager - open availability, Flexibility %d/%d. Move them in the Staff menu.", name, Config.Flexibility.Max, Config.Flexibility.Max), GOOD)
+		end
+	end
 	for _, shift in Staff.Shifts do
 		local n = 0
 		for _, m in list do
