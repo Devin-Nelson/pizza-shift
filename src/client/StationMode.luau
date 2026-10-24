@@ -75,6 +75,11 @@ local function showIdle()
 	idle = { dock = strip, text = text }
 end
 
+-- True while a job (minigame) is open at the station.
+function StationMode.Busy(): boolean
+	return isMinigameOpen()
+end
+
 -- The id of the station we're at, if any.
 function StationMode.Current(): string?
 	return if current then current.name else nil

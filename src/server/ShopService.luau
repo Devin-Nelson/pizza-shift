@@ -3996,7 +3996,12 @@ function ShopService.Init(houseDoors: { Part })
 		local kind = target:GetAttribute("CarryoutKind")
 		if kind == "Stack" then
 			for _, o in shop.carryout do
-				if o.stack == target then
+				if o.stack == target and not carrying[player] then
+					-- Picked up from a station (the cut table is right by the rack):
+					-- off the station, order in hand (the user, 2026-10-24).
+					if stationed[player] then
+						leaveStation(player)
+					end
 					takeOrder(player, o)
 				end
 			end

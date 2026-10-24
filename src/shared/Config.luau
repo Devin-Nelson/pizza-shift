@@ -117,7 +117,7 @@ Config.StationView = {
 	-- jobs the camera looks left at the oven exits to pull a pizza; working, it
 	-- turns back to the table and its three box stacks (pulled back and over to
 	-- the right for the user's bigger table, 2026-10-21, so all three show).
-	CutTable = { height = 4.6, back = 3.8, side = 1.6, focusBack = -0.4, focusSide = 1.6, fov = 72, stand = 2.6, idle = { height = 2.4, back = 2.2, side = 0, focusBack = 5.2, focusUp = 0.8, focusSide = -4.9, fov = 72 } },
+	CutTable = { height = 4.6, back = 3.8, side = 1.6, focusBack = -0.4, focusSide = 1.6, fov = 72, stand = 2.6, idle = { height = 2.4, back = 2.2, side = 0, focusBack = 8.2, focusUp = 0.8, focusSide = -4.9, fov = 72 } }, -- idle focusBack +3 with the table moved off the ovens (2026-10-24)
 	Register = { height = 1.6, back = 2.2, side = 1.2, focusBack = -4, focusUp = 0.4, fov = 70, stand = 2.8 }, -- over the POS, out to the customers
 	DeliveryRack = { height = 1.0, back = 7.5, focusUp = 0.2, fov = 70, stand = 3.0 }, -- dispatch: the screen and the delivery rack's bags
 }

@@ -1,5 +1,5 @@
 --!strict
--- Carryout pickup, walking round the store (not at a station): click an
+-- Carryout pickup, walking round the store or from a station between jobs: click an
 -- order's stack on the carryout rack to pick it up, then click its customer at
 -- the counter to hand it over, or the rack to put it back (on a touchscreen,
 -- a tap: drags and the thumbstick never count). Hovering one
@@ -34,7 +34,9 @@ highlight.Enabled = false
 local function target(at: Vector2?): Instance?
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root or StationMode.Current() then
+	-- At a station only while no job is open (the server takes you off the
+	-- station when you pick an order up).
+	if not root or (StationMode.Current() and StationMode.Busy()) then
 		return nil
 	end
 	local holding = player:GetAttribute("Carrying") ~= nil

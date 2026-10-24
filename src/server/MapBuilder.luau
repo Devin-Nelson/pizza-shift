@@ -657,7 +657,9 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	local CT = StationArt.Layout.CutTable
 	-- (The user's bigger table, 2026-10-21, moved toward the right wall with the
 	-- ovens the same day: the same place relative to their exits.)
-	local cutCF = at(12.65, 1, -3.4) * FACE_RIGHT
+	-- 3 studs clear of the ovens (the user, 2026-10-24): a walkway between the
+	-- cut table and the oven exits.
+	local cutCF = at(9.65, 1, -3.4) * FACE_RIGHT
 	-- The carryout rack across its far end (the user, 2026-10-21), facing it:
 	-- finished carryout orders wait there for their customers (ShopService).
 	StationArt.Build("CarryoutRack", decor, cutCF * CFrame.new(-StationArt.Layout.CarryoutRack.nextTo, 0, 0) * CFrame.Angles(0, -math.pi / 2, 0))
