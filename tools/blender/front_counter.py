@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import kit  # noqa: E402
 from kit import Mesh, rb, rgb  # noqa: E402
 
-L, D, TOP = 13.5, 3.8, 4.4
+L, D, TOP = 13.5, 3.8, 3.4  # top lowered to the kitchen tables' height (the user, 2026-10-24: "too tall for our little guy")
 SPACING = 20
 RED, CHARCOAL = rgb(214, 48, 39), rgb(38, 40, 46)
 QUARTZ, STAINLESS, BLACK = rgb(232, 232, 228), rgb(140, 145, 152), rgb(26, 26, 28)
@@ -152,10 +152,10 @@ for j in range(n):
 for sx in (-1, 1):
     c_steel.box((0.1, TOP - 0.1, D), (xc + sx * (L / 2 - 0.05), (TOP - 0.1) / 2, 0))
 c_steel.box((L + 0.2, 0.1, D + 0.2), (xc, TOP - 0.05, 0), bevel=0.02)
-c_steel.box((2.7, 2.7, 0.04), (xc, 2.35, -D / 2 + 0.05))
-logo("C_Logo", xc, 2.35, -D / 2 + 0.025, 2.5)
+c_steel.box((2.2, 2.2, 0.04), (xc, 1.75, -D / 2 + 0.05))
+logo("C_Logo", xc, 1.75, -D / 2 + 0.025, 2.0)
 staff_side(c_back, xc, TOP)
-print(f"[layout] logo panel {2.5} square at (0, 2.35, {-D / 2 + 0.025:.3f})")
+print(f"[layout] logo panel {2.0} square at (0, 1.75, {-D / 2 + 0.025:.3f})")
 if EXPORT:
     kit.finish("front_counter", [c_wood, c_back, c_steel], [], [("C_export", (-9.0, 6.5, -13.0), (0.0, 2.6, 0.0), 32)], kit.args()["render"])
     sys.exit(0)

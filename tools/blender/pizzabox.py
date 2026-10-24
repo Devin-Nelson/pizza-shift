@@ -94,7 +94,7 @@ def panels(kind):
         add(name="BaseCorner", parent=base, hinge=hinge, fold=180, t0=0.0, t1=0.3, tri=(into(apex), into(p0), into(p1)), hidden=True)
         # Side walls beside the creased corners (panel x = -s * the base's z).
         x0, x1 = (-d / 2, d / 2 - cd) if s == 1 else (-d / 2 + cd, d / 2)
-        side = add(name="Side", parent=base, hinge=_at(s * w / 2, 0, 0) @ _yaw(s * 90), fold=90, t0=0.05, t1=0.35, rect=(x0, x1, 0, h))
+        side = add(name="Side", parent=base, hinge=_at(s * w / 2, 0, 0) @ _yaw(s * 90), fold=90, t0=0.05, t1=0.35, rect=(x0, x1, 0, h), print="Band")
         fx = s * (d / 2 - cd)  # the wall's front end
         hinge2, into2 = _line((fx, 0), (fx, h), (fx + s, 0))
         ex0, ex1 = sorted((into2((fx, 0))[0], into2((fx, h))[0]))
@@ -107,15 +107,16 @@ def panels(kind):
         x0, x1 = (-(h - 0.02), -0.02) if s == 1 else (0.02, h - 0.02)
         add(name="BackTab", parent=back, hinge=_at(s * (w / 2 - T), 0, 0) @ _yaw(s * 90), fold=90, t0=0.55, t1=0.75, rect=(x0, x1, 0, 0.95 * h), hidden=True)
     # The lid: the reference's cut half, its front corners cut off on the same
-    # diagonal; it folds down onto the base, its side flaps over the side walls
-    # and its front tuck inside the front wall.
-    lid = add(name="Lid", parent=back, hinge=_at(0, 0, h), fold=90, t0=0.85, t1=1.35, rect=(-w / 2 - T, w / 2 + T, 0, d - cd), print="LidMain")
+    # diagonal; it folds down onto the base, its side flaps and front tuck
+    # going inside the walls (the user, 2026-10-24), the side flaps inside the
+    # back wall's tabs too.
+    lid = add(name="Lid", parent=back, hinge=_at(0, 0, h), fold=90, t0=0.85, t1=1.35, rect=(-(w / 2 - 2 * T), w / 2 - 2 * T, 0, d - cd), print="LidMain")
     add(name="LidFront", parent=lid, rect=(-(w / 2 - cw), w / 2 - cw, d - cd, d), print="LidFront")
     add(name="Tuck", parent=lid, hinge=_at(0, 0, d - 2 * T), fold=90, t0=1.2, t1=1.55, rect=(-(w / 2 - cw), w / 2 - cw, 0, h), hidden=True)
     for s in (1, -1):
-        add(name="LidInner", parent=lid, tri=((s * (w / 2 - cw), d - cd), (s * w / 2, d - cd), (s * (w / 2 - cw), d)))
+        add(name="LidInner", parent=lid, tri=((s * (w / 2 - cw), d - cd), (s * (w / 2 - 2 * T), d - cd), (s * (w / 2 - cw), d)))
         x0, x1 = (-(d - cd), 0) if s == 1 else (0, d - cd)
-        add(name="LidSide", parent=lid, hinge=_at(s * (w / 2 + T), 0, 0) @ _yaw(s * 90), fold=90, t0=1.0, t1=1.3, rect=(x0, x1, 0, h), print="Band")
+        add(name="LidSide", parent=lid, hinge=_at(s * (w / 2 - 2 * T), 0, 0) @ _yaw(s * 90), fold=90, t0=1.0, t1=1.3, rect=(x0, x1, 0, h - 0.02), hidden=True)
     return out
 
 

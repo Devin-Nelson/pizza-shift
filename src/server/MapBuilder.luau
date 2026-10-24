@@ -225,8 +225,8 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	-- on the carryout rack by the oven, the user, 2026-10-23). Its face is in
 	-- line with the dough show's low wall beside the slap table (the user,
 	-- 2026-10-21: "even with the slap table").
-	StationArt.Build("FrontCounter", decor, at(-6.7 + S, 1, 3.15) * FACE_LEFT) -- the user's design C (x -3.9..-0.1, z -3.6..9.9, top 5.4)
-	StationArt.Build("Register", decor, at(-6.2 + S, 5.4, 3.0) * FACE_RIGHT)
+	StationArt.Build("FrontCounter", decor, at(-6.7 + S, 1, 3.15) * FACE_LEFT) -- the user's design C (x -3.9..-0.1, z -3.6..9.9, top 4.4)
+	StationArt.Build("Register", decor, at(-6.2 + S, 4.4, 3.0) * FACE_RIGHT)
 	local menuItems = {
 		{ "PIZZAS", "Build your own:\nsize + up to 3\ntoppings" },
 		{ "SIZES", (string.gsub(table.concat(Config.Sizes, "\n"), "%a+", function(size)
@@ -636,7 +636,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	end
 
 	-- Carryout counter: the register (the ordering screen) facing the side lobby.
-	station("Register", at(-6.2 + S, 5.4, 7.4) * FACE_RIGHT, Vector3.new(3, 2, 2), "Take Order", "Register", nil, Vector3.new(0, 0, 0))
+	station("Register", at(-6.2 + S, 4.4, 7.4) * FACE_RIGHT, Vector3.new(3, 2, 2), "Take Order", "Register", nil, Vector3.new(0, 0, 0))
 	-- The production L: stretch table and sauce corner (their stations are
 	-- hitboxes over the work spots from StationArt.Layout), makeline. (No
 	-- ready rack or Load station for now: StationArt's ReadyRack and the Load

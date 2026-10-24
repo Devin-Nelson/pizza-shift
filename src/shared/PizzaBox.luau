@@ -9,7 +9,7 @@
 -- wall with a tab at each end. The lid, on the back wall, is the cut half: its
 -- front corners cut off on the same diagonal; it folds down onto the base
 -- (the user: "the more triangular side folds downward onto the base"), its
--- side flaps over the side walls and its front tuck inside the front wall.
+-- side flaps and front tuck going inside the walls.
 -- Everything scales with the box (the wall is 61 / 400 of the width, as on
 -- the reference). Brown kraft inside, the printed white board outside
 -- (Config.BoxPrint).
@@ -103,7 +103,7 @@ function PizzaBox.panels(k: Kind): { Panel }
 		add({ name = "BaseCorner", parent = base, hinge = hinge, fold = 180, from = 0, to = 0.3, tri = { into(apex), into(p0), into(p1) }, hidden = true })
 		-- Side walls beside the creased corners (panel x = -s * the base's z).
 		local x0, x1 = if s == 1 then -d / 2 else -d / 2 + cd, if s == 1 then d / 2 - cd else d / 2
-		local side = add({ name = "Side", parent = base, hinge = CFrame.new(s * w / 2, 0, 0) * yaw(s * 90), fold = 90, from = 0.05, to = 0.35, rect = { x0, x1, 0, h } })
+		local side = add({ name = "Side", parent = base, hinge = CFrame.new(s * w / 2, 0, 0) * yaw(s * 90), fold = 90, from = 0.05, to = 0.35, rect = { x0, x1, 0, h }, print = "Band" })
 		local fx = s * (d / 2 - cd) -- the wall's front end
 		local hinge2, into2 = line(Vector2.new(fx, 0), Vector2.new(fx, h), Vector2.new(fx + s, 0))
 		local ea, eb = into2(Vector2.new(fx, 0)).X, into2(Vector2.new(fx, h)).X
@@ -118,15 +118,16 @@ function PizzaBox.panels(k: Kind): { Panel }
 		add({ name = "BackTab", parent = back, hinge = CFrame.new(s * (w / 2 - T), 0, 0) * yaw(s * 90), fold = 90, from = 0.55, to = 0.75, rect = { bx0, bx1, 0, 0.95 * h }, hidden = true })
 	end
 	-- The lid: the reference's cut half, its front corners cut off on the same
-	-- diagonal; it folds down onto the base, its side flaps over the side walls
-	-- and its front tuck inside the front wall.
-	local lid = add({ name = "Lid", parent = back, hinge = CFrame.new(0, 0, h), fold = 90, from = 0.85, to = 1.35, rect = { -w / 2 - T, w / 2 + T, 0, d - cd }, print = "LidMain" })
+	-- diagonal; it folds down onto the base, its side flaps and front tuck
+	-- going inside the walls (the user, 2026-10-24), the side flaps inside the
+	-- back wall's tabs too.
+	local lid = add({ name = "Lid", parent = back, hinge = CFrame.new(0, 0, h), fold = 90, from = 0.85, to = 1.35, rect = { -(w / 2 - 2 * T), w / 2 - 2 * T, 0, d - cd }, print = "LidMain" })
 	add({ name = "LidFront", parent = lid, rect = { -(w / 2 - cw), w / 2 - cw, d - cd, d }, print = "LidFront" })
 	add({ name = "Tuck", parent = lid, hinge = CFrame.new(0, 0, d - 2 * T), fold = 90, from = 1.2, to = 1.55, rect = { -(w / 2 - cw), w / 2 - cw, 0, h }, hidden = true })
 	for _, s in { 1, -1 } do
-		add({ name = "LidInner", parent = lid, tri = { Vector2.new(s * (w / 2 - cw), d - cd), Vector2.new(s * w / 2, d - cd), Vector2.new(s * (w / 2 - cw), d) } })
+		add({ name = "LidInner", parent = lid, tri = { Vector2.new(s * (w / 2 - cw), d - cd), Vector2.new(s * (w / 2 - 2 * T), d - cd), Vector2.new(s * (w / 2 - cw), d) } })
 		local x0, x1 = if s == 1 then -(d - cd) else 0, if s == 1 then 0 else d - cd
-		add({ name = "LidSide", parent = lid, hinge = CFrame.new(s * (w / 2 + T), 0, 0) * yaw(s * 90), fold = 90, from = 1.0, to = 1.3, rect = { x0, x1, 0, h }, print = "Band" })
+		add({ name = "LidSide", parent = lid, hinge = CFrame.new(s * (w / 2 - 2 * T), 0, 0) * yaw(s * 90), fold = 90, from = 1.0, to = 1.3, rect = { x0, x1, 0, h - 0.02 }, hidden = true })
 	end
 	return list
 end

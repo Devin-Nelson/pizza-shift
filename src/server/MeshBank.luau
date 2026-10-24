@@ -93,11 +93,11 @@ local MeshBank: { [string]: Station } = {
 	-- tools/blender/front_counter.py --export (2026-10-23): the user's design C, wood
 	-- slats and steel; the customers at -Z; Logo is the bold box lid art on a panel.
 	FrontCounter = {
-		model = 107106662175026,
+		model = 88939316173349, -- top lowered to 3.4 (the user, 2026-10-24)
 		meshes = {
-			Wood = { id = 94453167421691, size = Vector3.new(13.22, 3.85, 0.08), at = Vector3.new(0, 2.345, -1.79) },
-			Back = { id = 127849161303408, size = Vector3.new(13.3, 3.9, 3.61), at = Vector3.new(0, 2.35, 0.105) },
-			Steel = { id = 97456352771836, size = Vector3.new(13.7, 4.4, 4.0), at = Vector3.new(0, 2.2, 0) },
+			Wood = { id = 70871075972711, size = Vector3.new(13.22, 2.85, 0.08), at = Vector3.new(0, 1.845, -1.79) },
+			Back = { id = 130116262360123, size = Vector3.new(13.3, 2.9, 3.61), at = Vector3.new(0, 1.85, 0.105) },
+			Steel = { id = 127277269228748, size = Vector3.new(13.7, 3.4, 4.0), at = Vector3.new(0, 1.7, 0) },
 		},
 		images = { Logo = 100879538652843 }, -- lid_bold.png
 	},
@@ -116,12 +116,12 @@ local MeshBank: { [string]: Station } = {
 	-- stacks' blanks die-cut as src/shared/PizzaBox.luau);
 	-- Rocker and RockerGrips are instanced (built standing, the edge's lowest point at the origin).
 	CutTable = {
-		model = 99772989187101, -- 2026-10-24: the blanks die-cut as the user's reference (lid the cut half)
+		model = 89674189823608, -- 2026-10-24: the blanks die-cut as the user's reference (lid the cut half, flaps inside)
 		meshes = {
 			Steel = { id = 76044766413210, size = Vector3.new(12.86, 3.0786, 6.37), at = Vector3.new(0, 1.6727, 0.005) },
 			Dark = { id = 93063948607148, size = Vector3.new(12.74, 0.3939, 6.54), at = Vector3.new(0, 0.2, 0.05) },
 			Cardboard = { id = 71873887434317, size = Vector3.new(10.24, 0.62, 3), at = Vector3.new(-0.32, 0.93, 0) },
-			Blanks = { id = 104257236593902, size = Vector3.new(11.1366, 1.996, 6.3108), at = Vector3.new(0.6677, 2.77, -0.0517) },
+			Blanks = { id = 126851587363777, size = Vector3.new(11.087, 1.996, 6.3108), at = Vector3.new(0.6677, 2.77, -0.0517) },
 			Rocker = { id = 107227853656891, size = Vector3.new(3.4, 0.625, 0.206), at = Vector3.new(0, 0.3125, 0) },
 			RockerGrips = { id = 133911230277363, size = Vector3.new(3.52, 0.17, 0.19), at = Vector3.new(0, 0.595, 0) },
 		},

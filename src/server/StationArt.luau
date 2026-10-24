@@ -1015,7 +1015,7 @@ end
 -- stainless top and end caps, the brand panel in the middle of the front.
 -- 13.5 long, 3.8 deep, its top at 4.4; the customers at -Z. The POS on it
 -- is the Register's art. Parts when the meshes don't load.
-StationArt.Layout.FrontCounter = { length = 13.5, depth = 3.8, top = 4.4, logo = Vector3.new(0, 2.35, -1.885), logoSize = 2.5 }
+StationArt.Layout.FrontCounter = { length = 13.5, depth = 3.8, top = 3.4, logo = Vector3.new(0, 1.75, -1.885), logoSize = 2.0 } -- top at the tables' height (2026-10-24)
 Builders.FrontCounter = function(m, base)
 	local L = StationArt.Layout.FrontCounter
 	local mesh = stationMeshes("FrontCounter")
