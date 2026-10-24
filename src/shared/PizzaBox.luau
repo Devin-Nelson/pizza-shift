@@ -1,16 +1,18 @@
 --!strict
 -- Pizza box blanks (the user's reference, 2026-10-24: a die-cut sheet measured
 -- on a 400 px base; tools/blender/pizzabox.py mirrors this, keep the two in
--- step). The base's front corners are cut off on a diagonal (43 across, 103
--- back), the side walls stand beside the rest; a full-width back wall with a
--- tab at each end; a front wall between the cuts; the lid on the back wall,
--- its front corners creased on the same diagonal (each corner tucks under the
--- lid, leaving the lid's corner cut like the base's); the lid's side flaps,
--- each with a front piece on a crease that swings in along the cut corner,
--- its end tucking behind the front; a tuck along the lid's front with an ear
--- tab at each end. Everything scales with the box (the wall is 61 / 400 of
--- the width, as on the reference). Brown kraft inside, the printed white
--- board outside (Config.BoxPrint).
+-- step). The base is the reference's creased half: its front corners are
+-- creased on a diagonal (43 across, 103 back) and fold in onto its floor, the
+-- side walls stand beside the rest, each with a front piece on a crease that
+-- swings in along the corner (its end tucking behind the front wall); a front
+-- wall between the corners with an ear tab at each end; a full-width back
+-- wall with a tab at each end. The lid, on the back wall, is the cut half: its
+-- front corners cut off on the same diagonal; it folds down onto the base
+-- (the user: "the more triangular side folds downward onto the base"), its
+-- side flaps over the side walls and its front tuck inside the front wall.
+-- Everything scales with the box (the wall is 61 / 400 of the width, as on
+-- the reference). Brown kraft inside, the printed white board outside
+-- (Config.BoxPrint).
 -- The server lays each stack's top blank flat (StationArt), the cut
 -- minigame folds its own copy, and ShopService builds shut boxes for the
 -- carryout rack from the same panels.
@@ -85,47 +87,46 @@ function PizzaBox.panels(k: Kind): { Panel }
 		table.insert(list, p :: any)
 		return #list
 	end
+	-- The base: the reference's creased half. Its front corners are creased on
+	-- the diagonal and fold in onto its floor; the side walls stand beside the
+	-- rest, each with a front piece on a crease that swings in along the
+	-- corner (its end tucking behind the front wall).
 	local base = add({ name = "Base", rect = { -w / 2, w / 2, -d / 2 + cd, d / 2 } })
-	add({ name = "BaseFront", parent = base, rect = { -w / 2 + cw, w / 2 - cw, -d / 2, -d / 2 + cd } })
+	add({ name = "BaseFront", parent = base, rect = { -(w / 2 - cw), w / 2 - cw, -d / 2, -d / 2 + cd } })
+	local front = add({ name = "Front", parent = base, hinge = CFrame.new(0, 0, -d / 2) * yaw(180), fold = 90, from = 0.25, to = 0.55, rect = { -(w / 2 - cw), w / 2 - cw, 0, h } })
+	local back = add({ name = "Back", parent = base, hinge = CFrame.new(0, 0, d / 2), fold = 90, from = 0.25, to = 0.55, rect = { -w / 2, w / 2, 0, h } })
+	local cut = math.sqrt(cw * cw + cd * cd) -- the corner's diagonal
 	for _, s in { 1, -1 } do
-		add({ name = "BaseCorner", parent = base, tri = { Vector2.new(s * (w / 2 - cw), -d / 2 + cd), Vector2.new(s * w / 2, -d / 2 + cd), Vector2.new(s * (w / 2 - cw), -d / 2) } })
-		-- Side walls beside the uncut part only (panel x = -s * the base's z).
+		add({ name = "BaseInner", parent = base, tri = { Vector2.new(s * (w / 2 - cw), -d / 2 + cd), Vector2.new(s * w / 2, -d / 2 + cd), Vector2.new(s * (w / 2 - cw), -d / 2) } })
+		local p0, p1, apex = Vector2.new(s * (w / 2 - cw), -d / 2), Vector2.new(s * w / 2, -d / 2 + cd), Vector2.new(s * w / 2, -d / 2)
+		local hinge, into = line(p0, p1, apex)
+		add({ name = "BaseCorner", parent = base, hinge = hinge, fold = 180, from = 0, to = 0.3, tri = { into(apex), into(p0), into(p1) }, hidden = true })
+		-- Side walls beside the creased corners (panel x = -s * the base's z).
 		local x0, x1 = if s == 1 then -d / 2 else -d / 2 + cd, if s == 1 then d / 2 - cd else d / 2
-		add({ name = "Side", parent = base, hinge = CFrame.new(s * w / 2, 0, 0) * yaw(s * 90), fold = 90, from = 0, to = 0.3, rect = { x0, x1, 0, h } })
-	end
-	add({ name = "Front", parent = base, hinge = CFrame.new(0, 0, -d / 2) * yaw(180), fold = 90, from = 0.2, to = 0.5, rect = { -(w / 2 - cw), w / 2 - cw, 0, h } })
-	local back = add({ name = "Back", parent = base, hinge = CFrame.new(0, 0, d / 2), fold = 90, from = 0.2, to = 0.5, rect = { -w / 2, w / 2, 0, h } })
-	for _, s in { 1, -1 } do
-		-- End tabs: they fold in against the side walls (panel x = -s * the wall's z).
-		local x0, x1 = if s == 1 then -(h - 0.02) else 0.02, if s == 1 then -0.02 else h - 0.02
-		add({ name = "BackTab", parent = back, hinge = CFrame.new(s * (w / 2 - T), 0, 0) * yaw(s * 90), fold = 90, from = 0.45, to = 0.65, rect = { x0, x1, 0, 0.95 * h }, hidden = true })
-	end
-	local lid = add({ name = "Lid", parent = back, hinge = CFrame.new(0, 0, h), fold = 90, from = 0.85, to = 1.35, rect = { -w / 2 - T, w / 2 + T, 0, d - cd }, print = "LidMain" })
-	add({ name = "LidFront", parent = lid, rect = { -(w / 2 - cw), w / 2 - cw, d - cd, d }, print = "LidFront" })
-	local tuck = add({ name = "Tuck", parent = lid, hinge = CFrame.new(0, 0, d - 2 * T), fold = 90, from = 1.15, to = 1.5, rect = { -(w / 2 - cw), w / 2 - cw, 0, h }, hidden = true })
-	for _, s in { 1, -1 } do
-		-- The lid's side flap behind the crease (panel x = -s * the lid's z).
-		local x0, x1 = if s == 1 then -(d - cd) else 0, if s == 1 then 0 else d - cd
-		local side = add({ name = "LidSide", parent = lid, hinge = CFrame.new(s * (w / 2 + T), 0, 0) * yaw(s * 90), fold = 90, from = 0.95, to = 1.25, rect = { x0, x1, 0, h }, print = "Band" })
-		-- Its front piece, on the crease across the flap's front end: with the
-		-- flap down it swings in along the cut corner, and its end (past the
-		-- cut corner) tucks in behind the front wall.
-		local fx = -s * (d - cd)
-		local hinge2, into2 = line(Vector2.new(fx, 0), Vector2.new(fx, h), Vector2.new(fx - s, 0))
+		local side = add({ name = "Side", parent = base, hinge = CFrame.new(s * w / 2, 0, 0) * yaw(s * 90), fold = 90, from = 0.05, to = 0.35, rect = { x0, x1, 0, h } })
+		local fx = s * (d / 2 - cd) -- the wall's front end
+		local hinge2, into2 = line(Vector2.new(fx, 0), Vector2.new(fx, h), Vector2.new(fx + s, 0))
 		local ea, eb = into2(Vector2.new(fx, 0)).X, into2(Vector2.new(fx, h)).X
 		local ex0, ex1 = math.min(ea, eb), math.max(ea, eb)
-		local cut = math.sqrt(cw * cw + cd * cd)
-		local flap = add({ name = "CornerFlap", parent = side, hinge = hinge2, fold = CUT_ANGLE, from = 1.15, to = 1.4, rect = { ex0, ex1, 0, cut } })
-		add({ name = "CornerTip", parent = flap, hinge = CFrame.new(0, 0, cut), fold = 100 - CUT_ANGLE, from = 1.25, to = 1.45, rect = { ex0, ex1, 0, cd + UPPER_PAST * h - cut }, hidden = true })
-		-- The lid's front corner, creased on the diagonal: it tucks under the lid.
-		local p0, p1, apex = Vector2.new(s * (w / 2 - cw), d), Vector2.new(s * w / 2, d - cd), Vector2.new(s * w / 2, d)
-		local hinge, into = line(p0, p1, apex)
-		add({ name = "LidCorner", parent = lid, hinge = hinge, fold = 180, from = 1.0, to = 1.3, tri = { into(apex), into(p0), into(p1) }, hidden = true })
-		-- The lid inside the crease stays: its corner ends up cut like the base's.
-		add({ name = "LidInner", parent = lid, tri = { Vector2.new(s * (w / 2 - cw), d - cd), Vector2.new(s * w / 2, d - cd), Vector2.new(s * (w / 2 - cw), d) } })
-		-- Ear tabs on the tuck's ends (panel x = -s * the tuck's z).
+		local flap = add({ name = "CornerFlap", parent = side, hinge = hinge2, fold = CUT_ANGLE, from = 0.35, to = 0.6, rect = { ex0, ex1, 0, cut } })
+		add({ name = "CornerTip", parent = flap, hinge = CFrame.new(0, 0, cut), fold = 100 - CUT_ANGLE, from = 0.5, to = 0.7, rect = { ex0, ex1, 0, cd + UPPER_PAST * h - cut }, hidden = true })
+		-- Ear tabs on the front wall's ends fold in (panel x = -s * the wall's z).
 		local ex, ey = if s == 1 then -h else 0, if s == 1 then 0 else h
-		add({ name = "Ear", parent = tuck, hinge = CFrame.new(s * (w / 2 - cw), 0, 0) * yaw(s * 90), fold = 90, from = 1.25, to = 1.5, rect = { ex, ey, 0, 0.9 * cw }, hidden = true })
+		add({ name = "Ear", parent = front, hinge = CFrame.new(s * (w / 2 - cw), 0, 0) * yaw(s * 90), fold = 90, from = 0.5, to = 0.7, rect = { ex, ey, 0, 0.9 * cw }, hidden = true })
+		-- Back wall end tabs fold in against the side walls.
+		local bx0, bx1 = if s == 1 then -(h - 0.02) else 0.02, if s == 1 then -0.02 else h - 0.02
+		add({ name = "BackTab", parent = back, hinge = CFrame.new(s * (w / 2 - T), 0, 0) * yaw(s * 90), fold = 90, from = 0.55, to = 0.75, rect = { bx0, bx1, 0, 0.95 * h }, hidden = true })
+	end
+	-- The lid: the reference's cut half, its front corners cut off on the same
+	-- diagonal; it folds down onto the base, its side flaps over the side walls
+	-- and its front tuck inside the front wall.
+	local lid = add({ name = "Lid", parent = back, hinge = CFrame.new(0, 0, h), fold = 90, from = 0.85, to = 1.35, rect = { -w / 2 - T, w / 2 + T, 0, d - cd }, print = "LidMain" })
+	add({ name = "LidFront", parent = lid, rect = { -(w / 2 - cw), w / 2 - cw, d - cd, d }, print = "LidFront" })
+	add({ name = "Tuck", parent = lid, hinge = CFrame.new(0, 0, d - 2 * T), fold = 90, from = 1.2, to = 1.55, rect = { -(w / 2 - cw), w / 2 - cw, 0, h }, hidden = true })
+	for _, s in { 1, -1 } do
+		add({ name = "LidInner", parent = lid, tri = { Vector2.new(s * (w / 2 - cw), d - cd), Vector2.new(s * w / 2, d - cd), Vector2.new(s * (w / 2 - cw), d) } })
+		local x0, x1 = if s == 1 then -(d - cd) else 0, if s == 1 then 0 else d - cd
+		add({ name = "LidSide", parent = lid, hinge = CFrame.new(s * (w / 2 + T), 0, 0) * yaw(s * 90), fold = 90, from = 1.0, to = 1.3, rect = { x0, x1, 0, h }, print = "Band" })
 	end
 	return list
 end

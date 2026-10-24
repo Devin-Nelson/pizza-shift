@@ -116,12 +116,12 @@ local MeshBank: { [string]: Station } = {
 	-- stacks' blanks die-cut as src/shared/PizzaBox.luau);
 	-- Rocker and RockerGrips are instanced (built standing, the edge's lowest point at the origin).
 	CutTable = {
-		model = 111528707734434, -- 2026-10-24: the blanks die-cut as the user's reference
+		model = 99772989187101, -- 2026-10-24: the blanks die-cut as the user's reference (lid the cut half)
 		meshes = {
 			Steel = { id = 76044766413210, size = Vector3.new(12.86, 3.0786, 6.37), at = Vector3.new(0, 1.6727, 0.005) },
 			Dark = { id = 93063948607148, size = Vector3.new(12.74, 0.3939, 6.54), at = Vector3.new(0, 0.2, 0.05) },
 			Cardboard = { id = 71873887434317, size = Vector3.new(10.24, 0.62, 3), at = Vector3.new(-0.32, 0.93, 0) },
-			Blanks = { id = 76182316469526, size = Vector3.new(11.1366, 1.996, 6.3108), at = Vector3.new(0.6677, 2.77, -0.0517) },
+			Blanks = { id = 104257236593902, size = Vector3.new(11.1366, 1.996, 6.3108), at = Vector3.new(0.6677, 2.77, -0.0517) },
 			Rocker = { id = 107227853656891, size = Vector3.new(3.4, 0.625, 0.206), at = Vector3.new(0, 0.3125, 0) },
 			RockerGrips = { id = 133911230277363, size = Vector3.new(3.52, 0.17, 0.19), at = Vector3.new(0, 0.595, 0) },
 		},

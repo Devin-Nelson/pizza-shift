@@ -4,13 +4,13 @@ point of the fold. Roblox axes throughout (mathutils matrices); kit.rb maps to
 Blender when the boxes are drawn. A kind is (w, d, h).
 
 The shape and fold lines are the user's reference blank (2026-10-24, a
-die-cut sheet measured on a 400 px base): the base's front corners cut off on
-a diagonal (43 across, 103 back) with the side walls only beside the rest;
-a full-width back wall with a tab at each end; a front wall between the cuts;
-the lid on the back wall, its front corners creased on the same diagonal so
-they fold down over the cut corners, each carrying the front piece of the
-lid's side flap; the lid's side flaps behind those; a tuck along the lid's
-front with an ear tab at each end. Everything scales with the box, the wall
+die-cut sheet measured on a 400 px base). The base is its creased half: the
+front corners creased on a diagonal (43 across, 103 back) fold in onto the
+floor, the side walls stand beside the rest with a front piece each that
+swings in along the corner, a front wall with ear tabs, a back wall with end
+tabs. The lid is the cut half (its front corners cut off on the same
+diagonal); it folds down onto the base, side flaps over the side walls, the
+front tuck inside the front wall. Everything scales with the box, the wall
 height included (WALL: 61 / 400 of the width, as on the reference).
 
 Panels are rectangles (rect: x0, x1, z0, z1) or right triangles (tri: the
@@ -74,49 +74,48 @@ def panels(kind):
         p.setdefault("t1", 0)
         p.setdefault("hinge", IDENT)
         p.setdefault("print", None)
+        p.setdefault("hidden", False)
         out.append(p)
         return len(out) - 1
 
+    # The base: the reference's creased half. Its front corners are creased on
+    # the diagonal and fold in onto its floor; the side walls stand beside the
+    # rest, each with a front piece on a crease that swings in along the
+    # corner (its end tucking behind the front wall).
     base = add(name="Base", parent=None, rect=(-w / 2, w / 2, -d / 2 + cd, d / 2))
-    add(name="BaseFront", parent=base, rect=(-w / 2 + cw, w / 2 - cw, -d / 2, -d / 2 + cd))
+    add(name="BaseFront", parent=base, rect=(-(w / 2 - cw), w / 2 - cw, -d / 2, -d / 2 + cd))
+    front = add(name="Front", parent=base, hinge=_at(0, 0, -d / 2) @ _yaw(180), fold=90, t0=0.25, t1=0.55, rect=(-(w / 2 - cw), w / 2 - cw, 0, h))
+    back = add(name="Back", parent=base, hinge=_at(0, 0, d / 2), fold=90, t0=0.25, t1=0.55, rect=(-w / 2, w / 2, 0, h))
+    cut = math.hypot(cw, cd)  # the corner's diagonal
     for s in (1, -1):
-        add(name="BaseCorner", parent=base, tri=((s * (w / 2 - cw), -d / 2 + cd), (s * w / 2, -d / 2 + cd), (s * (w / 2 - cw), -d / 2)))
-        # Side walls beside the uncut part only (panel x = -s * the base's z).
+        add(name="BaseInner", parent=base, tri=((s * (w / 2 - cw), -d / 2 + cd), (s * w / 2, -d / 2 + cd), (s * (w / 2 - cw), -d / 2)))
+        p0, p1, apex = (s * (w / 2 - cw), -d / 2), (s * w / 2, -d / 2 + cd), (s * w / 2, -d / 2)
+        hinge, into = _line(p0, p1, apex)
+        add(name="BaseCorner", parent=base, hinge=hinge, fold=180, t0=0.0, t1=0.3, tri=(into(apex), into(p0), into(p1)), hidden=True)
+        # Side walls beside the creased corners (panel x = -s * the base's z).
         x0, x1 = (-d / 2, d / 2 - cd) if s == 1 else (-d / 2 + cd, d / 2)
-        add(name="Side", parent=base, hinge=_at(s * w / 2, 0, 0) @ _yaw(s * 90), fold=90, t0=0, t1=0.3, rect=(x0, x1, 0, h))
-    add(name="Front", parent=base, hinge=_at(0, 0, -d / 2) @ _yaw(180), fold=90, t0=0.2, t1=0.5, rect=(-(w / 2 - cw), w / 2 - cw, 0, h))
-    back = add(name="Back", parent=base, hinge=_at(0, 0, d / 2), fold=90, t0=0.2, t1=0.5, rect=(-w / 2, w / 2, 0, h))
-    for s in (1, -1):
-        # End tabs: they fold in against the side walls (panel x = -s * the wall's z).
+        side = add(name="Side", parent=base, hinge=_at(s * w / 2, 0, 0) @ _yaw(s * 90), fold=90, t0=0.05, t1=0.35, rect=(x0, x1, 0, h))
+        fx = s * (d / 2 - cd)  # the wall's front end
+        hinge2, into2 = _line((fx, 0), (fx, h), (fx + s, 0))
+        ex0, ex1 = sorted((into2((fx, 0))[0], into2((fx, h))[0]))
+        flap = add(name="CornerFlap", parent=side, hinge=hinge2, fold=CUT_ANGLE, t0=0.35, t1=0.6, rect=(ex0, ex1, 0, cut))
+        add(name="CornerTip", parent=flap, hinge=_at(0, 0, cut), fold=100 - CUT_ANGLE, t0=0.5, t1=0.7, rect=(ex0, ex1, 0, cd + UPPER_PAST * h - cut), hidden=True)
+        # Ear tabs on the front wall's ends fold in (panel x = -s * the wall's z).
+        x0, x1 = (-h, 0) if s == 1 else (0, h)
+        add(name="Ear", parent=front, hinge=_at(s * (w / 2 - cw), 0, 0) @ _yaw(s * 90), fold=90, t0=0.5, t1=0.7, rect=(x0, x1, 0, 0.9 * cw), hidden=True)
+        # Back wall end tabs fold in against the side walls.
         x0, x1 = (-(h - 0.02), -0.02) if s == 1 else (0.02, h - 0.02)
-        add(name="BackTab", parent=back, hinge=_at(s * (w / 2 - T), 0, 0) @ _yaw(s * 90), fold=90, t0=0.45, t1=0.65, rect=(x0, x1, 0, 0.95 * h))
+        add(name="BackTab", parent=back, hinge=_at(s * (w / 2 - T), 0, 0) @ _yaw(s * 90), fold=90, t0=0.55, t1=0.75, rect=(x0, x1, 0, 0.95 * h), hidden=True)
+    # The lid: the reference's cut half, its front corners cut off on the same
+    # diagonal; it folds down onto the base, its side flaps over the side walls
+    # and its front tuck inside the front wall.
     lid = add(name="Lid", parent=back, hinge=_at(0, 0, h), fold=90, t0=0.85, t1=1.35, rect=(-w / 2 - T, w / 2 + T, 0, d - cd), print="LidMain")
     add(name="LidFront", parent=lid, rect=(-(w / 2 - cw), w / 2 - cw, d - cd, d), print="LidFront")
-    tuck = add(name="Tuck", parent=lid, hinge=_at(0, 0, d - 2 * T), fold=90, t0=1.15, t1=1.5, rect=(-(w / 2 - cw), w / 2 - cw, 0, h))
+    add(name="Tuck", parent=lid, hinge=_at(0, 0, d - 2 * T), fold=90, t0=1.2, t1=1.55, rect=(-(w / 2 - cw), w / 2 - cw, 0, h), hidden=True)
     for s in (1, -1):
-        # The lid's side flap behind the crease (panel x = -s * the lid's z).
+        add(name="LidInner", parent=lid, tri=((s * (w / 2 - cw), d - cd), (s * w / 2, d - cd), (s * (w / 2 - cw), d)))
         x0, x1 = (-(d - cd), 0) if s == 1 else (0, d - cd)
-        side = add(name="LidSide", parent=lid, hinge=_at(s * (w / 2 + T), 0, 0) @ _yaw(s * 90), fold=90, t0=0.95, t1=1.25, rect=(x0, x1, 0, h), print="Band")
-        # Its front piece, on the crease across the flap's front end: with the
-        # flap down it swings in along the cut corner (CUT_ANGLE), running a
-        # little past the lid's front.
-        fx = -s * (d - cd)
-        hinge2, into2 = _line((fx, 0), (fx, h), (fx - s, 0))
-        ex0, ex1 = sorted((into2((fx, 0))[0], into2((fx, h))[0]))
-        cut = math.hypot(cw, cd)  # the cut corner's length
-        flap = add(name="CornerFlap", parent=side, hinge=hinge2, fold=CUT_ANGLE, t0=1.15, t1=1.4, rect=(ex0, ex1, 0, cut))
-        # The rest of the piece, past the cut corner, tucks in behind the front wall.
-        add(name="CornerTip", parent=flap, hinge=_at(0, 0, cut), fold=100 - CUT_ANGLE, t0=1.25, t1=1.45, rect=(ex0, ex1, 0, cd + UPPER_PAST * h - cut))
-        # The lid's front corner, creased on the diagonal: it tucks under the lid,
-        # leaving the lid's corner cut like the base's.
-        p0, p1, apex = (s * (w / 2 - cw), d), (s * w / 2, d - cd), (s * w / 2, d)
-        hinge, into = _line(p0, p1, apex)
-        add(name="LidCorner", parent=lid, hinge=hinge, fold=180, t0=1.0, t1=1.3, tri=(into(apex), into(p0), into(p1)))
-        # The lid inside the crease stays: its corner ends up cut like the base's.
-        add(name="LidInner", parent=lid, tri=((s * (w / 2 - cw), d - cd), (s * w / 2, d - cd), (s * (w / 2 - cw), d)), print="LidInner")
-        # Ear tabs on the tuck's ends (panel x = -s * the tuck's z).
-        x0, x1 = (-h, 0) if s == 1 else (0, h)
-        add(name="Ear", parent=tuck, hinge=_at(s * (w / 2 - cw), 0, 0) @ _yaw(s * 90), fold=90, t0=1.25, t1=1.5, rect=(x0, x1, 0, 0.9 * cw))
+        add(name="LidSide", parent=lid, hinge=_at(s * (w / 2 + T), 0, 0) @ _yaw(s * 90), fold=90, t0=1.0, t1=1.3, rect=(x0, x1, 0, h), print="Band")
     return out
 
 
