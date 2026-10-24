@@ -40,7 +40,7 @@ local function currentShop(): Instance?
 end
 
 -- The pickable pizza under the pointer, if any.
-local function target(): Instance?
+local function target(input: InputObject?): Instance?
 	local here = StationMode.Current()
 	local shop = currentShop()
 	if not here or not shop then
@@ -62,7 +62,7 @@ local function target(): Instance?
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
 	params.FilterDescendantsInstances = candidates
-	local ray = Workstation.pointerRay()
+	local ray = Workstation.pointerRay(input)
 	local hit = workspace:Raycast(ray.Origin, ray.Direction * 100, params)
 	if not hit then
 		return nil
@@ -101,7 +101,7 @@ function StationPicks.Init(pie: (string, number, string) -> (), isBusy: () -> bo
 		if not here then
 			return
 		end
-		local inst = target()
+		local inst = target(input)
 		if inst then
 			local id = inst:GetAttribute("PieId")
 			local size = inst:GetAttribute("PieSize")

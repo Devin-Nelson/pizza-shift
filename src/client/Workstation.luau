@@ -55,10 +55,13 @@ UserInputService.InputBegan:Connect(function(input)
 	end
 end)
 
--- Ray from the camera through the mouse / last touch.
-function Workstation.pointerRay(): Ray
+-- Ray from the camera through the mouse / last touch, or through `input`'s
+-- position: a tap handler passes its input, since the tap may not have
+-- reached pointerAt yet (the first tap aimed at the last one: the user,
+-- 2026-10-23, every pick took two taps on mobile).
+function Workstation.pointerRay(input: InputObject?): Ray
 	local camera = workspace.CurrentCamera
-	local at = pointerAt
+	local at = if input then Vector2.new(input.Position.X, input.Position.Y) else pointerAt
 	if not at then
 		local inset = GuiService:GetGuiInset()
 		at = UserInputService:GetMouseLocation() - inset

@@ -539,11 +539,11 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 	hover.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	hover.Enabled = false
 	hover.Parent = ctx.folder
-	local function ballUnderPointer(): BasePart?
+	local function ballUnderPointer(input: InputObject?): BasePart?
 		local params = RaycastParams.new()
 		params.FilterType = Enum.RaycastFilterType.Include
 		params.FilterDescendantsInstances = balls
-		local ray = Workstation.pointerRay()
+		local ray = Workstation.pointerRay(input)
 		local hit = workspace:Raycast(ray.Origin, ray.Direction * 60, params)
 		return if hit then hit.Instance :: BasePart else nil
 	end
@@ -557,7 +557,7 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 		if picked or not isPlayClick(input, processed) then
 			return
 		end
-		local b = ballUnderPointer()
+		local b = ballUnderPointer(input)
 		if not b then
 			return
 		end
@@ -824,8 +824,8 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 	local panParams = RaycastParams.new()
 	panParams.FilterType = Enum.RaycastFilterType.Include
 	panParams.FilterDescendantsInstances = pans
-	local function panUnderPointer(): BasePart?
-		local ray = Workstation.pointerRay()
+	local function panUnderPointer(input: InputObject?): BasePart?
+		local ray = Workstation.pointerRay(input)
 		local hit = workspace:Raycast(ray.Origin, ray.Direction * 50, panParams)
 		return if hit then hit.Instance :: BasePart else nil
 	end
@@ -838,7 +838,7 @@ local function toppings(data: any, finish: Finish, cancel: Cancel)
 		if processed or not isPointer(input) then
 			return
 		end
-		local pan = panUnderPointer()
+		local pan = panUnderPointer(input)
 		local name = if pan then pan:GetAttribute("Topping") else nil
 		if type(name) ~= "string" then
 			return
@@ -957,11 +957,11 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		end
 		ContextActionService:UnbindAction(ACTION)
 	end
-	local function rayAt(include: { Instance }): RaycastResult?
+	local function rayAt(include: { Instance }, input: InputObject?): RaycastResult?
 		local params = RaycastParams.new()
 		params.FilterType = Enum.RaycastFilterType.Include
 		params.FilterDescendantsInstances = include
-		local ray = Workstation.pointerRay()
+		local ray = Workstation.pointerRay(input)
 		return workspace:Raycast(ray.Origin, ray.Direction * 80, params)
 	end
 	-- Bubbles sit on the pizza; they move with it if it's moved to another box.
@@ -1183,7 +1183,7 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 		if stage ~= "box" or not isPlayClick(input, processed) then
 			return
 		end
-		local bubbleHit = if #bubbleParts > 0 then rayAt(bubbleParts) else nil
+		local bubbleHit = if #bubbleParts > 0 then rayAt(bubbleParts, input) else nil
 		if bubbleHit and bubbleHit.Instance.Name == "Bubble" then
 			local hitPart = bubbleHit.Instance :: BasePart
 			hitPart.Name = "Popped"
@@ -1201,7 +1201,7 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 			end
 			return
 		end
-		local result = rayAt(boxParts)
+		local result = rayAt(boxParts, input)
 		local size = result and result.Instance:GetAttribute("BoxSize")
 		if type(size) == "string" then
 			putIn(size)
