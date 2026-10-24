@@ -241,7 +241,11 @@ for sz in (-1, 1):
             bxj = -fw / 2 + 0.22 + j * (fw - 0.44) / 5
             filters.rod(tilted(c, a, bxj, 0, -(FILTER_LEN / 2 - 0.13)), tilted(c, a, bxj, 0, FILTER_LEN / 2 - 0.13), 0.055, segs=10)
 ENC_Y0 = HY0 + 0.95
-paint.box((EW, 14 - ENC_Y0, ED), (0, (ENC_Y0 + 14) / 2, 0))
+# Flush on the hood's top edge, never past it (the user, 2026-10-24: it hung
+# over the hood): the top ring's shape, chamfered corners and all, inset by the
+# hood's skin.
+ENC = kit.rounded_rect(EW - 0.08, ED - 0.08, CHAMFER * 0.6, 1)
+kit.loft(paint, [(ENC_Y0, ENC), (14, ENC)], close_bottom=True, close_top=True)
 
 # The pulley at each end of a belt (instanced; StationArt places one per end,
 # the client turns it): a drum the belt's width, sprocket rings, axle stubs.

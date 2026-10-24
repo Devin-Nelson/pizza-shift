@@ -245,7 +245,7 @@ end
 Config.Dough = {
 	Racks = 2,
 	SlotsPerRack = 15,
-	Presses = { Small = 3, Medium = 4, Large = 5 },
+	Presses = { Small = 3, Medium = 3, Large = 5 }, -- Medium 3 (the user, 2026-10-24)
 	TrayBalls = { Small = 10, Medium = 8, Large = 6 }, -- dough balls in a full tray (it refills when emptied)
 	GreenWidth = { 0.07, 0.16 },
 	Yellow = 0.08,

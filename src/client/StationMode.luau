@@ -9,7 +9,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Style = require(ReplicatedStorage.Shared.Style)
@@ -26,6 +26,7 @@ local isMinigameOpen: () -> boolean = function()
 	return false
 end
 local closeMinigame: () -> () = function() end
+local JUMP_OFF = "PizzaStationJumpOff"
 
 local function hideIdle()
 	if idle then
@@ -36,6 +37,7 @@ end
 
 -- Leaves locally (the server has already taken us off, or is about to).
 function StationMode.Leave()
+	ContextActionService:UnbindAction(JUMP_OFF)
 	hideIdle()
 	StationTips.Hide()
 	local c = current
@@ -103,6 +105,14 @@ function StationMode.Enter(name: string, part: BasePart): Workstation.Workstatio
 		return nil
 	end
 	current = { name = name, part = part, ws = ws }
+	-- Jumping takes you off the station, and the key is swallowed here so your
+	-- character doesn't actually jump (the user, 2026-10-24).
+	ContextActionService:BindActionAtPriority(JUMP_OFF, function(_, state)
+		if state == Enum.UserInputState.Begin then
+			task.defer(StationMode.Exit)
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.Space, Enum.KeyCode.ButtonA)
 	StationTips.Show(name)
 	return ws
 end
@@ -136,13 +146,6 @@ function StationMode.Init(minigameOpen: () -> boolean, closeOpenMinigame: () -> 
 		status = tostring(text)
 		if idle then
 			idle.text.Text = status
-		end
-	end)
-	-- Jumping takes you off the station (your controls are off there, so the
-	-- jump itself doesn't happen).
-	UserInputService.InputBegan:Connect(function(input, processed)
-		if not processed and current and (input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA) then
-			StationMode.Exit()
 		end
 	end)
 	-- The idle strip shows whenever we're at a station with no job open.

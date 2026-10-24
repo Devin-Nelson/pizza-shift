@@ -38,6 +38,7 @@ type Cancel = () -> ()
 type Ctx = {
 	ws: Workstation.Workstation,
 	folder: Folder,
+	dock: Frame, -- the work strip
 	body: Frame,
 	cleanup: { () -> () },
 	holding: () -> boolean,
@@ -115,6 +116,7 @@ local function open(data: any, cancel: Cancel): Ctx?
 	return {
 		ws = ws,
 		folder = folder,
+		dock = strip,
 		body = body,
 		cleanup = a.cleanup,
 		holding = function()
@@ -381,36 +383,41 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 		end))
 		local presses = D.Presses[size] or 8
 		local targetD = Config.PizzaDiameter[size] or 2.4
-		sizeChip(body, size, 1)
-		-- What the last press scored (blank until the first one).
-		local feedback = Ui.chip("", C.Tile, C.White, {
-			AutomaticSize = Enum.AutomaticSize.None,
-			Size = UDim2.fromOffset(104, 30),
-			TextXAlignment = Enum.TextXAlignment.Center,
-			BackgroundTransparency = 1,
-			LayoutOrder = 2,
-			Parent = body,
-		})
-		feedback.TextSize = S.Body
-		-- The timing gauge lives in the strip, below the dough (nothing covers the work).
-		local gauge = Ui.box(C.Tile, { Size = UDim2.fromOffset(360, 30), LayoutOrder = 3, Parent = body })
-		local gaugeStroke = Ui.new("UIStroke", { Color = C.Ink, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = gauge })
-		for i = 1, 9 do
-			Ui.box(C.Line, { Position = UDim2.fromScale(i / 10, 0), Size = UDim2.new(0, 1, 1, 0), Parent = gauge })
+		-- Just the bar (the user, 2026-10-24: super simple, cutesy and animated,
+		-- big flashy signals on a perfect hit): no strip and no button; a click,
+		-- a tap or F presses. A dough-ball marker with a face rides it, a dot per
+		-- press fills in above it, and each press shouts how it went.
+		ctx.dock.Visible = false
+		ctx.dock:SetAttribute("Hidden", true) -- WorkHud would show it again
+		local INK = Color3.fromRGB(31, 27, 46)
+		local MINT, SUN, TOMATO = Color3.fromRGB(46, 212, 122), Color3.fromRGB(255, 201, 60), Color3.fromRGB(255, 75, 62)
+		local WHITE = Color3.new(1, 1, 1)
+		local function round(f: GuiObject): GuiObject
+			Ui.new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = f })
+			return f
 		end
-		local yellow = Ui.box(C.Gold, { AnchorPoint = Vector2.new(0.5, 0), ZIndex = 2, Parent = gauge })
-		local green = Ui.box(C.Green, { AnchorPoint = Vector2.new(0.5, 0), ZIndex = 3, Parent = gauge })
-		local marker = Ui.box(C.White, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0, 5, 1, 12), ZIndex = 4, Parent = gauge })
-		Ui.new("UIStroke", { Color = C.Ink, Thickness = 1, Parent = marker })
-		-- One square per press, coloured by how it went.
-		local record = Ui.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 14), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 4, Parent = body }, {
-			Ui.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }),
+		local holder = Ui.new("Frame", { Name = "DoughBar", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -54), Size = UDim2.fromOffset(560, 170), Parent = Ui.Root })
+		table.insert(ctx.cleanup, function()
+			holder:Destroy()
+		end)
+		local gauge = round(Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1), Size = UDim2.fromOffset(520, 46), BackgroundColor3 = WHITE, BorderSizePixel = 0, Parent = holder }))
+		local gaugeStroke = Ui.new("UIStroke", { Color = INK, Thickness = 5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = gauge })
+		local yellow = round(Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = SUN, BorderSizePixel = 0, ZIndex = 2, Parent = gauge }))
+		local green = round(Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = MINT, BorderSizePixel = 0, ZIndex = 3, Parent = gauge }))
+		local marker = round(Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(42, 42), BackgroundColor3 = Color3.fromRGB(255, 240, 214), BorderSizePixel = 0, ZIndex = 5, Parent = gauge }))
+		Ui.new("UIStroke", { Color = INK, Thickness = 4, Parent = marker })
+		for _, ex in { 0.34, 0.66 } do -- its little face
+			round(Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(ex, 0.45), Size = UDim2.fromOffset(6, 9), BackgroundColor3 = INK, BorderSizePixel = 0, ZIndex = 6, Parent = marker }))
+		end
+		local record = Ui.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -62), Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, Parent = holder }, {
+			Ui.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }),
 		})
-		local squares: { Frame } = {}
+		local squares: { GuiObject } = {}
 		for i = 1, presses do
-			squares[i] = Ui.box(C.Tile, { Size = UDim2.fromOffset(12, 12), LayoutOrder = i, Parent = record }, { Ui.new("UIStroke", { Color = C.Line, Thickness = 1 }) })
+			squares[i] = round(Ui.new("Frame", { Size = UDim2.fromOffset(20, 20), BackgroundColor3 = WHITE, BackgroundTransparency = 0.25, BorderSizePixel = 0, LayoutOrder = i, Parent = record }, { Ui.new("UIStroke", { Color = INK, Thickness = 3 }) }))
 		end
-		local button = actionButton(body, "Stretch", 5, 150, KEY_HINT)
+		local pop = Ui.new("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -88), Size = UDim2.fromOffset(520, 76), FontFace = Font.fromEnum(Enum.Font.LuckiestGuy), TextSize = 66, TextColor3 = WHITE, TextStrokeColor3 = INK, TextStrokeTransparency = 0, TextTransparency = 1, Text = "", Parent = holder })
+		local popScale = Ui.new("UIScale", { Parent = pop })
 
 		local rng = Random.new()
 		local center, width = 0.5, 0.1
@@ -425,10 +432,10 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 				end
 			end
 			center = new
-			green.Position = UDim2.fromScale(center, 0)
-			green.Size = UDim2.fromScale(width, 1)
-			yellow.Position = UDim2.fromScale(center, 0)
-			yellow.Size = UDim2.fromScale(width + D.Yellow * 2, 1)
+			green.Position = UDim2.fromScale(center, 0.5)
+			green.Size = UDim2.new(width, 0, 1, -12)
+			yellow.Position = UDim2.fromScale(center, 0.5)
+			yellow.Size = UDim2.new(width + D.Yellow * 2, 0, 1, -12)
 		end
 		placeZone()
 
@@ -439,7 +446,39 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 			t += dt * speed
 			pos = 0.5 + 0.5 * math.sin(t)
 			marker.Position = UDim2.fromScale(pos, 0.5)
+			marker.Rotation = math.sin(t * 2.5) * 10 -- a little waddle as it goes
 		end))
+
+		-- A burst of confetti dots from where the marker was.
+		local function burst(colors: { Color3 })
+			for k = 1, 14 do
+				local angle = k / 14 * math.pi * 2 + rng:NextNumber(-0.25, 0.25)
+				local dot = round(Ui.new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(pos, 0.5), Size = UDim2.fromOffset(16, 16), BackgroundColor3 = colors[k % #colors + 1], BorderSizePixel = 0, ZIndex = 7, Parent = gauge }))
+				local dist = rng:NextNumber(70, 130)
+				TweenService:Create(dot, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.new(pos, math.cos(angle) * dist, 0.5, math.sin(angle) * dist), Size = UDim2.fromOffset(4, 4), BackgroundTransparency = 1 }):Play()
+				task.delay(0.65, function()
+					dot:Destroy()
+				end)
+			end
+		end
+		-- The big word over the bar: it pops in (bigger for a perfect) and fades.
+		local shouts = 0
+		local function shout(text: string, color: Color3, big: boolean)
+			shouts += 1
+			local mine = shouts
+			pop.Text = text
+			pop.TextColor3 = color
+			pop.TextTransparency = 0
+			pop.TextStrokeTransparency = 0
+			pop.Rotation = rng:NextNumber(-8, 8)
+			popScale.Scale = 0.3
+			TweenService:Create(popScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = if big then 1.3 else 0.9 }):Play()
+			task.delay(0.6, function()
+				if shouts == mine and pop.Parent then
+					TweenService:Create(pop, TweenInfo.new(0.3), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+				end
+			end)
+		end
 
 		local cooldown = false
 		local function press()
@@ -451,24 +490,32 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 				cooldown = false
 			end)
 			local off = math.abs(pos - center)
-			local q, color, text
+			local q, color
 			if off <= width / 2 then
-				q, color, text = 1, C.Green, "PERFECT"
+				q, color = 1, MINT
+				shout("PERFECT!", MINT, true)
+				burst({ MINT, SUN, TOMATO, Color3.fromRGB(47, 155, 255), Color3.fromRGB(255, 122, 184) })
+				gauge.BackgroundColor3 = MINT
+				TweenService:Create(gauge, TweenInfo.new(0.45), { BackgroundColor3 = WHITE }):Play()
+				marker.Size = UDim2.fromOffset(62, 62)
+				TweenService:Create(marker, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(42, 42) }):Play()
 			elseif off <= width / 2 + D.Yellow then
-				q, color, text = D.YellowScore, C.Gold, string.format("YELLOW -%d%%", math.floor((1 - D.YellowScore) * 100 + 0.5))
+				q, color = D.YellowScore, SUN
+				shout("GOOD", SUN, false)
 			else
-				q, color, text = D.MissScore, C.Red, "MISS -100%"
+				q, color = D.MissScore, TOMATO
+				shout("OOPS!", TOMATO, false)
+				-- A little shake.
+				holder.Position = UDim2.new(0.5, 10, 1, -54)
+				TweenService:Create(holder, TweenInfo.new(0.3, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, 0, 1, -54) }):Play()
 			end
-			feedback.Text = text
-			feedback.BackgroundColor3 = color
-			feedback.BackgroundTransparency = 0
-			feedback.TextColor3 = if color == C.Gold then C.Ink else C.White
 			gaugeStroke.Color = color
-			TweenService:Create(gaugeStroke, TweenInfo.new(0.4), { Color = C.Ink }):Play()
+			TweenService:Create(gaugeStroke, TweenInfo.new(0.4), { Color = INK }):Play()
 			table.insert(hits, q)
 			local square = squares[#hits]
 			if square then
 				square.BackgroundColor3 = color
+				square.BackgroundTransparency = 0
 			end
 			-- Press it out toward the chosen size; sloppy presses leave it undersized and lopsided.
 			local growth = math.max(q, D.MissGrowth)
@@ -488,7 +535,6 @@ local function dough(data: any, finish: Finish, cancel: Cancel)
 				placeZone()
 			end
 		end
-		button.Activated:Connect(press)
 		bindPress(ctx, press)
 	end
 

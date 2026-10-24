@@ -151,8 +151,14 @@ local function hover(b: GuiButton, base: () -> Color3, transparentAtRest: boolea
 	end)
 end
 
+-- Rounds a piece's corners (radius px, or a pill with `pill`).
+function Ui.round(obj: GuiObject, radius: number?, pill: boolean?): GuiObject
+	Ui.new("UICorner", { CornerRadius = if pill then UDim.new(0.5, 0) else UDim.new(0, radius or Style.Round), Parent = obj })
+	return obj
+end
+
 -- Kinds: "primary" (red, the one main action), "dark" (tile), "ghost"
--- (outlined), "key" (a station key on a charcoal bar).
+-- (outlined), "key" (a key on a dark bar). All rounded.
 function Ui.flatButton(text: string, kind: string, props: { [string]: any }?): TextButton
 	local bg = if kind == "primary" then C.Red elseif kind == "dark" then C.Tile elseif kind == "key" then C.Panel else C.Panel
 	local base: { [string]: any } = {
@@ -171,9 +177,8 @@ function Ui.flatButton(text: string, kind: string, props: { [string]: any }?): T
 	end
 	local b: TextButton = Ui.new("TextButton", base)
 	b:SetAttribute("BaseColor", base.BackgroundColor3)
-	if kind == "primary" then
-		Ui.edge(b, "bottom", 3, C.RedDark)
-	elseif kind == "ghost" then
+	Ui.round(b)
+	if kind == "ghost" then
 		Ui.new("UIStroke", { Color = C.Line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
 	end
 	hover(b, function()
@@ -222,6 +227,7 @@ function Ui.badge(text: string, props: { [string]: any }?): TextLabel
 	end
 	local l: TextLabel = Ui.new("TextLabel", base)
 	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4), Parent = l })
+	Ui.round(l, nil, true)
 	return l
 end
 
@@ -242,7 +248,8 @@ function Ui.chip(text: string, bg: Color3, fg: Color3?, props: { [string]: any }
 		end
 	end
 	local l: TextLabel = Ui.new("TextLabel", base)
-	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), Parent = l })
+	Ui.new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = l })
+	Ui.round(l, 8)
 	return l
 end
 
@@ -258,7 +265,8 @@ function Ui.panel(title: string, width: number, height: number): (Frame, Frame, 
 		ZIndex = 5,
 		Parent = root,
 	})
-	Ui.edge(panel, "top", 4, C.Red)
+	Ui.round(panel, 16)
+	Ui.new("UIStroke", { Color = C.Red, Thickness = 4, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = panel })
 	-- Taller than the reference screen allows? Shrink it to fit.
 	local ref = Config.UiReference
 	local fit = math.min(1, (ref.Y - 60) / height, (ref.X - 40) / width)
@@ -314,7 +322,7 @@ function Ui.strip(): (Frame, Frame)
 		Size = UDim2.fromOffset(200, Ui.STRIP_H),
 		Parent = root,
 	})
-	Ui.edge(strip, "top", 3, C.Red)
+	Ui.round(strip, 16)
 	local row = Ui.new("Frame", {
 		Name = "Row",
 		BackgroundTransparency = 1,
@@ -408,6 +416,7 @@ local function slip(): Frame
 	}, {
 		Ui.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder }),
 	})
+	Ui.round(frame, 8)
 	return frame
 end
 

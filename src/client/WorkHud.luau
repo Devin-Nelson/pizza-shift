@@ -10,7 +10,8 @@
 --    rounded chevron on each side of the screen in the colour of the station
 --    it goes to, its name under it; they step through the stations in order
 --    (Register, Stretch, Sauce, Cut & Box, Dispatch, wrapping; Q / E or the
---    d-pad too) and park you there; only while you're at a station. The
+--    d-pad too), each arrow on the side its station really is from where you
+--    stand, and park you there; only while you're at a station. The
 --    station you're at shows above the work strip. Exit (bottom left) takes
 --    you off the station, as jumping does (StationMode).
 --  * Menu tab (bottom right, at your store): opens a short bar of Follow (lit
@@ -108,7 +109,9 @@ local function ticket(parent: Instance, order: number, title: string, time: stri
 		;(t :: any).AutoButtonColor = true
 	end
 	list(t, Enum.FillDirection.Vertical, 0)
+	Ui.round(t :: GuiObject, 8)
 	local head = Ui.box(headBg, { Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 0, Parent = t })
+	Ui.round(head, 8)
 	Ui.text(string.upper(title), F.LabelBold, S.Small, { TextColor3 = headFg, Position = UDim2.fromOffset(6, 0), Size = UDim2.new(1, -50, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = head })
 	local timeLabel = Ui.text(time, F.Mono, S.Small, { TextColor3 = headFg, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 0), Size = UDim2.new(0, 60, 1, 0), Parent = head })
 	for i, r in rows do
@@ -143,7 +146,7 @@ local function ticket(parent: Instance, order: number, title: string, time: stri
 	return t, timeLabel
 end
 
-function WorkHud.Init(_isBusy: () -> boolean)
+function WorkHud.Init(isBusy: () -> boolean)
 	local snapshot: any = nil
 	local snapshotAt = 0
 	local expanded = false
@@ -448,13 +451,33 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		end
 		return here or lastStation
 	end
+	local function stationPart(id: string): BasePart?
+		local ws = StationMode.Workstation()
+		local folder = if ws then ws.station.Parent else nil
+		for _, p in (if folder then folder:GetChildren() else {}) do
+			if p:IsA("BasePart") and p:GetAttribute("Station") == id then
+				return p
+			end
+		end
+		return nil
+	end
+	-- The two neighbours on the route, each on the side of the screen it's
+	-- really on from where you stand (the user, 2026-10-24: if Sauce is on
+	-- your left, the left arrow goes there). dir -1 = left, 1 = right.
 	local function stepTo(dir: number): string?
 		local stations = myStations()
-		if #stations == 0 then
+		local n = #stations
+		if n == 0 then
 			return nil
 		end
 		local i = table.find(stations, navBase()) or 1
-		return stations[(i - 1 + dir) % #stations + 1]
+		local left, right = stations[(i - 2) % n + 1], stations[i % n + 1]
+		local ws = StationMode.Workstation()
+		local a, b = stationPart(left), stationPart(right)
+		if ws and a and b and (a.Position - ws.station.Position):Dot(ws.right) > (b.Position - ws.station.Position):Dot(ws.right) then
+			left, right = right, left
+		end
+		return if dir < 0 then left else right
 	end
 	local arrows: { [number]: { button: TextButton, art: Frame?, name: TextLabel } } = {}
 	for _, dir in { -1, 1 } do
@@ -603,7 +626,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		for _, a in arrows do
 			a.button.Visible = here ~= nil and not expanded
 		end
-		hereChip.Visible = here ~= nil and not expanded
+		hereChip.Visible = here ~= nil and not expanded and not isBusy() -- out of a minigame's way
 		exitButton.Visible = here ~= nil and not expanded
 		if expanded and not onShift then
 			setExpanded(false)
@@ -613,7 +636,7 @@ function WorkHud.Init(_isBusy: () -> boolean)
 		for _, holder in { Ui.Root, Ui.Screen } do
 			for _, c in holder:GetChildren() do
 				if c:IsA("GuiObject") and c.Name == "Dock" then
-					c.Visible = not expanded
+					c.Visible = not expanded and not c:GetAttribute("Hidden") -- a minigame may hide its own strip
 				end
 			end
 		end

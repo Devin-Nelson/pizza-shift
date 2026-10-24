@@ -203,15 +203,17 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 	screenText(service, Enum.NormalId.Back, "CARRYOUT  |  DELIVERY", BRAND.Gold)
 
 	-- Light panels in the drop ceiling: warm over the lobby, neutral white in the
-	-- kitchen; with Future lighting they cast soft shadows.
-	for _, pos in { Vector2.new(-16, 34), Vector2.new(2, 35), Vector2.new(16, 35), Vector2.new(-17, 14), Vector2.new(-17, -3), Vector2.new(0, 21), Vector2.new(13, 21), Vector2.new(-2, 8), Vector2.new(10, 1), Vector2.new(7, -11), Vector2.new(-1, -25), Vector2.new(-14, -30), Vector2.new(-14, -16), Vector2.new(12, -40), Vector2.new(-10, -42) } do
+	-- kitchen; with Future lighting they cast soft shadows. Even and gentle
+	-- (the user, 2026-10-24: the production area was blinding and the oven
+	-- side dark): a looser grid, lower brightness, two over the oven aisle.
+	for _, pos in { Vector2.new(-16, 34), Vector2.new(2, 35), Vector2.new(16, 35), Vector2.new(-17, 14), Vector2.new(-17, -3), Vector2.new(-9, 22), Vector2.new(4, 18), Vector2.new(14, 20), Vector2.new(-1, 7), Vector2.new(9, 8), Vector2.new(15, 9), Vector2.new(6, -3), Vector2.new(15, -6), Vector2.new(7, -14), Vector2.new(17, -18), Vector2.new(-3, -24), Vector2.new(-14, -30), Vector2.new(-18, -16), Vector2.new(-10, -42), Vector2.new(0, -38) } do
 		local lobby = pos.Y > 28.9 or (pos.X < -8.4 + S and pos.Y > -9.9)
 		local panel = part({ Name = "LightPanel", Size = Vector3.new(6, 0.2, 3), CFrame = at(pos.X, h + 0.38, pos.Y), Color = Color3.fromRGB(255, 252, 240), Material = Enum.Material.Neon, CanCollide = false, Parent = decor })
 		local light = Instance.new("SurfaceLight")
 		light.Face = Enum.NormalId.Bottom
-		light.Range = 18
-		light.Brightness = if lobby then 1.1 else 1.5
-		light.Angle = 120
+		light.Range = 20
+		light.Brightness = if lobby then 0.75 else 0.8
+		light.Angle = 140
 		light.Shadows = true
 		light.Color = if lobby then Color3.fromRGB(255, 226, 190) else Color3.fromRGB(255, 248, 236)
 		light.Parent = panel
@@ -460,7 +462,7 @@ function MapBuilder.BuildShop(origin: CFrame, shopName: string, parent: Instance
 		beam.Face = Enum.NormalId.Left -- the cylinder's -X end points down after the roll
 		beam.Angle = 75
 		beam.Range = 14
-		beam.Brightness = 1.6
+		beam.Brightness = 0.7
 		beam.Color = color
 		beam.Parent = can
 	end

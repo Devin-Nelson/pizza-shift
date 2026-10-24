@@ -168,11 +168,11 @@ spec("every size has dough presses, slices, price, inches, cheese, diameter and 
 	end
 end)
 
-spec("bigger pizzas take more dough presses (3 / 4 / 5)", function()
+spec("dough presses: Medium 3, Large 5 (Small kept at 3)", function()
 	local P = Config.Dough.Presses
-	assert(P.Small < P.Medium and P.Medium < P.Large, "presses must grow with size")
+	assert(P.Small <= P.Medium and P.Medium < P.Large, "presses never shrink with size")
 	eq(P.Small, 3, "Small")
-	eq(P.Medium, 4, "Medium")
+	eq(P.Medium, 3, "Medium")
 	eq(P.Large, 5, "Large")
 	-- Full dough trays (the user's numbers); balls sit in two columns per tray.
 	local T = Config.Dough.TrayBalls

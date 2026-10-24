@@ -134,7 +134,7 @@ local MeshBank: { [string]: Station } = {
 		model = 132569644728161,
 		meshes = {
 			Body = { id = 114550878824710, size = Vector3.new(6.97, 6.59, 10.36), at = Vector3.new(-0.185, 3.415, 0) },
-			Paint = { id = 78898037468960, size = Vector3.new(7.1, 12.99, 13.0), at = Vector3.new(0, 7.505, 0) },
+			Paint = { id = 124969161052316, size = Vector3.new(7.02, 12.99, 12.92), at = Vector3.new(0, 7.505, 0) }, -- flush with the hood's top (model 114597525307292, 2026-10-24)
 			Conveyor = { id = 104332557373788, size = Vector3.new(6.0, 4.07, 14.185), at = Vector3.new(0, 3.165, -0.2925) },
 			Hood = { id = 112995817288106, size = Vector3.new(7.86, 1.3, 13.96), at = Vector3.new(0, 7.3, 0) },
 			Filters = { id = 97551212368341, size = Vector3.new(7.46, 0.7434, 10.3846), at = Vector3.new(0, 7.05, 0) },
