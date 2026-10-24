@@ -975,8 +975,8 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 	-- The top-centre of a blank's base panel: where the pizza sits, and the box's root.
 	local function trayFrame(size: string): CFrame?
 		local blank = blanks[size]
-		local base = blank and blank:FindFirstChild("Base")
-		return if base and base:IsA("BasePart") then base.CFrame * CFrame.new(0, PizzaBox.Thick / 2, 0) else nil
+		local mark = blank and blank:FindFirstChild("BoxRoot")
+		return if mark and mark:IsA("BasePart") then mark.CFrame else nil
 	end
 	local outline = Instance.new("Highlight")
 	outline.FillTransparency = 1
@@ -1051,27 +1051,17 @@ local function cut(data: any, finish: Finish, cancel: Cancel)
 				end
 			end
 		end
+		-- The same die-cut box as the table's (PizzaBox: kraft inside, printed outside).
 		local panels = PizzaBox.panels(PizzaBox.pizza(Config.BoxSize[chosenBox] or (d + 0.15)))
-		local parts: { BasePart } = {}
-		for i, panel in panels do
-			parts[i] = localPart(ctx.folder, "Box" .. panel.name, PizzaBox.size(panel), Config.BoxPrint.Board, Enum.Material.SmoothPlastic)
-			if panel.name == "Lid" then
-				-- The printed outside: the lid's underside while open, its top once
-				-- shut, reading from the front (turned 90: checked in Studio).
-				local printed = Instance.new("SurfaceGui")
-				printed.Face = Enum.NormalId.Bottom
-				printed.CanvasSize = Vector2.new(256, 256)
-				Ui.new("ImageLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Rotation = 90, Image = "rbxassetid://" .. Config.BoxPrint.Lid, Parent = printed })
-				printed.Parent = parts[i]
-			end
+		local built = PizzaBox.build(panels, ctx.folder, Config.BoxPrint.Kraft, Config.BoxPrint.Board, Config.BoxPrints)
+		for _, b in built do
+			b.part.CanQuery = false
 		end
 		local t = Instance.new("NumberValue")
 		t.Parent = ctx.folder -- cleaned up with the minigame
 		local pizzaShown = true
 		local function place()
-			for i, cf in PizzaBox.pose(panels, root, t.Value) do
-				parts[i].CFrame = cf
-			end
+			PizzaBox.place(built, panels, root, t.Value)
 			-- Shut inside from here on: hide it so nothing pokes through the lid.
 			if pizzaShown and t.Value > PizzaBox.Time - 0.1 then
 				pizzaShown = false

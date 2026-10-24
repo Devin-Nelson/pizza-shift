@@ -17,6 +17,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Follow = require(ReplicatedStorage.Shared.Follow)
 local GameClock = require(ReplicatedStorage.Shared.GameClock)
 local Pizza3D = require(ReplicatedStorage.Shared.Pizza3D)
+local PizzaBox = require(ReplicatedStorage.Shared.PizzaBox)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Staff = require(ReplicatedStorage.Shared.Staff)
 local Style = require(ReplicatedStorage.Shared.Style)
@@ -959,46 +960,21 @@ local function customerLeave(shop: Shop, c: Customer, mood: string)
 	layoutCustomers(shop)
 end
 
--- Closed boxes are built standing on edge and turned flat with BOX_FLAT, so the
--- printed lid is the part's Front face: that face's text has a known "up" (the
--- part's +Y), which BOX_FLAT points away from whoever the box faces (its -Z).
--- Printing on a Top face instead comes out upside down from the front.
-local BOX_FLAT = CFrame.Angles(math.rad(90), 0, 0)
-
--- A closed pizza box sized for `size` (for carryout boxes in the warmer).
--- Set its CFrame as `<where> * BOX_FLAT`.
-local function makeBoxPart(size: string): Part
-	local bs = Config.BoxSize[size] or 2.55
-	local p = Instance.new("Part")
-	p.Name = "PizzaBox"
-	p.Size = Vector3.new(bs, bs, 0.28) -- 0.3 apart in a stack: a seam shows between boxes
-	p.Color = Config.BoxPrint.Board
-	p.Material = Enum.Material.SmoothPlastic
-	p.CanCollide = false
-	p.CanQuery = false
-	p.Massless = true
-	p.Anchored = true
-	-- The print (the user's pick: classic white): the lid art on the lid, the
-	-- red band along both side walls (turned to run along them).
-	local lid = Instance.new("Decal")
-	lid.Face = Enum.NormalId.Front
-	lid.Texture = "rbxassetid://" .. Config.BoxPrint.Lid
-	lid.Parent = p
-	for _, face in { Enum.NormalId.Left, Enum.NormalId.Right } do
-		local gui = Instance.new("SurfaceGui")
-		gui.Face = face
-		gui.CanvasSize = Vector2.new(28, 255)
-		local band = Instance.new("ImageLabel")
-		band.AnchorPoint = Vector2.new(0.5, 0.5)
-		band.Position = UDim2.fromScale(0.5, 0.5)
-		band.Size = UDim2.fromOffset(245, 24)
-		band.Rotation = 90 -- reads upright on both walls (checked in Studio)
-		band.BackgroundTransparency = 1
-		band.Image = "rbxassetid://" .. Config.BoxPrint.Band
-		band.Parent = gui
-		gui.Parent = p
+-- A shut pizza box (PizzaBox's die-cut panels folded shut, just the printed
+-- outside of what shows): a Model whose pivot is its base's top centre, its
+-- front -Z. Returns it and its height.
+local function makeBox(size: string): (Model, number)
+	local kind = PizzaBox.pizza(Config.BoxSize[size] or 2.55)
+	local panels = PizzaBox.panels(kind)
+	local box = Instance.new("Model")
+	box.Name = "PizzaBox"
+	local built = PizzaBox.build(panels, box, Config.BoxPrint.Kraft, Config.BoxPrint.Board, Config.BoxPrints, true)
+	PizzaBox.place(built, panels, CFrame.identity, PizzaBox.Time)
+	for _, b in built do
+		b.part.Massless = true
 	end
-	return p
+	box.WorldPivot = CFrame.identity
+	return box, PizzaBox.height(kind)
 end
 
 ---------------------------------------------------------------------------
@@ -1024,17 +1000,21 @@ local function makeStack(order: Order, base: CFrame, most: number): Model
 		return (Config.BoxSize[a] or 0) > (Config.BoxSize[b] or 0)
 	end)
 	local n = math.min(#sizes, most)
+	local y, bottomHeight = 0, 0.3
 	for i = 1, n do
-		local box = makeBoxPart(sizes[i])
-		box.CFrame = base * CFrame.new(0, 0.15 + (i - 1) * 0.3, 0) * BOX_FLAT
-		box.CanQuery = true -- client/CarryoutPicks raycasts at it
+		local box, height = makeBox(sizes[i])
+		box:PivotTo(base * CFrame.new(0, y + PizzaBox.Thick, 0)) -- client/CarryoutPicks raycasts at its parts
 		box.Parent = stack
+		if i == 1 then
+			bottomHeight = height
+		end
+		y += height + PizzaBox.Thick + 0.02 -- a hair between boxes
 	end
 	local width = Config.BoxSize[sizes[1]] or 2.55
 	local tag = Instance.new("Part")
 	tag.Name = "NameTag"
-	tag.Size = Vector3.new(math.min(width - 0.2, 1.9), 0.24, 0.02)
-	tag.CFrame = base * CFrame.new(0, 0.14, -width / 2 - 0.012)
+	tag.Size = Vector3.new(math.min(width * 0.6, 1.9), math.min(0.24, bottomHeight * 0.6), 0.02)
+	tag.CFrame = base * CFrame.new(0, PizzaBox.Thick + bottomHeight / 2, -width / 2 - PizzaBox.Thick - 0.012)
 	tag.Color = Color3.new(1, 1, 1)
 	tag.Material = Enum.Material.SmoothPlastic
 	tag.Anchored = true
@@ -1742,7 +1722,7 @@ end
 -- Welds a stack of the order's boxes in front of `root` (whoever's carrying it).
 local function stackInHands(order: Order, root: BasePart, parent: Instance): Model
 	local stack = makeStack(order, root.CFrame * CFrame.new(0, -0.7, -1.8), 12) -- in hand: every box
-	for _, part in stack:GetChildren() do
+	for _, part in stack:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
 			part.CanQuery = false

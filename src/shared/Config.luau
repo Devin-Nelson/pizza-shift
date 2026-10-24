@@ -46,14 +46,15 @@ Config.TicketAge = { Fresh = 120, Aging = 300 }
 -- unless the station is `pick`: there the player picks each job (a pizza at
 -- the oven exit, an order on the heat rack). `queue`: the HUD queue panel shown
 -- there ("make" = the make-line order queue, "oven", "delivery"). `bar`
--- false: not on the HUD's Stations bar (you only get there with a pizza).
+-- false: not on the station arrows (you only get there with a pizza); `nav`:
+-- its name there.
 -- No Load station for now (the user, 2026-10-23): a topped pizza goes
 -- straight into the oven; the ready rack's code stays for a store builder.
 Config.Stations = {
 	{ id = "Register", label = "Register", stay = true },
 	{ id = "Dough", label = "Stretch", stay = true, queue = "make" },
 	{ id = "Sauce", label = "Sauce", stay = true, queue = "make" },
-	{ id = "Cheese", label = "Cheese", stage = "Sauced", stay = true, queue = "make", bar = false },
+	{ id = "Cheese", label = "Cheese", stage = "Sauced", stay = true, queue = "make", nav = "Makeline" }, -- the makeline's stop on the station arrows (the user, 2026-10-24)
 	{ id = "Toppings", label = "Toppings", stage = "Cheesed", stay = true, queue = "make", bar = false },
 	{ id = "CutTable", label = "Cut & Box", stage = "Exit", stay = true, pick = true, queue = "oven" },
 	{ id = "DeliveryRack", label = "Dispatch", stay = true, pick = true, queue = "delivery" }, -- the id predates dispatch (staff stats are saved under it)
@@ -295,7 +296,7 @@ Config.ReadyRack = { Slots = 15 }
 -- the name tag, which is on the bottom box: the user, 2026-10-23); in hand
 -- every box shows. PickupPatience: real seconds a customer waits once their
 -- order is on the rack (doubled, the user, 2026-10-23).
-Config.Carryout = { Slots = 6, MaxStack = 4, PickupPatience = 300 }
+Config.Carryout = { Slots = 6, MaxStack = 3, PickupPatience = 300 } -- 3: the reference box is taller (2026-10-24)
 -- How a waiting customer feels, by the share of their patience used up (the
 -- user, 2026-10-23: faces grow angrier, they grumble, and the longer the
 -- wait the lower the satisfaction and the tips). `at`: from that share on;
@@ -324,7 +325,16 @@ end
 -- The pizza box print (the user's pick, 2026-10-23: "classic white";
 -- tools/blender/box_art.py): white board, the lid art and the side band as
 -- Image assets (never Decal ids).
-Config.BoxPrint = { Board = Color3.fromRGB(238, 235, 226), Lid = 80589939878510, Band = 139609335854778 } -- band_classic_any.png (no size on it)
+Config.BoxPrint = {
+	Board = Color3.fromRGB(238, 235, 226), -- the outside
+	Kraft = Color3.fromRGB(205, 168, 118), -- the inside (the user, 2026-10-24: brown inside)
+	Lid = 80589939878510, -- lid_classic.png, the whole lid
+	LidMain = 130207911515150, -- lid_main.png: the lid behind its cut corners
+	LidFront = 77805758474402, -- lid_front.png: the lid's front strip between them
+	Band = 139609335854778, -- band_classic_any.png (no size on it), on the lid's side flaps
+}
+-- The print images by PizzaBox panel `print` name.
+Config.BoxPrints = { LidMain = Config.BoxPrint.LidMain, LidFront = Config.BoxPrint.LidFront, Band = Config.BoxPrint.Band }
 -- Customers' first names; each gets a last initial ("John P.").
 Config.CustomerNames = {
 	"John", "Maria", "David", "Aisha", "Chris", "Elena", "Marcus", "Grace", "Tyler", "Sofia",

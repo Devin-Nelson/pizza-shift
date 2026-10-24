@@ -305,8 +305,8 @@ StationArt.Layout = {
 		height = 3.2,
 		-- tools/blender/cut_table.py's [layout]: each stack's tray (its top
 		-- blank's base panel) centre, at the stack's top; the trough's rockers.
-		trays = { Small = Vector3.new(4.878, 3.68, -1.628), Medium = Vector3.new(1.812, 3.74, -1.456), Large = Vector3.new(-2.246, 3.8, -1.285) },
-		rockers = { Vector3.new(-0.271, 2.8, -0.8), Vector3.new(0.009, 2.8, -0.8) },
+		trays = { Small = Vector3.new(4.984, 3.68, -1.984), Medium = Vector3.new(2.077, 3.74, -1.76), Large = Vector3.new(-1.927, 3.8, -1.536) },
+		rockers = { Vector3.new(0.047, 2.8, -1.05), Vector3.new(0.327, 2.8, -1.05) },
 	},
 }
 
@@ -896,7 +896,7 @@ end
 -- each stack (Blank_<Size>, a Model of PizzaBox panels, each with BoxSize: the
 -- cut minigame cuts the pizza on it, then folds it into the box), the size
 -- tags, and CutLanding, where a pulled pizza waits while someone works it.
-local CARDBOARD = Config.BoxPrint.Board -- white board (the user's pick of box print)
+local CARDBOARD = Config.BoxPrint.Kraft -- the blanks lie inside up: brown (the user, 2026-10-24)
 
 Builders.CutTable = function(m, base)
 	local L = StationArt.Layout.CutTable
@@ -931,15 +931,21 @@ Builders.CutTable = function(m, base)
 			P(m, base, Vector3.new(bw, below, bd), at(t.X, h + below / 2, t.Z - PizzaBox.trayFromFront(kind) + bd / 2), CARDBOARD, Enum.Material.Cardboard, { collide = false })
 		end
 	end
-	-- The top blank of each stack, lying flat on it; its size on the front edge below.
+	-- The top blank of each stack, lying flat on it (kraft inside up, the print
+	-- underneath), with a BoxRoot marker at its base's top centre (the cut
+	-- minigame folds its own copy from there); its size on the front edge below.
 	for size, t in L.trays do
 		local blank = Instance.new("Model")
 		blank.Name = "Blank_" .. size
 		local panels = PizzaBox.panels(PizzaBox.pizza(Config.BoxSize[size]))
-		for i, cf in PizzaBox.pose(panels, base * CFrame.new(t), 0) do
-			local panel = P(blank, CFrame.identity, PizzaBox.size(panels[i]), cf, CARDBOARD, Enum.Material.Cardboard, { collide = false, name = panels[i].name })
-			panel:SetAttribute("BoxSize", size)
+		local root = base * CFrame.new(t)
+		local built = PizzaBox.build(panels, blank, CARDBOARD, Config.BoxPrint.Board, Config.BoxPrints)
+		PizzaBox.place(built, panels, root, 0)
+		for _, b in built do
+			b.part:SetAttribute("BoxSize", size)
 		end
+		local mark = P(blank, CFrame.identity, Vector3.new(0.05, 0.05, 0.05), root, CARDBOARD, nil, { collide = false, transparency = 1, name = "BoxRoot" })
+		mark.CanQuery = false
 		blank.Parent = m
 		local tag = P(m, base, Vector3.new(0.5, 0.11, 0.02), at(t.X, h - 0.075, -d / 2 - 0.011), Color3.new(1, 1, 1), nil, { collide = false })
 		surfaceText(tag, Enum.NormalId.Front, string.sub(size, 1, 1), Config.Brand.Red)

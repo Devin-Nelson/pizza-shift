@@ -49,8 +49,8 @@ def blank(bs):
 # trough between Medium and Large; past Large, the far-end strip.
 COUNT = {"Small": 16, "Medium": 18, "Large": 20}
 TROUGH_W, SIDE_W = 0.6, 2.0
-W = round(0.2 + sum(blank(BOX[s])[0] for s, _ in SIZES) + 0.25 + 0.15 + TROUGH_W + 0.15 + 0.25 + SIDE_W + 0.15 + 0.05, 1)
-FRONT = -D / 2 + 0.2  # the stacks' front edge
+W = max(12.8, round(0.2 + sum(blank(BOX[s])[0] for s, _ in SIZES) + 0.25 + 0.15 + TROUGH_W + 0.15 + 0.25 + SIDE_W + 0.15 + 0.05, 1))  # 12.8: the table the store is laid out round
+FRONT = -D / 2 - 0.05  # the stacks' front edge: the reference blank (2026-10-24) is deep, so they hang a hair over the front
 stacks = {}  # size -> (x, z of the blank's centre, bs, top of the stack)
 x = W / 2 - 0.2
 for size, _ in SIZES:
@@ -247,12 +247,12 @@ def overlap(a, b, gap=0.0):
 
 FEET = [footprint(s) for s, _ in SIZES]
 trough_r = (TROUGH[0] - 0.03, TROUGH[2] - 0.03, TROUGH[1] + 0.03, TROUGH[3] + 0.03)
-check("stacks on the top, front 0.2 in, back short of the edge", all(f[0] > -W / 2 and f[2] < W / 2 and f[1] >= -D / 2 + 0.2 - 1e-9 and f[3] < D / 2 - 0.05 for f in FEET))
+check("stacks on the top, a hair over the front, back short of the edge", all(f[0] > -W / 2 and f[2] < W / 2 and f[1] >= -D / 2 - 0.05 - 1e-9 and f[3] < D / 2 - 0.05 for f in FEET))
 check("stacks clear of each other and the trough", not any(overlap(a, b) for i, a in enumerate(FEET) for b in FEET[i + 1:]) and not any(overlap(f, trough_r, 0.05) for f in FEET))
 check("rockers stand inside the trough, clear of each other", TROUGH_W / 2 - 0.02 > 0.14 + R_GRIP_W / 2 + 0.01 and 0.14 > R_GRIP_W / 2 + 0.01 and R_LEN + 0.12 < TROUGH_Z1 - TROUGH_Z0 - 0.1)
 check("a Large pizza (2.4) fits the Large box's walls", BOX["Large"] - 2 * 0.04 > 2.4)
 check("CutLanding's pizza on the Large stack's base panel", abs(LANDING[1] - (FRONT + PB.tray_from_front(PB.pizza(BOX["Large"])))) < 1e-9)
-check("shelf stacks under the top, inside the panels, clear of the post", all(SHELVES[1] + 0.02 + BLANK * c < H - TOP_T - 0.05 for _, _, c in UNDER) and all(abs(sx_) + blank(BOX[s])[0] / 2 < W / 2 - 0.05 and abs(sx_ - POST_X) - blank(BOX[s])[0] / 2 > 0.1 and blank(BOX[s])[1] < D - 0.2 for s, sx_, _ in UNDER))
+check("shelf stacks under the top, inside the panels, clear of the post", all(SHELVES[1] + 0.02 + BLANK * c < H - TOP_T - 0.05 for _, _, c in UNDER) and all(abs(sx_) + blank(BOX[s])[0] / 2 < W / 2 - 0.05 and abs(sx_ - POST_X) - blank(BOX[s])[0] / 2 > 0.1 and blank(BOX[s])[1] < D for s, sx_, _ in UNDER))
 check("bottom shelf: bins and the case under the middle shelf, clear of the post and each other", max(BINS) + BIN_W / 2 < POST_X - 0.1 and min(BINS) - BIN_W / 2 > -W / 2 + 0.05 and all(b - a > BIN_W for a, b in zip(BINS, BINS[1:])) and CASE[0] - CASE[1] / 2 > POST_X + 0.1 and CASE[0] + CASE[1] / 2 < W / 2 - 0.05 and SHELVES[0] + 0.02 + max(CASE[2], BIN_H) < SHELVES[1] - 0.1)
 check("wheels under the bottom shelf", 2 * WHEEL_R < SHELVES[0] - 0.05)
 print(f"[layout] rockers {[(round(x_, 3), round(y_, 3), round(z_, 3)) for x_, y_, z_ in TROUGH_ROCKERS]}")

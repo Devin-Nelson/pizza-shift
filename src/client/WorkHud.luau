@@ -49,6 +49,7 @@ local UserInputService = game:GetService("UserInputService")
 local STATION_COLORS: { [string]: Color3 } = {
 	Register = Color3.fromRGB(47, 155, 255),
 	Dough = Color3.fromRGB(255, 201, 60),
+	Cheese = Color3.fromRGB(255, 122, 184), -- the makeline
 	Sauce = Color3.fromRGB(255, 75, 62),
 	CutTable = Color3.fromRGB(46, 212, 122),
 	DeliveryRack = Color3.fromRGB(139, 92, 246),
@@ -61,7 +62,7 @@ local MAX_ROWS = 8 -- lines per ticket; the rest fold into "+N more"
 local KEY_W = 64 -- utility keys on the open bar
 local function stationLabel(id: string): string
 	local info = Config.StationInfo(id)
-	return if info then info.label else id
+	return if info then info.nav or info.label else id
 end
 
 -- Every station (there are no roles), while you work at a store, except
@@ -445,9 +446,9 @@ function WorkHud.Init(isBusy: () -> boolean)
 	local lastStation = "Register"
 	local function navBase(): string
 		local here = StationMode.Current()
-		-- With your pizza on the makeline, you're still on the sauce part of the line.
-		if here == "Cheese" or here == "Toppings" then
-			return "Sauce"
+		-- Cheese and toppings are both the makeline stop.
+		if here == "Toppings" then
+			return "Cheese"
 		end
 		return here or lastStation
 	end
@@ -618,7 +619,7 @@ function WorkHud.Init(isBusy: () -> boolean)
 		storesButton.Visible = not onShift and here == nil
 		tab.Visible = onShift and not expanded
 		staffButton.Visible = onShift and not expanded
-		if here and here ~= "Cheese" and here ~= "Toppings" and table.find(myStations(), here) then
+		if here and table.find(myStations(), here) then
 			lastStation = here
 		end
 		refreshNav()

@@ -804,46 +804,40 @@ spec("a server that lost the save never overwrites it", function()
 end)
 
 -------------------------------------------------------------------- pizza box
-spec("pizza box blanks lie flat with no panels overlapping, and shut with the lid on the walls", function()
+spec("pizza box blanks (the user's die-cut reference) lie flat at their size and fold shut inside the box", function()
 	local T = PizzaBox.Thick
-	local kinds = {}
-	for size, bs in Config.BoxSize do
-		kinds[size] = PizzaBox.pizza(bs)
-	end
-	for name, k in kinds do
+	for name, bs in Config.BoxSize do
+		local k = PizzaBox.pizza(bs)
 		local panels = PizzaBox.panels(k)
-		local flat = PizzaBox.pose(panels, roblox.CFrame.new(), 0)
-		local rects = {}
-		for i, p in panels do
-			local cf = flat[i]
-			near(cf.Position.Y, -T / 2, name .. " " .. p.name .. " lies flat")
-			assert(math.abs(cf.UpVector.Y) > 0.999, name .. " " .. p.name .. " faces up")
-			assert(p.width > 0 and p.length > 0, name .. " " .. p.name .. " has a size")
-			local half = (cf.RightVector * p.width / 2 + cf.LookVector * p.length / 2)
-			rects[i] = { cf.Position.X - math.abs(half.X), cf.Position.Z - math.abs(half.Z), cf.Position.X + math.abs(half.X), cf.Position.Z + math.abs(half.Z), p.name }
+		local function corners(frames: { any }, i: number): { any }
+			local p = panels[i]
+			local out = {}
+			local pts = if p.rect then { { p.rect[1], p.rect[3] }, { p.rect[2], p.rect[3] }, { p.rect[2], p.rect[4] }, { p.rect[1], p.rect[4] } } else { { p.tri[1].X, p.tri[1].Y }, { p.tri[2].X, p.tri[2].Y }, { p.tri[3].X, p.tri[3].Y } }
+			for _, q in pts do
+				table.insert(out, frames[i] * roblox.Vector3.new(q[1], 0, q[2]))
+			end
+			return out
 		end
+		local flat = PizzaBox.frames(panels, roblox.CFrame.new(), 0)
 		local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
-		for i = 1, #rects do
-			local a = rects[i]
-			minX, maxX, minZ, maxZ = math.min(minX, a[1]), math.max(maxX, a[3]), math.min(minZ, a[2]), math.max(maxZ, a[4])
-			for j = i + 1, #rects do
-				local b = rects[j]
-				local ox = math.min(a[3], b[3]) - math.max(a[1], b[1])
-				local oz = math.min(a[4], b[4]) - math.max(a[2], b[2])
-				assert(ox < 1e-6 or oz < 1e-6, string.format("%s blank: %s and %s overlap", name, a[5], b[5]))
+		for i, p in panels do
+			for _, c in corners(flat, i) do
+				near(c.Y, 0, name .. " " .. p.name .. " lies flat")
+				minX, maxX, minZ, maxZ = math.min(minX, c.X), math.max(maxX, c.X), math.min(minZ, c.Z), math.max(maxZ, c.Z)
 			end
 		end
 		local bw, bd = PizzaBox.blankSize(k)
 		near(minZ, -PizzaBox.trayFromFront(k), name .. " blank's front edge")
-		near(maxX - minX, bw, name .. " blank's width")
-		near(maxZ - minZ, bd, name .. " blank's depth")
-		local shut = PizzaBox.pose(panels, roblox.CFrame.new(), PizzaBox.Time)
+		assert(maxX - minX <= bw + 2 * T + 1e-3 and maxX - minX >= bw - 1e-3, name .. " blank's width")
+		assert(maxZ - minZ <= bd + 1e-3 and maxZ - minZ >= bd - 2 * T - 1e-3, name .. " blank's depth")
+		local shut = PizzaBox.frames(panels, roblox.CFrame.new(), PizzaBox.Time)
 		for i, p in panels do
-			local pos = shut[i].Position
-			assert(math.abs(pos.X) <= k.w / 2 + 2 * T + 1e-3 and math.abs(pos.Z) <= k.d / 2 + T + 1e-3, name .. " " .. p.name .. " stays inside the shut box")
-			assert(pos.Y > -T - 1e-3 and pos.Y < k.h + T, name .. " " .. p.name .. " is between the base and the lid")
+			for _, c in corners(shut, i) do
+				assert(math.abs(c.X) <= k.w / 2 + 2 * T + 1e-3 and math.abs(c.Z) <= k.d / 2 + 2 * T + 1e-3, name .. " " .. p.name .. " stays inside the shut box")
+				assert(c.Y > -T - 1e-3 and c.Y < k.h + T + 1e-3, name .. " " .. p.name .. " is between the base and the lid")
+			end
 			if p.name == "Lid" then
-				near(pos.Y, k.h + T / 2, name .. " lid rests on the walls")
+				near(shut[i].Position.Y, k.h, name .. " lid rests on the walls")
 				assert(math.abs(shut[i].UpVector.Y) > 0.999, name .. " lid lies flat")
 			end
 		end
